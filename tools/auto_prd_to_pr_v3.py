@@ -172,7 +172,12 @@ def env_with_zsh(extra: dict | None = None) -> dict:
 
 
 def ensure_claude_debug_dir() -> Optional[Path]:
-    """Ensure the Claude CLI can write debug logs even in sandboxed environments."""
+    """Ensure the Claude CLI can write debug logs even in sandboxed environments.
+
+    Returns:
+        Path: A writable directory path for Claude debug logs
+        None: No writable directory found - caller should handle this scenario gracefully
+    """
     candidates: list[Path] = []
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     if existing:
@@ -187,6 +192,14 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         try:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
+                # Positive write test
+                test = base / f".writecheck_{time.time_ns()}.tmp"
+                with open(test, "a", encoding="utf-8"):
+                    pass
+                try:
+                    test.unlink()
+                except OSError:
+                    pass
                 os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
                 return base
         except OSError:
@@ -292,7 +305,8 @@ def ensure_gh_alias() -> None:
                 "alias",
                 "set",
                 "save-me-copilot",
-                "api --method POST /repos/$1/pulls/$2/requested_reviewers -f reviewers[]=copilot-pull-request-reviewer[bot]",
+                "api --method POST /repos/$1/pulls/$2/requested_reviewers "
+                "-f reviewers[]=copilot-pull-request-reviewer[bot]",
             ]
         )
 
@@ -344,6 +358,16 @@ def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
     if match:
         return match.group(1)
     return None
+
+
+def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+    """Extract stdout/stderr details from CalledProcessError for error messages."""
+    stderr = getattr(exc, "stderr", None)
+    # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
+    stdout = getattr(exc, "output", None)
+    if stdout is None:
+        stdout = getattr(exc, "stdout", None)
+    return (stderr or stdout or "").strip() or f"exit code {exc.returncode}"
 
 
 def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> Any:
@@ -501,12 +525,7 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             out, _, _ = run_cmd(args, cwd=repo_root)
             return out.strip()
         except subprocess.CalledProcessError as exc:
-            stderr = getattr(exc, "stderr", None)
-            # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
-            stdout = getattr(exc, "output", None)
-            if stdout is None:
-                stdout = getattr(exc, "stdout", None)
-            msg = (stderr or stdout or "").strip()
+            msg = extract_called_process_error_details(exc)
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
                 logger.warning(
@@ -1369,7 +1388,8 @@ def main() -> None:
         "--executor-policy",
         choices=("codex-first", "codex-only", "claude-only"),
         default=None,
-        help="Executor policy: 'codex-first' (default), 'codex-only', or 'claude-only'. Can also use AUTO_PRD_EXECUTOR_POLICY.",
+        help="Executor policy: 'codex-first' (default), 'codex-only', or 'claude-only'. "
+        "Can also use AUTO_PRD_EXECUTOR_POLICY.",
     )
     ap.add_argument(
         "--phases",
@@ -1419,6 +1439,12 @@ def main() -> None:
                 print(f"Details:\n{err}")
                 EXECUTOR_POLICY = "codex-only"
                 claude_required = False
+                # Rebuild required list after policy change to remove claude
+                required = ["coderabbit", "git", "gh"]
+                if EXECUTOR_POLICY in ("codex-first", "codex-only"):
+                    required.append("codex")
+                if EXECUTOR_POLICY in ("codex-first", "claude-only"):
+                    required.append("claude")
                 continue
             raise SystemExit(f"ERROR: {err}")
     if not claude_required and EXECUTOR_POLICY != "claude-only":
@@ -1441,7 +1467,7 @@ def main() -> None:
         new_branch = args.branch or git_current_branch(repo_root)
 
     dirty_entries = git_status_snapshot(repo_root)
-    if dirty_entries and not args.dry_run:
+    if dirty_entries:
         print("Warning: workspace has uncommitted changes; continuing:")
         for entry in dirty_entries:
             print(f"  {entry}")
@@ -1462,12 +1488,7 @@ def main() -> None:
             if rc != 0:
                 run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         except subprocess.CalledProcessError as exc:
-            stderr = getattr(exc, "stderr", None)
-            # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
-            stdout = getattr(exc, "output", None)
-            if stdout is None:
-                stdout = getattr(exc, "stdout", None)
-            details = (stderr or stdout or "").strip()
+            details = extract_called_process_error_details(exc)
             print(
                 f"Warning: git branch setup failed ({details}); continuing on current branch."
             )
@@ -1475,7 +1496,15 @@ def main() -> None:
     else:
         print("Skipping branch setup (local/pr phases disabled).")
         if args.branch:
-            run_cmd(["git", "checkout", new_branch], cwd=repo_root)
+            try:
+                run_cmd(["git", "checkout", new_branch], cwd=repo_root)
+            except subprocess.CalledProcessError as exc:
+                details = extract_called_process_error_details(exc)
+                print(
+                    f"Warning: failed to switch to '{new_branch}' for review_fix "
+                    f"({details}); continuing on current branch."
+                )
+                new_branch = git_current_branch(repo_root)
         else:
             print(f"Continuing on current branch: {new_branch}")
 
