@@ -196,10 +196,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                 test = base / f".writecheck_{uuid.uuid4()}.tmp"
                 with open(test, "a", encoding="utf-8"):
                     pass
-                try:
-                    test.unlink()
-                except OSError:
-                    pass
+                test.unlink(missing_ok=True)
                 os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
                 return base
         except OSError:
