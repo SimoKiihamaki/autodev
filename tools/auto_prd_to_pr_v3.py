@@ -198,18 +198,28 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         try:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
-                # Positive write test
-                test = base / f".writecheck_{uuid.uuid4()}.tmp"
+                # Positive write test with proper cleanup handling
                 test_content = f"writecheck-{uuid.uuid4()}"
+                test = None
                 try:
-                    with open(test, "w", encoding="utf-8") as f:
-                        f.write(test_content)
-                    with open(test, "r", encoding="utf-8") as f:
-                        read_back = f.read()
-                    if read_back != test_content:
-                        raise OSError(f"Failed to verify write/read in {base}")
+                    with tempfile.NamedTemporaryFile(
+                        mode="w+",
+                        encoding="utf-8",
+                        dir=base,
+                        prefix=".writecheck_",
+                        suffix=".tmp",
+                        delete=False,
+                    ) as tmpf:
+                        tmpf.write(test_content)
+                        tmpf.flush()
+                        tmpf.seek(0)
+                        read_back = tmpf.read()
+                        if read_back != test_content:
+                            raise OSError(f"Failed to verify write/read in {base}")
+                    test = Path(tmpf.name)
                 finally:
-                    test.unlink(missing_ok=True)
+                    if test and test.exists():
+                        test.unlink(missing_ok=True)
                 os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
                 return base
         except OSError:
@@ -295,15 +305,27 @@ def require_cmd(name: str) -> None:
 
     # If all version checks fail, try to run the command with no args to see if it's executable
     try:
-        run_cmd([name], check=False, capture=True, timeout=5)
-        # If we get here without exception, the command exists
+        stdout, stderr, returncode = run_cmd(
+            [name], check=False, capture=True, timeout=5
+        )
+        # If we get here without FileNotFoundError, the command exists
+        logger.info(
+            "Command '%s' exists and returned exit code %s (may require arguments to run properly)",
+            name,
+            returncode,
+        )
         return
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-    ):
-        raise RuntimeError(f"'{name}' exists but cannot be executed properly.")
+    except FileNotFoundError:
+        # Command truly doesn't exist
+        raise RuntimeError(f"'{name}' is not installed or on PATH.")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # Command exists but failed to execute - this is still considered valid for existence check
+        logger.info(
+            "Command '%s' exists but failed execution (this may be expected if it requires arguments): %s",
+            name,
+            exc,
+        )
+        return
 
 
 # ---------------------------- git helpers ----------------------------
@@ -623,6 +645,16 @@ EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
 
 
+def build_required_list(policy: str) -> list[str]:
+    """Build the list of required commands based on executor policy."""
+    required = ["coderabbit", "git", "gh"]
+    if policy in ("codex-first", "codex-only"):
+        required.append("codex")
+    if policy in ("codex-first", "claude-only"):
+        required.append("claude")
+    return required
+
+
 def policy_runner(
     policy: str | None, i: int | None = None, phase: str = "implement"
 ) -> Tuple[Callable[..., str], str]:
@@ -837,7 +869,7 @@ def get_unresolved_feedback(
             continue
         thread_id = t.get("id")
         if thread_id is None:
-            logger.warning(f"Encountered review thread without an ID: {t!r}")
+            logger.warning("Encountered review thread without an ID: %r", t)
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
         for c in comments:
@@ -1452,44 +1484,39 @@ def main() -> None:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
     print(f"Executor policy: {EXECUTOR_POLICY}")
 
-    def build_required_list(policy: str) -> list[str]:
-        """Build the list of required commands based on executor policy."""
-        required = ["coderabbit", "git", "gh"]
-        if policy in ("codex-first", "codex-only"):
-            required.append("codex")
-        if policy in ("codex-first", "claude-only"):
-            required.append("claude")
-        return required
-
     required = build_required_list(EXECUTOR_POLICY)
     claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
-    try:
-        for cmd_name in required:
+    claude_failed = False
+    for cmd_name in required:
+        try:
             require_cmd(cmd_name)
-    except RuntimeError as err:
-        if (
-            "claude" in str(err).lower()
-            and "claude" in required
-            and EXECUTOR_POLICY == "codex-first"
-        ):
-            print(
-                "Warning: Claude CLI check failed; falling back to codex-only executor policy."
-            )
-            print(f"Details:\n{err}")
-            EXECUTOR_POLICY = "codex-only"
-            claude_required = False
-            required = build_required_list(EXECUTOR_POLICY)
-            # Retry with new policy
-            for cmd_name in required:
-                try:
-                    require_cmd(cmd_name)
-                except RuntimeError as err2:
-                    raise SystemExit(f"ERROR: {err2}")
-        else:
-            raise SystemExit(f"ERROR: {err}")
-    if not claude_required and EXECUTOR_POLICY != "claude-only":
+        except RuntimeError as err:
+            if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
+                claude_failed = True
+                print(
+                    "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+                )
+                print(f"Details:\n{err}")
+                continue  # Skip claude and continue with other commands
+            else:
+                raise SystemExit(f"ERROR: {err}")
+
+    # If claude failed, update policy and retry without claude
+    if claude_failed:
+        EXECUTOR_POLICY = "codex-only"
+        claude_required = False
+        required = build_required_list(EXECUTOR_POLICY)
+        # Verify remaining required commands (should all pass since we already checked them)
+        for cmd_name in required:
+            try:
+                require_cmd(cmd_name)
+            except RuntimeError as err:
+                raise SystemExit(f"ERROR: {err}")
+    # Print the final policy if we're not in a claude-required scenario
+    # This shows the active policy after potential fallback from codex-first to codex-only
+    if not claude_required:
         print(f"Using executor policy: {EXECUTOR_POLICY}")
 
     ensure_gh_alias()
