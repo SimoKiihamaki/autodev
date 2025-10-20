@@ -1562,7 +1562,9 @@ def main() -> None:
     if EXECUTOR_POLICY not in EXECUTOR_CHOICES:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
 
-    def verify_required_commands(required, executor_policy, verified_commands):
+    def verify_required_commands(
+        required: list[str], executor_policy: str, verified_commands: set[str]
+    ) -> tuple[bool, str, set[str]]:
         claude_failed = False
         for cmd_name in required:
             try:
@@ -1719,7 +1721,13 @@ def main() -> None:
             head_branch = git_current_branch(repo_root)
             try:
                 pr_number = get_pr_number_for_head(head_branch, repo_root)
-            except (ValueError, RuntimeError, OSError):
+            except (
+                ValueError,
+                RuntimeError,
+                OSError,
+                subprocess.CalledProcessError,
+                FileNotFoundError,
+            ):
                 pr_number = None
             if pr_number is None:
                 print(
