@@ -177,7 +177,8 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     """Ensure the Claude CLI can write debug logs even in sandboxed environments.
 
     Returns:
-        Optional[Path]: A writable directory path for Claude debug logs, or None if no writable directory is found
+        Optional[Path]: A writable directory path for Claude debug logs when successfully found
+        and the environment variable is set, or None if no writable directory is found.
 
     Side effects:
         Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
@@ -215,7 +216,9 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                         tmpf.seek(0)
                         read_back = tmpf.read()
                         if read_back != test_content:
-                            raise OSError(f"Failed to verify write/read in {base}")
+                            raise OSError(
+                                f"Failed to verify write/read in {base}: expected {test_content!r}, got {read_back!r}"
+                            )
                     test = Path(tmpf.name)
                 finally:
                     if test and test.exists():
@@ -281,8 +284,15 @@ def run_sh(
 
 def require_cmd(name: str) -> None:
     # First check if command exists using shutil.which
-    if shutil.which(name) is None:
-        raise RuntimeError(f"'{name}' is not installed or on PATH.")
+    cmd_path = shutil.which(name)
+    if cmd_path is None:
+        raise RuntimeError(
+            f"'{name}' command not found - not installed or not on PATH."
+        )
+
+    # Check if the found command path is actually executable
+    if not os.access(cmd_path, os.X_OK):
+        raise RuntimeError(f"'{name}' found at {cmd_path} but is not executable.")
 
     # Then try to verify it's executable by checking version, help, or running a simple command
     # Some commands don't support --version, so we'll use a more flexible approach
@@ -316,8 +326,10 @@ def require_cmd(name: str) -> None:
         )
         return
     except FileNotFoundError:
-        # Command truly doesn't exist
-        raise RuntimeError(f"'{name}' is not installed or on PATH.")
+        # This shouldn't happen since we checked with shutil.which, but handle it
+        raise RuntimeError(
+            f"'{name}' command not found - not installed or not on PATH."
+        )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         # Command exists but failed to execute - this is still considered valid for existence check
         logger.info(
@@ -646,7 +658,22 @@ EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAU
 
 
 def build_required_list(policy: str) -> list[str]:
-    """Build the list of required commands based on executor policy."""
+    """Build the list of required commands based on executor policy.
+
+    Args:
+        policy: Executor policy string. Must be one of: "codex-first", "codex-only", "claude-only"
+
+    Returns:
+        List of required command names for the given policy.
+
+    Raises:
+        ValueError: If policy is not one of the expected values.
+    """
+    if policy not in EXECUTOR_CHOICES:
+        raise ValueError(
+            f"Invalid executor policy '{policy}'. Must be one of: {sorted(EXECUTOR_CHOICES)}"
+        )
+
     required = ["coderabbit", "git", "gh"]
     if policy in ("codex-first", "codex-only"):
         required.append("codex")
@@ -1485,7 +1512,7 @@ def main() -> None:
     print(f"Executor policy: {EXECUTOR_POLICY}")
 
     required = build_required_list(EXECUTOR_POLICY)
-    claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
+    claude_needed_for_initial_policy = EXECUTOR_POLICY in ("codex-first", "claude-only")
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
     claude_failed = False
@@ -1506,17 +1533,19 @@ def main() -> None:
     # If claude failed, update policy and retry without claude
     if claude_failed:
         EXECUTOR_POLICY = "codex-only"
-        claude_required = False
         required = build_required_list(EXECUTOR_POLICY)
-        # Verify remaining required commands (should all pass since we already checked them)
+        # Verify commands that are required for codex-only policy
+        # We only need to check codex since other commands were already verified
         for cmd_name in required:
+            if cmd_name == "claude":
+                continue  # Skip claude since we know it failed
             try:
                 require_cmd(cmd_name)
             except RuntimeError as err:
                 raise SystemExit(f"ERROR: {err}")
-    # Print the final policy if we're not in a claude-required scenario
+    # Print the final policy if we didn't start with a claude-required policy
     # This shows the active policy after potential fallback from codex-first to codex-only
-    if not claude_required:
+    if not claude_needed_for_initial_policy:
         print(f"Using executor policy: {EXECUTOR_POLICY}")
 
     ensure_gh_alias()
