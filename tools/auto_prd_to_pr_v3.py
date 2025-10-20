@@ -1443,8 +1443,6 @@ def main() -> None:
                 required = ["coderabbit", "git", "gh"]
                 if EXECUTOR_POLICY in ("codex-first", "codex-only"):
                     required.append("codex")
-                if EXECUTOR_POLICY in ("codex-first", "claude-only"):
-                    required.append("claude")
                 continue
             raise SystemExit(f"ERROR: {err}")
     if not claude_required and EXECUTOR_POLICY != "claude-only":
