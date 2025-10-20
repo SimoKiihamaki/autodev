@@ -194,13 +194,15 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                 # Positive write test
                 test = base / f".writecheck_{uuid.uuid4()}.tmp"
                 test_content = f"writecheck-{uuid.uuid4()}"
-                with open(test, "w", encoding="utf-8") as f:
-                    f.write(test_content)
-                with open(test, "r", encoding="utf-8") as f:
-                    read_back = f.read()
-                if read_back != test_content:
-                    raise OSError(f"Failed to verify write/read in {base}")
-                test.unlink(missing_ok=True)
+                try:
+                    with open(test, "w", encoding="utf-8") as f:
+                        f.write(test_content)
+                    with open(test, "r", encoding="utf-8") as f:
+                        read_back = f.read()
+                    if read_back != test_content:
+                        raise OSError(f"Failed to verify write/read in {base}")
+                finally:
+                    test.unlink(missing_ok=True)
                 os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
                 return base
         except OSError:
@@ -287,9 +289,9 @@ def require_cmd(name: str) -> None:
     # If all version checks fail, try to run the command with no args to see if it's executable
     try:
         run_cmd([name], check=False, capture=True, timeout=5)
-        # If we get here without FileNotFoundError, the command exists
+        # If we get here without exception, the command exists
         return
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except Exception:
         raise RuntimeError(f"'{name}' exists but cannot be executed properly.")
 
 
@@ -843,16 +845,19 @@ def get_unresolved_feedback(
                     continue
             db_id = c.get("databaseId")
             if db_id is not None:
-                unresolved.append(
-                    {
-                        "summary": f"- {login or 'unknown'}: {body}\n  {url}",
-                        "thread_id": thread_id,
-                        "comment_id": db_id,
-                        "author": login or "unknown",
-                        "url": url,
-                        "is_resolved": bool(t.get("isResolved")),
-                    }
-                )
+                # Additional defensive check to ensure db_id is valid before using it
+                comment_id = db_id
+                if comment_id is not None:
+                    unresolved.append(
+                        {
+                            "summary": f"- {login or 'unknown'}: {body}\n  {url}",
+                            "thread_id": thread_id,
+                            "comment_id": comment_id,
+                            "author": login or "unknown",
+                            "url": url,
+                            "is_resolved": bool(t.get("isResolved")),
+                        }
+                    )
     return unresolved
 
 
@@ -1451,7 +1456,9 @@ def main() -> None:
     claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
 
     # Check required commands, and if we fall back from codex-first to codex-only, restart the check
-    while True:
+    policy_changed = False
+    while not policy_changed:
+        all_commands_available = True
         for cmd_name in required:
             try:
                 require_cmd(cmd_name)
@@ -1465,11 +1472,12 @@ def main() -> None:
                     claude_required = False
                     # Rebuild required list after policy change to remove claude
                     required = build_required_list(EXECUTOR_POLICY)
-                    # Restart the check with the new policy and required list
+                    policy_changed = True
                     break
                 raise SystemExit(f"ERROR: {err}")
-        else:
-            # All required commands found, exit the while loop
+
+        # If we didn't change policy and all commands are available, we're done
+        if not policy_changed:
             break
     if not claude_required and EXECUTOR_POLICY != "claude-only":
         print(f"Using executor policy: {EXECUTOR_POLICY}")
@@ -1492,10 +1500,36 @@ def main() -> None:
 
     dirty_entries = git_status_snapshot(repo_root)
     if dirty_entries:
-        logger.warning(
-            "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
-            "\n".join(f"  {entry}" for entry in dirty_entries),
+        # Make the warning phase-aware with different severity for different phases
+        phases_with_commit_risk = {"local", "pr"}
+        active_phases_with_commit_risk = selected_phases.intersection(
+            phases_with_commit_risk
         )
+
+        if active_phases_with_commit_risk:
+            # More prominent warning for phases that might commit changes unintentionally
+            print("⚠️  WARNING: Workspace has uncommitted changes!")
+            print("   This is risky for phases that might commit changes:")
+            print(
+                f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
+            )
+            print("   Consider committing or stashing changes first.")
+            print("   Use --force flag to override this warning in the future.")
+            print("\nUncommitted changes:")
+            for entry in dirty_entries:
+                print(f"   {entry}")
+            print()
+            logger.warning(
+                "Uncommitted changes detected in phases with commit risk (%s): %s",
+                ", ".join(sorted(active_phases_with_commit_risk)),
+                "; ".join(dirty_entries),
+            )
+        else:
+            # Standard warning for review_fix phase where uncommitted changes are less problematic
+            logger.warning(
+                "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
+                "\n".join(f"  {entry}" for entry in dirty_entries),
+            )
 
     if needs_branch_setup:
         try:
