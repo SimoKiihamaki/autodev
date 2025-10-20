@@ -67,6 +67,9 @@ logger = logging.getLogger(__name__)
 VALID_PHASES = ("local", "pr", "review_fix")
 PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 
+# Timeout for command execution verification in resource-constrained environments
+COMMAND_VERIFICATION_TIMEOUT_SECONDS = 5
+
 
 def register_safe_cwd(path: Path) -> None:
     SAFE_CWD_ROOTS.add(path.resolve())
@@ -201,12 +204,14 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         Path(tempfile.gettempdir()) / "claude_code_logs",
         Path.cwd() / ".claude-debug",
     ]
+    # Cache the timestamp once for all candidate iterations
+    now_iso = datetime.now(timezone.utc).isoformat()
     for base in candidates:
         try:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
                 # Positive write test with proper cleanup handling
-                test_content = f"writecheck-{uuid.uuid4()}-{os.getpid()}-{datetime.now(timezone.utc).isoformat()}"
+                test_content = f"writecheck-{uuid.uuid4()}-{os.getpid()}-{now_iso}"
                 test: Optional[Path] = None
                 try:
                     with tempfile.NamedTemporaryFile(
@@ -347,7 +352,10 @@ def require_cmd(name: str) -> None:
     # If all version checks fail, try to run the command with no args to see if it's executable
     try:
         stdout, stderr, returncode = run_cmd(
-            [name], check=False, capture=True, timeout=5
+            [name],
+            check=False,
+            capture=True,
+            timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS,
         )
         # If we get here without FileNotFoundError, the command exists
         logger.info(
@@ -962,7 +970,10 @@ def get_unresolved_feedback(
             continue
         thread_id = t.get("id")
         if not thread_id:
-            logger.warning("Encountered review thread without an ID: %r", t)
+            logger.warning(
+                "Encountered review thread without an ID: %r. Skipping this thread; unable to gather comments for review processing. This may cause some review comments to be missed.",
+                t,
+            )
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
         for c in comments:
@@ -1607,7 +1618,10 @@ def main() -> None:
     # Check required commands, with fallback based on command-specific configurations
     verified_commands: set[str] = set()
     fallback_attempts = 0
+    executor_policy_chain = []
+    initial_executor_policy = EXECUTOR_POLICY
     while True:
+        executor_policy_chain.append(EXECUTOR_POLICY)
         policy_changed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
             build_required_list(EXECUTOR_POLICY), EXECUTOR_POLICY, verified_commands
         )
@@ -1615,9 +1629,15 @@ def main() -> None:
             break
         fallback_attempts += 1
         if fallback_attempts >= MAX_FALLBACK_ATTEMPTS:
+            last_required = build_required_list(EXECUTOR_POLICY)
+            failed_commands = [
+                cmd for cmd in last_required if cmd not in verified_commands
+            ]
             raise SystemExit(
-                f"ERROR: Exceeded maximum fallback attempts ({MAX_FALLBACK_ATTEMPTS}) while verifying required commands. "
-                f"Possible cycle or persistent failure in executor policy fallback logic."
+                f"ERROR: Exceeded maximum fallback attempts ({MAX_FALLBACK_ATTEMPTS}) while verifying required commands.\n"
+                f"Possible cycle or persistent failure in executor policy fallback logic.\n"
+                f"Executor policy chain tried: {executor_policy_chain}\n"
+                f"Commands that failed to verify: {failed_commands}"
             )
         # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
     # Print the final, active executor policy after all fallback logic
