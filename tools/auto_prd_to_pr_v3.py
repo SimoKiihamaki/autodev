@@ -26,7 +26,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 CHECKBOX_ANY_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", flags=re.MULTILINE)
 CHECKBOX_UNCHECKED_RE = re.compile(r"^\s*[-*]\s*\[\s\]", flags=re.MULTILINE)
@@ -173,34 +173,22 @@ def env_with_zsh(extra: dict | None = None) -> dict:
 
 def ensure_claude_debug_dir() -> Optional[Path]:
     """Ensure the Claude CLI can write debug logs even in sandboxed environments."""
+    candidates: list[Path] = []
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     if existing:
-        path = Path(existing).expanduser()
-        if path.is_dir():
-            filename = f"claude_{time.time_ns()}.log"
-            path = path / filename
-            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(path)
-            return path
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            return path
-        except OSError:
-            pass
-
-    base_dirs = [
-        Path(tempfile.gettempdir()) / "claude_code_logs",
-        Path.cwd() / ".claude-debug",
-    ]
-    for base in base_dirs:
+        candidates.append(Path(existing).expanduser())
+    candidates.extend(
+        [
+            Path(tempfile.gettempdir()) / "claude_code_logs",
+            Path.cwd() / ".claude-debug",
+        ]
+    )
+    for base in candidates:
         try:
             base.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            continue
-        log_path = base / f"claude_{time.time_ns()}.log"
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(log_path)
-            return log_path
+            if os.access(base, os.W_OK):
+                os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
+                return base
         except OSError:
             continue
     return None
@@ -258,7 +246,7 @@ def run_sh(
     )
 
 
-def require_cmd(name: str):
+def require_cmd(name: str) -> None:
     try:
         run_cmd([name, "--version"], check=True, capture=True)
     except FileNotFoundError as exc:
@@ -287,7 +275,7 @@ def parse_owner_repo_from_git() -> str:
     return f"{m.group(1)}/{m.group(2)}"
 
 
-def ensure_gh_alias():
+def ensure_gh_alias() -> None:
     out, _, _ = run_cmd(["gh", "alias", "list"])
     if "save-me-copilot" not in out:
         # Unofficial way to request Copilot review for a PR
@@ -310,7 +298,7 @@ def slugify(s: str) -> str:
     return re.sub(r"-+", "-", s).strip("-") or "task"
 
 
-def now_stamp():
+def now_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
@@ -346,7 +334,7 @@ def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
     return None
 
 
-def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0):
+def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> Any:
     attempt = 0
     while True:
         try:
@@ -390,7 +378,7 @@ def git_head_sha(repo_root: Path) -> str:
     return out.strip()
 
 
-def print_codex_diagnostics(repo_root: Path):
+def print_codex_diagnostics(repo_root: Path) -> None:
     print("\n=== Codex diagnostics ===")
     try:
         cfg_out, cfg_err, cfg_rc = run_cmd(
@@ -571,7 +559,9 @@ EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
 
 
-def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement"):
+def policy_runner(
+    policy: str | None, i: int | None = None, phase: str = "implement"
+) -> Tuple[callable, str]:
     """
     Decide which executor to use for a given phase/iteration.
     Returns (callable, human_label).
@@ -725,7 +715,7 @@ def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
         return False
 
 
-def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path):
+def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path) -> None:
     try:
         run_cmd(["gh", "save-me-copilot", owner_repo, str(pr_number)], cwd=repo_root)
     except subprocess.CalledProcessError:
@@ -835,7 +825,7 @@ def reply_to_review_comment(
     call_with_backoff(action)
 
 
-def resolve_review_thread(thread_id: str):
+def resolve_review_thread(thread_id: str) -> None:
     payload = json.dumps(
         {
             "query": "mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{id isResolved}}}",
@@ -849,7 +839,9 @@ def resolve_review_thread(thread_id: str):
     call_with_backoff(action)
 
 
-def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict]):
+def acknowledge_review_items(
+    owner_repo: str, pr_number: int, items: list[dict]
+) -> None:
     owner, name = owner_repo.split("/", 1)
     for item in items:
         comment_id = item.get("comment_id")
@@ -1288,7 +1280,7 @@ def post_final_comment(
     print(f"Posted final comment on PR #{pr_number}. Done.")
 
 
-def main():
+def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
     )
@@ -1453,11 +1445,7 @@ def main():
             if rc != 0:
                 run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         except subprocess.CalledProcessError as exc:
-            details = (
-                (exc.stderr or exc.stdout or "").strip()
-                if isinstance(exc, subprocess.CalledProcessError)
-                else str(exc)
-            )
+            details = (exc.stderr or exc.stdout or "").strip()
             print(
                 f"Warning: git branch setup failed ({details}); continuing on current branch."
             )
