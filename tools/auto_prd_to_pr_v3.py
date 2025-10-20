@@ -67,7 +67,7 @@ VALID_PHASES = ("local", "pr", "review_fix")
 PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 
 # Timeout for command execution verification in resource-constrained environments
-COMMAND_VERIFICATION_TIMEOUT_SECONDS = 3
+COMMAND_VERIFICATION_TIMEOUT_SECONDS = 8
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -226,8 +226,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                         os.fsync(tmpf.fileno())
                         tmpf_name = tmpf.name
                     test = Path(tmpf_name)
-                    # Small delay to ensure filesystem operations are fully committed
-                    time.sleep(0.01)
+                    # os.fsync() ensures data is written to disk, making additional sleep unnecessary
                     # Verify the content is readable and matches what was written
                     with open(tmpf_name, "r", encoding="utf-8") as verify_f:
                         read_back = verify_f.read()
@@ -1666,17 +1665,17 @@ def main() -> None:
             cycle_info = ""
             if len(executor_policy_chain) != len(set(executor_policy_chain)):
                 # Find the cycle
-                seen = set()
+                seen_indices = {}
                 for i, policy in enumerate(executor_policy_chain):
-                    if policy in seen:
-                        cycle_start = executor_policy_chain.index(policy)
+                    if policy in seen_indices:
+                        cycle_start = seen_indices[policy]
                         cycle_policies = executor_policy_chain[cycle_start:]
                         cycle_detected = True
                         cycle_info = (
                             f"Detected cycle: {' -> '.join(cycle_policies)} -> {policy}"
                         )
                         break
-                    seen.add(policy)
+                    seen_indices[policy] = i
 
             error_type = "Cycle detected" if cycle_detected else "Persistent failure"
             cycle_message = f"\n{cycle_info}" if cycle_detected else ""
