@@ -28,9 +28,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
-CHECKBOX_ANY_RE = re.compile(r'^\s*[-*]\s*\[[ xX]\]', flags=re.MULTILINE)
-CHECKBOX_UNCHECKED_RE = re.compile(r'^\s*[-*]\s*\[\s\]', flags=re.MULTILINE)
-TASKS_LEFT_RE = re.compile(r'TASKS_LEFT\s*=\s*(\d+)', flags=re.IGNORECASE)
+CHECKBOX_ANY_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", flags=re.MULTILINE)
+CHECKBOX_UNCHECKED_RE = re.compile(r"^\s*[-*]\s*\[\s\]", flags=re.MULTILINE)
+TASKS_LEFT_RE = re.compile(r"TASKS_LEFT\s*=\s*(\d+)", flags=re.IGNORECASE)
 CODEX_READONLY_PATTERNS = (
     "sandbox is read-only",
     "sandbox: read-only",
@@ -38,7 +38,7 @@ CODEX_READONLY_PATTERNS = (
     "Operation not permitted",
     "EPERM",
     "blocked because the repo is mounted read-only",
-    "approval policy \"never\" prevents escalation",
+    'approval policy "never" prevents escalation',
 )
 CODEX_READONLY_ERROR_MSG = (
     "Codex reported it cannot modify the workspace (detected phrase: {pattern!r}). "
@@ -55,7 +55,7 @@ COMMAND_ALLOWLIST = {
     "gh",
     Path(ZSH_PATH).name,
     ZSH_PATH,
-"claude",
+    "claude",
 }
 UNSAFE_ARG_CHARS = set("|;><`")
 STDIN_MAX_BYTES = 200_000
@@ -88,7 +88,9 @@ def validate_command_args(cmd: list[str]) -> None:
         if not arg.strip():
             raise ValueError("cmd entries must not be empty or whitespace-only")
         if any(ch in UNSAFE_ARG_CHARS for ch in arg):
-            raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
+            raise ValueError(
+                f"cmd argument contains unsafe shell metacharacters: {arg!r}"
+            )
         if any(ord(ch) < 32 and ord(ch) not in SAFE_STDIN_ALLOWED_CTRL for ch in arg):
             raise ValueError(f"cmd argument contains control characters: {arg!r}")
         if "\n" in arg or "\r" in arg:
@@ -103,7 +105,9 @@ def validate_command_args(cmd: list[str]) -> None:
         ):
             raise ValueError(f"Executable {exe!r} is not within allowed directories")
     elif exe not in COMMAND_ALLOWLIST:
-        raise ValueError(f"Executable {exe!r} is not in the allowlist: {sorted(COMMAND_ALLOWLIST)}")
+        raise ValueError(
+            f"Executable {exe!r} is not in the allowlist: {sorted(COMMAND_ALLOWLIST)}"
+        )
 
 
 def validate_cwd(cwd: Optional[Path]) -> None:
@@ -113,7 +117,9 @@ def validate_cwd(cwd: Optional[Path]) -> None:
         raise ValueError("cwd must be a pathlib.Path instance when provided")
     resolved = cwd.resolve()
     if not any(is_within(resolved, root) for root in SAFE_CWD_ROOTS):
-        raise ValueError(f"cwd {resolved} is not within allowed safe roots: {sorted(str(r) for r in SAFE_CWD_ROOTS)}")
+        raise ValueError(
+            f"cwd {resolved} is not within allowed safe roots: {sorted(str(r) for r in SAFE_CWD_ROOTS)}"
+        )
 
 
 def validate_stdin(stdin: Optional[str]) -> None:
@@ -172,9 +178,9 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         path = Path(existing).expanduser()
         if path.is_dir():
             filename = f"claude_{time.time_ns()}.log"
-            path.mkdir(parents=True, exist_ok=True)
             path = path / filename
             os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(path)
+            return path
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             return path
@@ -199,9 +205,16 @@ def ensure_claude_debug_dir() -> Optional[Path]:
             continue
     return None
 
-def run_cmd(cmd: list[str], cwd: Optional[Path] = None, check: bool = True,
-            capture: bool = True, timeout: Optional[int] = None,
-            extra_env: Optional[dict] = None, stdin: Optional[str] = None) -> Tuple[str, str, int]:
+
+def run_cmd(
+    cmd: list[str],
+    cwd: Optional[Path] = None,
+    check: bool = True,
+    capture: bool = True,
+    timeout: Optional[int] = None,
+    extra_env: Optional[dict] = None,
+    stdin: Optional[str] = None,
+) -> Tuple[str, str, int]:
     validate_command_args(cmd)
     validate_cwd(cwd)
     validate_stdin(stdin)
@@ -210,18 +223,40 @@ def run_cmd(cmd: list[str], cwd: Optional[Path] = None, check: bool = True,
     if not exe:
         raise FileNotFoundError(f"Command not found: {cmd[0]}")
     env = env_with_zsh(extra_env)
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=False,
-                          capture_output=capture, text=True, timeout=timeout,
-                          env=env, input=stdin)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        check=False,
+        capture_output=capture,
+        text=True,
+        timeout=timeout,
+        env=env,
+        input=stdin,
+    )
     if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr)
+        raise subprocess.CalledProcessError(
+            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+        )
     return proc.stdout or "", proc.stderr or "", proc.returncode
 
-def run_sh(script: str, cwd: Optional[Path] = None, check: bool = True,
-           capture: bool = True, timeout: Optional[int] = None,
-           extra_env: Optional[dict] = None) -> Tuple[str, str, int]:
-    return run_cmd([ZSH_PATH, "-lc", script], cwd=cwd, check=check,
-                   capture=capture, timeout=timeout, extra_env=extra_env)
+
+def run_sh(
+    script: str,
+    cwd: Optional[Path] = None,
+    check: bool = True,
+    capture: bool = True,
+    timeout: Optional[int] = None,
+    extra_env: Optional[dict] = None,
+) -> Tuple[str, str, int]:
+    return run_cmd(
+        [ZSH_PATH, "-lc", script],
+        cwd=cwd,
+        check=check,
+        capture=capture,
+        timeout=timeout,
+        extra_env=extra_env,
+    )
+
 
 def require_cmd(name: str):
     try:
@@ -230,38 +265,54 @@ def require_cmd(name: str):
         raise RuntimeError(f"'{name}' is not installed or on PATH.") from exc
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
-        stdout = (exc.output or "").strip()
+        stdout = (exc.stdout or "").strip()
         details = stderr or stdout or f"exit code {exc.returncode}"
         raise RuntimeError(f"'{name} --version' failed: {details}") from exc
 
+
 # ---------------------------- git helpers ----------------------------
 
+
 def git_root() -> Path:
-    out,_,_ = run_cmd(["git","rev-parse","--show-toplevel"])
+    out, _, _ = run_cmd(["git", "rev-parse", "--show-toplevel"])
     return Path(out.strip())
 
+
 def parse_owner_repo_from_git() -> str:
-    out,_,_ = run_cmd(["git","remote","get-url","origin"])
+    out, _, _ = run_cmd(["git", "remote", "get-url", "origin"])
     url = out.strip()
-    m = re.search(r'[:/]([^/:]+)/([^/\.]+)(?:\.git)?$', url)
-    if not m: raise RuntimeError(f"Cannot parse owner/repo from: {url}")
+    m = re.search(r"[:/]([^/:]+)/([^/\.]+)(?:\.git)?$", url)
+    if not m:
+        raise RuntimeError(f"Cannot parse owner/repo from: {url}")
     return f"{m.group(1)}/{m.group(2)}"
 
+
 def ensure_gh_alias():
-    out,_,_ = run_cmd(["gh","alias","list"])
+    out, _, _ = run_cmd(["gh", "alias", "list"])
     if "save-me-copilot" not in out:
         # Unofficial way to request Copilot review for a PR
-        run_cmd(["gh","alias","set","save-me-copilot",
-                'api --method POST /repos/$1/pulls/$2/requested_reviewers -f reviewers[]=copilot-pull-request-reviewer[bot]'])
+        run_cmd(
+            [
+                "gh",
+                "alias",
+                "set",
+                "save-me-copilot",
+                "api --method POST /repos/$1/pulls/$2/requested_reviewers -f reviewers[]=copilot-pull-request-reviewer[bot]",
+            ]
+        )
+
 
 # ---------------------------- utilities ----------------------------
 
+
 def slugify(s: str) -> str:
-    s = re.sub(r'[^a-z0-9]+','-', s.strip().lower())
-    return re.sub(r'-+','-', s).strip('-') or "task"
+    s = re.sub(r"[^a-z0-9]+", "-", s.strip().lower())
+    return re.sub(r"-+", "-", s).strip("-") or "task"
+
 
 def now_stamp():
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+
 
 def checkbox_stats(md: Path) -> Tuple[int, int]:
     if not md.exists():
@@ -270,6 +321,7 @@ def checkbox_stats(md: Path) -> Tuple[int, int]:
     total = len(CHECKBOX_ANY_RE.findall(txt))
     unchecked = len(CHECKBOX_UNCHECKED_RE.findall(txt))
     return unchecked, total
+
 
 def parse_tasks_left(output: str) -> Optional[int]:
     if not output:
@@ -287,8 +339,8 @@ RATE_LIMIT_STATUS = {"403", "429"}
 
 
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
-    text = (exc.stderr or "") + "\n" + (exc.output or "")
-    match = re.search(r'HTTP\s+(\d{3})', text)
+    text = (exc.stderr or "") + "\n" + (exc.stdout or "")
+    match = re.search(r"HTTP\s+(\d{3})", text)
     if match:
         return match.group(1)
     return None
@@ -303,7 +355,7 @@ def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0):
             status = extract_http_status(exc)
             if status not in RATE_LIMIT_STATUS or attempt >= retries:
                 raise
-            sleep_for = base_delay * (2 ** attempt) + random.uniform(0.0, 0.5)
+            sleep_for = base_delay * (2**attempt) + random.uniform(0.0, 0.5)
             time.sleep(sleep_for)
             attempt += 1
 
@@ -328,11 +380,11 @@ def git_status_snapshot(repo_root: Path) -> tuple[str, ...]:
     return tuple(sorted(lines))
 
 
-
-
 def git_current_branch(repo_root: Path) -> str:
     out, _, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
     return (out or "").strip()
+
+
 def git_head_sha(repo_root: Path) -> str:
     out, _, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root)
     return out.strip()
@@ -341,8 +393,9 @@ def git_head_sha(repo_root: Path) -> str:
 def print_codex_diagnostics(repo_root: Path):
     print("\n=== Codex diagnostics ===")
     try:
-        cfg_out, cfg_err, cfg_rc = run_cmd(["codex", "config", "show", "--effective"],
-                                           cwd=repo_root, check=False)
+        cfg_out, cfg_err, cfg_rc = run_cmd(
+            ["codex", "config", "show", "--effective"], cwd=repo_root, check=False
+        )
         if cfg_rc != 0:
             details = cfg_err.strip() or cfg_out.strip() or f"exit code {cfg_rc}"
             print(f"codex config show --effective exited with {cfg_rc}: {details}")
@@ -360,16 +413,29 @@ def print_codex_diagnostics(repo_root: Path):
         status_out = codex_exec("/status", repo_root)
         if status_out.strip():
             print(status_out.strip())
-    except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError) as exc:
+    except (
+        RuntimeError,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,
+        PermissionError,
+    ) as exc:
         logger.exception("codex /status failed", exc_info=exc)
+
 
 # ---------------------------- Codex (YOLO) ----------------------------
 
-def codex_exec(prompt: str, repo_root: Path, model: str = "gpt-5-codex",
-               enable_search: bool = True, yolo: bool = False,
-               allow_unsafe_execution: bool = False,
-               dry_run: bool = False,
-               extra: Optional[list[str]] = None) -> str:
+
+def codex_exec(
+    prompt: str,
+    repo_root: Path,
+    model: str = "gpt-5-codex",
+    enable_search: bool = True,
+    yolo: bool = False,
+    allow_unsafe_execution: bool = False,
+    dry_run: bool = False,
+    extra: Optional[list[str]] = None,
+) -> str:
     """Invoke Codex CLI non-interactively, forcing YOLO/full-access for uninterrupted automation."""
     # Force all invocations into full YOLO / danger mode so Codex can edit files freely.
     yolo = True
@@ -397,7 +463,9 @@ def codex_exec(prompt: str, repo_root: Path, model: str = "gpt-5-codex",
     out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt)
     return out
 
+
 # ---------------------------- CodeRabbit CLI ----------------------------
+
 
 def parse_rate_limit_sleep(message: str) -> Optional[int]:
     if not message:
@@ -424,7 +492,8 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
 
 def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
     args = ["coderabbit", "--prompt-only"]
-    if base_branch: args += ["--base", base_branch]
+    if base_branch:
+        args += ["--base", base_branch]
     attempts = 0
     while True:
         attempts += 1
@@ -435,29 +504,52 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             msg = (exc.stderr or exc.stdout or "").strip()
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
-                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", sleep_secs)
+                logger.warning(
+                    "CodeRabbit rate limited; sleeping %s seconds before retry",
+                    sleep_secs,
+                )
                 time.sleep(sleep_secs)
                 continue
             logger.warning("CodeRabbit prompt-only run failed: %s", msg or exc)
             return ""
 
+
 def coderabbit_has_findings(text: str) -> bool:
-    if not text.strip(): return False
+    if not text.strip():
+        return False
     t = text.lower()
-    for m in ("file:", "line", "issue", "prompt for ai agent", "consider", "fix", "security", "leak", "race"):
-        if m in t: return True
+    for m in (
+        "file:",
+        "line",
+        "issue",
+        "prompt for ai agent",
+        "consider",
+        "fix",
+        "security",
+        "leak",
+        "race",
+    ):
+        if m in t:
+            return True
     return False
 
 
 # ---------------------------- Claude Code ----------------------------
 
-def claude_exec(prompt: str, repo_root: Path, model: str | None = None,
-                enable_search: bool = True, yolo: bool = False,
-                allow_unsafe_execution: bool = False,
-                dry_run: bool = False,
-                extra: Optional[list[str]] = None) -> str:
+
+def claude_exec(
+    prompt: str,
+    repo_root: Path,
+    model: str | None = None,
+    enable_search: bool = True,
+    yolo: bool = False,
+    allow_unsafe_execution: bool = False,
+    dry_run: bool = False,
+    extra: Optional[list[str]] = None,
+) -> str:
     """Invoke Claude CLI non-interactively. We pass the prompt via STDIN to avoid shell-arg limits
-    and to keep our command-arg validator happy. We prefer a fully non-interactive run (like Codex)."""
+    and to keep our command-arg validator happy. We prefer a fully non-interactive run (like Codex).
+    """
     args: list[str] = ["claude"]
     if yolo or allow_unsafe_execution:
         verify_unsafe_execution_ready()
@@ -471,11 +563,13 @@ def claude_exec(prompt: str, repo_root: Path, model: str | None = None,
     out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt)
     return out
 
+
 # ---------------------------- Executor Policy ----------------------------
 
 EXECUTOR_CHOICES = {"codex-first", "codex-only", "claude-only"}
 EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
+
 
 def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement"):
     """
@@ -494,11 +588,17 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
     if ek:
         override = (os.getenv(ek) or "").strip().lower()
         if override in ("codex", "claude"):
-            return (codex_exec, "Codex") if override == "codex" else (claude_exec, "Claude")
+            return (
+                (codex_exec, "Codex")
+                if override == "codex"
+                else (claude_exec, "Claude")
+            )
 
     p = (policy or EXECUTOR_POLICY_DEFAULT).strip().lower()
     if p not in EXECUTOR_CHOICES:
-        logger.warning("Unknown executor policy %s; defaulting to %s", p, EXECUTOR_POLICY_DEFAULT)
+        logger.warning(
+            "Unknown executor policy %s; defaulting to %s", p, EXECUTOR_POLICY_DEFAULT
+        )
         p = EXECUTOR_POLICY_DEFAULT
 
     if p == "codex-only":
@@ -512,6 +612,7 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
     if i == 1:
         return codex_exec, "Codex"
     return claude_exec, "Claude"
+
 
 # ---------------------------- GH review plumbing ----------------------------
 
@@ -594,27 +695,48 @@ def gh_graphql(query: str, variables: dict) -> dict:
     )
     return json.loads(out)
 
+
 def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
-    out,_,_ = run_cmd(["gh","pr","list","--head",head_branch,"--json","number","--jq",".[0].number"], cwd=repo_root)
+    out, _, _ = run_cmd(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            head_branch,
+            "--json",
+            "number",
+            "--jq",
+            ".[0].number",
+        ],
+        cwd=repo_root,
+    )
     s = out.strip()
     return int(s) if s else None
 
+
 def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
-    out, _, _ = run_cmd(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root)
+    out, _, _ = run_cmd(
+        ["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root
+    )
     try:
         return int(out.strip() or "0") > 0
     except ValueError:
         return False
 
+
 def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path):
     try:
-        run_cmd(["gh","save-me-copilot", owner_repo, str(pr_number)], cwd=repo_root)
+        run_cmd(["gh", "save-me-copilot", owner_repo, str(pr_number)], cwd=repo_root)
     except subprocess.CalledProcessError:
         # Official path is selecting Copilot from PR Reviewers or configuring automatic reviews.
         # We silently continue if alias fails.
         pass
 
-def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> list[dict]:
+
+def _gather_thread_comments(
+    thread_id: str, initial_block: Optional[dict]
+) -> list[dict]:
     """Gather every comment node for a review thread by following pagination cursors."""
     if not thread_id:
         return []
@@ -623,8 +745,10 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
     page_info = comments_block.get("pageInfo") or {}
     cursor = page_info.get("endCursor")
     while page_info.get("hasNextPage"):
-        data = gh_graphql(REVIEW_THREAD_COMMENTS_QUERY, {"threadId": thread_id, "cursor": cursor})
-        comments = (((data.get("data") or {}).get("node") or {}).get("comments") or {})
+        data = gh_graphql(
+            REVIEW_THREAD_COMMENTS_QUERY, {"threadId": thread_id, "cursor": cursor}
+        )
+        comments = ((data.get("data") or {}).get("node") or {}).get("comments") or {}
         extra_nodes = comments.get("nodes") or []
         results.extend(extra_nodes)
         page_info = comments.get("pageInfo") or {}
@@ -632,13 +756,20 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
     return results
 
 
-def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optional[str] = None) -> list[dict]:
+def get_unresolved_feedback(
+    owner_repo: str, pr_number: int, commit_sha: Optional[str] = None
+) -> list[dict]:
     owner, name = owner_repo.split("/", 1)
     threads: list[dict] = []
     cursor: Optional[str] = None
     while True:
-        data = gh_graphql(REVIEW_THREADS_QUERY, {"owner": owner, "name": name, "number": pr_number, "cursor": cursor})
-        review_threads = (((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}
+        data = gh_graphql(
+            REVIEW_THREADS_QUERY,
+            {"owner": owner, "name": name, "number": pr_number, "cursor": cursor},
+        )
+        review_threads = (
+            ((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+        ).get("reviewThreads") or {}
         nodes = review_threads.get("nodes") or []
         threads.extend(nodes)
         page_info = review_threads.get("pageInfo") or {}
@@ -661,25 +792,32 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
             if not body:
                 continue
             commit_info = c.get("commit") or {}
-            comment_commit = commit_info.get("oid") if isinstance(commit_info, dict) else None
+            comment_commit = (
+                commit_info.get("oid") if isinstance(commit_info, dict) else None
+            )
             if commit_sha:
                 if not comment_commit or comment_commit != commit_sha:
                     continue
             db_id = c.get("databaseId")
             if db_id is not None:
-                unresolved.append({
-                    "summary": f"- {login or 'unknown'}: {body}\n  {url}",
-                    "thread_id": thread_id,
-                    "comment_id": db_id,
-                    "author": login or "unknown",
-                    "url": url,
-                    "is_resolved": bool(t.get("isResolved")),
-                })
+                unresolved.append(
+                    {
+                        "summary": f"- {login or 'unknown'}: {body}\n  {url}",
+                        "thread_id": thread_id,
+                        "comment_id": db_id,
+                        "author": login or "unknown",
+                        "url": url,
+                        "is_resolved": bool(t.get("isResolved")),
+                    }
+                )
     return unresolved
 
 
-def reply_to_review_comment(owner: str, name: str, pr_number: int, comment_id: int, body: str):
+def reply_to_review_comment(
+    owner: str, name: str, pr_number: int, comment_id: int, body: str
+):
     payload = json.dumps({"body": body, "in_reply_to": comment_id})
+
     def action():
         run_cmd(
             [
@@ -693,16 +831,21 @@ def reply_to_review_comment(owner: str, name: str, pr_number: int, comment_id: i
             ],
             stdin=payload,
         )
+
     call_with_backoff(action)
 
 
 def resolve_review_thread(thread_id: str):
-    payload = json.dumps({
-        "query": "mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{id isResolved}}}",
-        "variables": {"threadId": thread_id},
-    })
+    payload = json.dumps(
+        {
+            "query": "mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{id isResolved}}}",
+            "variables": {"threadId": thread_id},
+        }
+    )
+
     def action():
         run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload)
+
     call_with_backoff(action)
 
 
@@ -711,7 +854,10 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict])
     for item in items:
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
-        if isinstance(comment_id, int) and comment_id not in PROCESSED_REVIEW_COMMENT_IDS:
+        if (
+            isinstance(comment_id, int)
+            and comment_id not in PROCESSED_REVIEW_COMMENT_IDS
+        ):
             reply_body = (
                 "Fix applied in the latest push—thanks for the review! "
                 "@CodeRabbitAI @coderabbit @copilot"
@@ -720,12 +866,15 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict])
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
                 PROCESSED_REVIEW_COMMENT_IDS.add(comment_id)
             except subprocess.CalledProcessError as exc:
-                logger.warning("Failed to reply to review comment %s: %s", comment_id, exc)
+                logger.warning(
+                    "Failed to reply to review comment %s: %s", comment_id, exc
+                )
         if thread_id and not item.get("is_resolved"):
             try:
                 resolve_review_thread(thread_id)
             except subprocess.CalledProcessError as exc:
                 logger.warning("Failed to resolve review thread %s: %s", thread_id, exc)
+
 
 # ---------------------------- Orchestration ----------------------------
 
@@ -741,6 +890,7 @@ LOCAL_QA_REMINDER = "Remember the QA SOP from your first pass: `make ci` must be
 
 NO_FINDINGS_STREAK_LIMIT = 2
 MAX_EMPTY_CHANGE_STREAK = 3
+
 
 def orchestrate_local_loop(
     prd_path: Path,
@@ -789,7 +939,9 @@ At the end, print: TASKS_LEFT=<N>
         print("✓ Codex implementation pass completed.")
         readonly_indicator = detect_readonly_block(impl_output)
         if readonly_indicator:
-            raise RuntimeError(CODEX_READONLY_ERROR_MSG.format(pattern=readonly_indicator))
+            raise RuntimeError(
+                CODEX_READONLY_ERROR_MSG.format(pattern=readonly_indicator)
+            )
         iter_tasks_left = parse_tasks_left(impl_output)
         if iter_tasks_left is not None:
             tasks_left = iter_tasks_left
@@ -821,7 +973,9 @@ At the end, print: TASKS_LEFT=<N>
 
         if not repo_changed_before_review and not tasks_progress:
             no_findings_streak += 1
-            print("No new file changes detected; skipping CodeRabbit review this iteration.")
+            print(
+                "No new file changes detected; skipping CodeRabbit review this iteration."
+            )
             print(f"CodeRabbit no-findings streak: {no_findings_streak}")
         else:
             print("\n=== CodeRabbit CLI review (prompt-only) ===")
@@ -841,7 +995,11 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
 
 {LOCAL_QA_REMINDER}
 """
-                print("→ Launching fix pass with", runner_name, "based on CodeRabbit feedback…")
+                print(
+                    "→ Launching fix pass with",
+                    runner_name,
+                    "based on CodeRabbit feedback…",
+                )
                 fix_output = runner(
                     fix_prompt,
                     repo_root,
@@ -854,11 +1012,15 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                 print("✓ Codex fix pass completed.")
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:
-                    raise RuntimeError(CODEX_READONLY_ERROR_MSG.format(pattern=readonly_indicator))
+                    raise RuntimeError(
+                        CODEX_READONLY_ERROR_MSG.format(pattern=readonly_indicator)
+                    )
                 fix_tasks_left = parse_tasks_left(fix_output)
                 if fix_tasks_left is not None:
                     tasks_left = fix_tasks_left
-                    print(f"Codex reported TASKS_LEFT={tasks_left} after applying findings")
+                    print(
+                        f"Codex reported TASKS_LEFT={tasks_left} after applying findings"
+                    )
                 if not dry_run:
                     status_after_iteration = git_status_snapshot(repo_root)
                     head_after_iteration = git_head_sha(repo_root)
@@ -871,14 +1033,17 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                 print(f"CodeRabbit no-findings streak: {no_findings_streak}")
 
         repo_changed_after_actions = (
-            status_after_iteration != before_status or head_after_iteration != before_head
+            status_after_iteration != before_status
+            or head_after_iteration != before_head
         )
 
         if not repo_changed_after_actions:
             print("⚠️  Warning: no new workspace changes detected after this iteration.")
             if not dry_run:
                 empty_change_streak += 1
-                print(f"Empty-change streak: {empty_change_streak}/{MAX_EMPTY_CHANGE_STREAK}")
+                print(
+                    f"Empty-change streak: {empty_change_streak}/{MAX_EMPTY_CHANGE_STREAK}"
+                )
                 if empty_change_streak >= MAX_EMPTY_CHANGE_STREAK:
                     raise RuntimeError(
                         "Codex iterations produced no file changes or commits after multiple passes."
@@ -896,10 +1061,14 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
 
         if (done_by_checkboxes or done_by_codex) and not has_findings:
             if tasks_left is None and not done_by_checkboxes:
-                print("Completion cannot be confirmed (no TASKS_LEFT and no checkboxes); continuing loop.")
+                print(
+                    "Completion cannot be confirmed (no TASKS_LEFT and no checkboxes); continuing loop."
+                )
                 continue
             else:
-                print("Local loop stopping: PRD appears complete and CodeRabbit has no findings.")
+                print(
+                    "Local loop stopping: PRD appears complete and CodeRabbit has no findings."
+                )
                 appears_complete = True
                 break
 
@@ -923,7 +1092,7 @@ def open_or_get_pr(
     dry_run: bool,
 ) -> Optional[int]:
     pr_title = f"Implement: {prd_path.name}"
-    pr_body  = f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
+    pr_body = f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
 
     print(f"\n=== Bot pushes branch and opens PR: {new_branch} -> {base_branch} ===")
     push_prompt = f"""
@@ -935,11 +1104,13 @@ Prepare and push a PR for this branch:
 - After success, print: PR_OPENED=YES
 """
     if dry_run:
-        logger.info("Dry run enabled; skipping Codex PR creation routine for branch %s.", new_branch)
+        logger.info(
+            "Dry run enabled; skipping Codex PR creation routine for branch %s.",
+            new_branch,
+        )
         return None
 
     pr_runner, pr_runner_name = policy_runner(EXECUTOR_POLICY, phase="pr")
-
 
     pr_runner(
         push_prompt,
@@ -956,14 +1127,30 @@ Prepare and push a PR for this branch:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
         # Fallback: open PR ourselves if Codex didn't
-        run_cmd(["git","push","-u","origin",new_branch], cwd=repo_root)
+        run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
         try:
-            run_cmd(["gh","pr","create","--base",base_branch,"--head",new_branch,
-                     "--title",pr_title,"--body",pr_body], cwd=repo_root)
+            run_cmd(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--base",
+                    base_branch,
+                    "--head",
+                    new_branch,
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                ],
+                cwd=repo_root,
+            )
         except subprocess.CalledProcessError as exc:
             stderr = (exc.stderr or "").strip()
             if "No commits between" in stderr:
-                print("GitHub refused to create a PR because the branch matches the base branch.")
+                print(
+                    "GitHub refused to create a PR because the branch matches the base branch."
+                )
                 return None
             raise
         pr_number = get_pr_number_for_head(new_branch, repo_root)
@@ -1009,7 +1196,10 @@ def review_fix_loop(
         unresolved = []
         for item in unresolved_raw:
             comment_id = item.get("comment_id")
-            if isinstance(comment_id, int) and comment_id in PROCESSED_REVIEW_COMMENT_IDS:
+            if (
+                isinstance(comment_id, int)
+                and comment_id in PROCESSED_REVIEW_COMMENT_IDS
+            ):
                 continue
             unresolved.append(item)
         if unresolved:
@@ -1024,7 +1214,9 @@ Unresolved review items:
 
 After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
-            review_runner, review_runner_name = policy_runner(EXECUTOR_POLICY, phase="review_fix")
+            review_runner, review_runner_name = policy_runner(
+                EXECUTOR_POLICY, phase="review_fix"
+            )
 
             review_runner(
                 fix_prompt,
@@ -1097,30 +1289,76 @@ def post_final_comment(
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
 
-    ap = argparse.ArgumentParser(description="Autonomous PRD→PR loop with Codex (YOLO), CodeRabbit & Copilot")
+    ap = argparse.ArgumentParser(
+        description="Autonomous PRD→PR loop with Codex (YOLO), CodeRabbit & Copilot"
+    )
     ap.add_argument("--prd", required=True, help="Path to PRD/task .md file")
-    ap.add_argument("--repo", default=None, help="Path to repo root (default: current git root)")
-    ap.add_argument("--repo-slug", default=None, help="owner/repo; default parsed from git remote")
+    ap.add_argument(
+        "--repo", default=None, help="Path to repo root (default: current git root)"
+    )
+    ap.add_argument(
+        "--repo-slug", default=None, help="owner/repo; default parsed from git remote"
+    )
     ap.add_argument("--base", default="main", help="Base branch (default: main)")
-    ap.add_argument("--branch", default=None, help="Feature branch (default: from PRD filename)")
-    ap.add_argument("--codex-model", default="gpt-5-codex", help="Codex model to use (default: gpt-5-codex)")
-    ap.add_argument("--wait-minutes", type=int, default=0, help="Initial wait for PR bot reviews (default: 0)")
-    ap.add_argument("--review-poll-seconds", type=int, default=120, help="Polling interval when watching for reviews (default: 120)")
-    ap.add_argument("--idle-grace-minutes", type=int, default=10, help="Stop after this many minutes with no unresolved feedback (default: 10)")
-    ap.add_argument("--max-local-iters", type=int, default=50, help="Safety cap for local Codex<->CodeRabbit passes (default: 50)")
-    ap.add_argument("--infinite-reviews", action="store_true", help="Continue indefinitely while feedback exists (overrides --idle-grace-minutes)")
-    ap.add_argument("--sync-git", action="store_true", help="Fetch & fast-forward the base branch before creating the working branch")
+    ap.add_argument(
+        "--branch", default=None, help="Feature branch (default: from PRD filename)"
+    )
+    ap.add_argument(
+        "--codex-model",
+        default="gpt-5-codex",
+        help="Codex model to use (default: gpt-5-codex)",
+    )
+    ap.add_argument(
+        "--wait-minutes",
+        type=int,
+        default=0,
+        help="Initial wait for PR bot reviews (default: 0)",
+    )
+    ap.add_argument(
+        "--review-poll-seconds",
+        type=int,
+        default=120,
+        help="Polling interval when watching for reviews (default: 120)",
+    )
+    ap.add_argument(
+        "--idle-grace-minutes",
+        type=int,
+        default=10,
+        help="Stop after this many minutes with no unresolved feedback (default: 10)",
+    )
+    ap.add_argument(
+        "--max-local-iters",
+        type=int,
+        default=50,
+        help="Safety cap for local Codex<->CodeRabbit passes (default: 50)",
+    )
+    ap.add_argument(
+        "--infinite-reviews",
+        action="store_true",
+        help="Continue indefinitely while feedback exists (overrides --idle-grace-minutes)",
+    )
+    ap.add_argument(
+        "--sync-git",
+        action="store_true",
+        help="Fetch & fast-forward the base branch before creating the working branch",
+    )
     ap.add_argument(
         "--allow-unsafe-execution",
         action="store_true",
         help=f"Allow Codex to run with unsafe capabilities (requires {SAFE_ENV_VAR}=1 and CI=1).",
     )
-    ap.add_argument("--dry-run", action="store_true", help="Do not execute Codex commands; useful for tests.")
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not execute Codex commands; useful for tests.",
+    )
     ap.add_argument(
         "--executor-policy",
-        choices=("codex-first","codex-only","claude-only"),
+        choices=("codex-first", "codex-only", "claude-only"),
         default=None,
         help="Executor policy: 'codex-first' (default), 'codex-only', or 'claude-only'. Can also use AUTO_PRD_EXECUTOR_POLICY.",
     )
@@ -1135,7 +1373,9 @@ def main():
     if args.phases is None:
         selected_phases = set(VALID_PHASES)
     else:
-        selected_phases = {p.strip().lower() for p in args.phases.split(",") if p.strip()}
+        selected_phases = {
+            p.strip().lower() for p in args.phases.split(",") if p.strip()
+        }
         invalid = selected_phases.difference(VALID_PHASES)
         if invalid:
             raise SystemExit(
@@ -1164,7 +1404,9 @@ def main():
             require_cmd(cmd_name)
         except RuntimeError as err:
             if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
-                print("Warning: Claude CLI check failed; falling back to codex-only executor policy.")
+                print(
+                    "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+                )
                 print(f"Details:\n{err}")
                 EXECUTOR_POLICY = "codex-only"
                 claude_required = False
@@ -1190,7 +1432,7 @@ def main():
         new_branch = args.branch or git_current_branch(repo_root)
 
     dirty_entries = git_status_snapshot(repo_root)
-    if dirty_entries:
+    if dirty_entries and not args.dry_run:
         print("Warning: workspace has uncommitted changes; continuing:")
         for entry in dirty_entries:
             print(f"  {entry}")
@@ -1199,25 +1441,31 @@ def main():
         try:
             if args.sync_git:
                 print("Synchronizing base branch from origin…")
-                run_cmd(["git","fetch","origin"], cwd=repo_root)
-                run_cmd(["git","checkout",base_branch], cwd=repo_root)
-                run_cmd(["git","pull","--ff-only"], cwd=repo_root)
+                run_cmd(["git", "fetch", "origin"], cwd=repo_root)
+                run_cmd(["git", "checkout", base_branch], cwd=repo_root)
+                run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
             else:
                 print("Skipping git fetch/pull (pass --sync-git to enable).")
-                run_cmd(["git","checkout",base_branch], cwd=repo_root)
-            _, _, rc = run_cmd(["git","checkout","-b",new_branch], cwd=repo_root, check=False)
+                run_cmd(["git", "checkout", base_branch], cwd=repo_root)
+            _, _, rc = run_cmd(
+                ["git", "checkout", "-b", new_branch], cwd=repo_root, check=False
+            )
             if rc != 0:
-                run_cmd(["git","checkout",new_branch], cwd=repo_root)
+                run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         except subprocess.CalledProcessError as exc:
-            details = (exc.stderr or exc.output or "").strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
-            if not details:
-                details = str(exc)
-            print(f"Warning: git branch setup failed ({details}); continuing on current branch.")
+            details = (
+                (exc.stderr or exc.stdout or "").strip()
+                if isinstance(exc, subprocess.CalledProcessError)
+                else str(exc)
+            )
+            print(
+                f"Warning: git branch setup failed ({details}); continuing on current branch."
+            )
             new_branch = git_current_branch(repo_root)
     else:
         print("Skipping branch setup (local/pr phases disabled).")
         if args.branch:
-            run_cmd(["git","checkout",new_branch], cwd=repo_root)
+            run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         else:
             print(f"Continuing on current branch: {new_branch}")
 
@@ -1226,25 +1474,25 @@ def main():
     appears_complete = False
     if include("local"):
         tasks_left, appears_complete = orchestrate_local_loop(
-        prd_path=prd_path,
-        repo_root=repo_root,
-        base_branch=base_branch,
-        max_iters=args.max_local_iters,
-        codex_model=args.codex_model,
-        allow_unsafe_execution=args.allow_unsafe_execution,
-        dry_run=args.dry_run,
-    )
+            prd_path=prd_path,
+            repo_root=repo_root,
+            base_branch=base_branch,
+            max_iters=args.max_local_iters,
+            codex_model=args.codex_model,
+            allow_unsafe_execution=args.allow_unsafe_execution,
+            dry_run=args.dry_run,
+        )
     pr_number = None
     if include("pr"):
         pr_number = open_or_get_pr(
-        new_branch=new_branch,
-        base_branch=base_branch,
-        repo_root=repo_root,
-        prd_path=prd_path,
-        codex_model=args.codex_model,
-        allow_unsafe_execution=args.allow_unsafe_execution,
-        dry_run=args.dry_run,
-    )
+            new_branch=new_branch,
+            base_branch=base_branch,
+            repo_root=repo_root,
+            prd_path=prd_path,
+            codex_model=args.codex_model,
+            allow_unsafe_execution=args.allow_unsafe_execution,
+            dry_run=args.dry_run,
+        )
     # If starting directly at review_fix, try to infer PR from current branch
     if include("review_fix") and not include("pr"):
         if pr_number is None:
@@ -1254,20 +1502,22 @@ def main():
             except Exception:
                 pr_number = None
             if pr_number is None:
-                print("No open PR associated with the current branch; review/fix loop will be skipped.")
+                print(
+                    "No open PR associated with the current branch; review/fix loop will be skipped."
+                )
     if include("review_fix"):
         review_fix_loop(
-        pr_number=pr_number,
-        owner_repo=owner_repo,
-        repo_root=repo_root,
-        idle_grace=args.idle_grace_minutes,
-        poll_interval=args.review_poll_seconds,
-        codex_model=args.codex_model,
-        allow_unsafe_execution=args.allow_unsafe_execution,
-        dry_run=args.dry_run,
-        initial_wait_minutes=args.wait_minutes,
-        infinite_reviews=args.infinite_reviews,
-    )
+            pr_number=pr_number,
+            owner_repo=owner_repo,
+            repo_root=repo_root,
+            idle_grace=args.idle_grace_minutes,
+            poll_interval=args.review_poll_seconds,
+            codex_model=args.codex_model,
+            allow_unsafe_execution=args.allow_unsafe_execution,
+            dry_run=args.dry_run,
+            initial_wait_minutes=args.wait_minutes,
+            infinite_reviews=args.infinite_reviews,
+        )
 
     post_final_comment(
         pr_number=pr_number,
@@ -1279,6 +1529,7 @@ def main():
 
     if appears_complete:
         print(f"Final TASKS_LEFT={tasks_left}")
+
 
 if __name__ == "__main__":
     main()
