@@ -100,11 +100,19 @@ type model struct {
 	logCh   chan runner.Line
 }
 
+const (
+	settingsGridRows = 9
+	settingsGridCols = 4
+)
+
 // Centralized input names for settings
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
 	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
 }
+
+// Centralized flag names for env tab
+var envFlagNames = []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
 
 // Returns a map of input name to pointer to textinput.Model for the given model instance
 func (m *model) settingsInputMap() map[string]*textinput.Model {
@@ -191,7 +199,6 @@ func New() model {
 
 	// Tags
 	m.tagInput = mkInput("Add tag", "", 24)
-	m.tagInput.Blur()
 
 	// Initially blur all inputs (after prompt is initialized)
 	m.blurAllInputs()
@@ -228,7 +235,7 @@ func (m model) scanPRDsCmd() tea.Cmd {
 			}
 			if d.IsDir() {
 				rel, _ := filepath.Rel(cwd, path)
-				if strings.Count(rel, string(os.PathSeparator)) > 4 {
+				if strings.Count(rel, string(os.PathSeparator))+1 > 4 {
 					return filepath.SkipDir
 				}
 				return nil
@@ -615,6 +622,7 @@ func (m *model) blurAllInputs() {
 	m.inIdleMin.Blur()
 	m.inMaxIters.Blur()
 	m.prompt.Blur()
+	m.tagInput.Blur()
 	m.focusedInput = ""
 	m.focusedFlag = ""
 }
@@ -698,9 +706,9 @@ func (m *model) navigateSettings(direction string) {
 	}
 
 	// Reverse mapping for finding inputs by position
-	var reverseGrid [9][4]string // 9 rows, 4 cols
+	var reverseGrid [settingsGridRows][settingsGridCols]string
 	for input, pos := range grid {
-		if pos[0] < 9 && pos[1] < 4 {
+		if pos[0] < settingsGridRows && pos[1] < settingsGridCols {
 			reverseGrid[pos[0]][pos[1]] = input
 		}
 	}
@@ -724,26 +732,40 @@ func (m *model) navigateSettings(direction string) {
 				}
 			}
 			// If nothing directly above, find the closest input in the row above
-			for c := 0; c < 4; c++ {
-				if reverseGrid[row-1][c] != "" {
-					m.focusInput(reverseGrid[row-1][c])
+			// Start from current column and search outward
+			for offset := 0; offset < settingsGridCols; offset++ {
+				// Check left side first
+				if col-offset >= 0 && reverseGrid[row-1][col-offset] != "" {
+					m.focusInput(reverseGrid[row-1][col-offset])
+					return
+				}
+				// Then check right side
+				if col+offset < settingsGridCols && reverseGrid[row-1][col+offset] != "" {
+					m.focusInput(reverseGrid[row-1][col+offset])
 					return
 				}
 			}
 		}
 	case "down":
-		if row < 8 {
+		if row < settingsGridRows-1 {
 			// Find the closest input below
-			for r := row + 1; r < 9; r++ {
+			for r := row + 1; r < settingsGridRows; r++ {
 				if reverseGrid[r][col] != "" {
 					m.focusInput(reverseGrid[r][col])
 					return
 				}
 			}
 			// If nothing directly below, find the closest input in the row below
-			for c := 0; c < 4; c++ {
-				if reverseGrid[row+1][c] != "" {
-					m.focusInput(reverseGrid[row+1][c])
+			// Start from current column and search outward
+			for offset := 0; offset < settingsGridCols; offset++ {
+				// Check left side first
+				if col-offset >= 0 && reverseGrid[row+1][col-offset] != "" {
+					m.focusInput(reverseGrid[row+1][col-offset])
+					return
+				}
+				// Then check right side
+				if col+offset < settingsGridCols && reverseGrid[row+1][col+offset] != "" {
+					m.focusInput(reverseGrid[row+1][col+offset])
 					return
 				}
 			}
@@ -763,14 +785,14 @@ func (m *model) navigateSettings(direction string) {
 			}
 		}
 	case "right":
-		if col < 3 {
+		if col < settingsGridCols-1 {
 			if reverseGrid[row][col+1] != "" {
 				m.focusInput(reverseGrid[row][col+1])
 				return
 			}
 		}
 		// Try to find any input to the right in the same row
-		for c := col + 1; c < 4; c++ {
+		for c := col + 1; c < settingsGridCols; c++ {
 			if reverseGrid[row][c] != "" {
 				m.focusInput(reverseGrid[row][c])
 				return
@@ -785,7 +807,7 @@ func (m *model) focusFlag(flagName string) {
 }
 
 func (m *model) navigateFlags(direction string) {
-	flags := []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
+	flags := envFlagNames
 
 	if m.focusedFlag == "" {
 		m.focusFlag(flags[0])
@@ -814,7 +836,7 @@ func (m *model) navigateFlags(direction string) {
 		newIndex := (currentIndex + 1) % len(flags)
 		m.focusFlag(flags[newIndex])
 	case "left", "right":
-		// Left/right could be used for toggling when focused
+		// Left/right toggles the focused flag
 		m.toggleFocusedFlag()
 	}
 }
