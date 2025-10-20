@@ -786,6 +786,12 @@ func (m *model) navigateSettings(direction string) {
 // helping handle sparse grid layouts by searching horizontally in the nearest row.
 // The search alternates left and right from the starting column, checking increasing distances,
 // and focuses the first non-empty input found.
+//
+// Parameters:
+//
+//	reverseGrid: a 2D array representing the settings grid, where each cell contains the input field name or an empty string if no input is present.
+//	targetRow: the row index (0-based) in which to search for a non-empty input field.
+//	startCol: the starting column index (0-based) from which to begin the horizontal search.
 func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
 	if targetRow < 0 || targetRow >= settingsGridRows {
 		return

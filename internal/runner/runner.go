@@ -157,7 +157,8 @@ func (o Options) Run(ctx context.Context) error {
 		env = append(env, o.ExtraEnv...)
 	}
 
-	cmd := exec.CommandContext(ctx, o.Config.PythonCommand, args...)
+	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
+	cmd := exec.Command(o.Config.PythonCommand, args...)
 	cmd.Env = env
 
 	stdout, err := cmd.StdoutPipe()
@@ -215,15 +216,15 @@ func (o Options) Run(ctx context.Context) error {
 }
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
-	defer func() {
-		// Note: We don't return the buffer to the pool here because the scanner
-		// may still hold a reference to it. The GC will clean it up eventually.
-	}()
-
 	sc := bufio.NewScanner(r)
 	// Get buffer from pool and allow large log lines (up to 1MB)
 	buf := bufferPool.Get().([]byte)
 	sc.Buffer(buf, 1<<20)
+	defer func() {
+		// Return buffer to pool for reuse; scanner is out of scope when this runs
+		bufferPool.Put(buf[:0])
+	}()
+
 	for sc.Scan() {
 		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
 	}
