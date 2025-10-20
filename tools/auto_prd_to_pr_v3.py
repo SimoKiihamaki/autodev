@@ -176,8 +176,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     """Ensure the Claude CLI can write debug logs even in sandboxed environments.
 
     Returns:
-        Path: A writable directory path for Claude debug logs
-        None: No writable directory found - caller should handle this scenario gracefully
+        Optional[Path]: A writable directory path for Claude debug logs, or None if no writable directory is found
 
     Side effects:
         Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
@@ -194,8 +193,13 @@ def ensure_claude_debug_dir() -> Optional[Path]:
             if os.access(base, os.W_OK):
                 # Positive write test
                 test = base / f".writecheck_{uuid.uuid4()}.tmp"
-                with open(test, "a", encoding="utf-8"):
-                    pass
+                test_content = f"writecheck-{uuid.uuid4()}"
+                with open(test, "w", encoding="utf-8") as f:
+                    f.write(test_content)
+                with open(test, "r", encoding="utf-8") as f:
+                    read_back = f.read()
+                if read_back != test_content:
+                    raise OSError(f"Failed to verify write/read in {base}")
                 test.unlink(missing_ok=True)
                 os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
                 return base
@@ -257,13 +261,36 @@ def run_sh(
 
 
 def require_cmd(name: str) -> None:
+    # First check if command exists using shutil.which
+    if shutil.which(name) is None:
+        raise RuntimeError(f"'{name}' is not installed or on PATH.")
+
+    # Then try to verify it works by checking version or running a simple command
+    # Some commands don't support --version, so we'll use a more flexible approach
+    version_checks = [
+        [name, "--version"],
+        [name, "version"],
+        [name, "--help"],
+    ]
+
+    for args in version_checks:
+        try:
+            run_cmd(args, check=True, capture=True, timeout=10)
+            return  # Command works
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
+            continue
+
+    # If all version checks fail, try to run the command with no args to see if it's executable
     try:
-        run_cmd([name, "--version"], check=True, capture=True)
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"'{name}' is not installed or on PATH.") from exc
-    except subprocess.CalledProcessError as exc:
-        details = extract_called_process_error_details(exc)
-        raise RuntimeError(f"'{name} --version' failed: {details}") from exc
+        run_cmd([name], check=False, capture=True, timeout=5)
+        # If we get here without FileNotFoundError, the command exists
+        return
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        raise RuntimeError(f"'{name}' exists but cannot be executed properly.")
 
 
 # ---------------------------- git helpers ----------------------------
@@ -796,6 +823,8 @@ def get_unresolved_feedback(
         if t.get("isResolved") is True:
             continue
         thread_id = t.get("id")
+        if thread_id is None:
+            continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
         for c in comments:
             login = ((c.get("author") or {}).get("login") or "").strip()
@@ -1199,7 +1228,7 @@ def review_fix_loop(
         print(f"Waiting {initial_wait_minutes} minutes for bot reviews...")
         time.sleep(initial_wait_seconds)
 
-    idle_grace_seconds = max(0, idle_grace * 60)
+    idle_grace_seconds: float = max(0, idle_grace * 60)
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
@@ -1409,12 +1438,17 @@ def main() -> None:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
     print(f"Executor policy: {EXECUTOR_POLICY}")
 
-    required = ["coderabbit", "git", "gh"]
-    if EXECUTOR_POLICY in ("codex-first", "codex-only"):
-        required.append("codex")
+    def build_required_list(policy: str) -> list[str]:
+        """Build the list of required commands based on executor policy."""
+        required = ["coderabbit", "git", "gh"]
+        if policy in ("codex-first", "codex-only"):
+            required.append("codex")
+        if policy in ("codex-first", "claude-only"):
+            required.append("claude")
+        return required
+
+    required = build_required_list(EXECUTOR_POLICY)
     claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
-    if claude_required:
-        required.append("claude")
 
     # Check required commands, and if we fall back from codex-first to codex-only, restart the check
     while True:
@@ -1430,9 +1464,7 @@ def main() -> None:
                     EXECUTOR_POLICY = "codex-only"
                     claude_required = False
                     # Rebuild required list after policy change to remove claude
-                    required = ["coderabbit", "git", "gh"]
-                    if EXECUTOR_POLICY in ("codex-first", "codex-only"):
-                        required.append("codex")
+                    required = build_required_list(EXECUTOR_POLICY)
                     # Restart the check with the new policy and required list
                     break
                 raise SystemExit(f"ERROR: {err}")
@@ -1461,10 +1493,9 @@ def main() -> None:
     dirty_entries = git_status_snapshot(repo_root)
     if dirty_entries:
         logger.warning(
-            "Workspace has uncommitted changes; continuing with relaxed behavior:"
+            "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
+            "\n".join(f"  {entry}" for entry in dirty_entries),
         )
-        for entry in dirty_entries:
-            logger.warning("  %s", entry)
 
     if needs_branch_setup:
         try:
