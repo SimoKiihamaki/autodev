@@ -291,7 +291,11 @@ def require_cmd(name: str) -> None:
         run_cmd([name], check=False, capture=True, timeout=5)
         # If we get here without exception, the command exists
         return
-    except Exception:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         raise RuntimeError(f"'{name}' exists but cannot be executed properly.")
 
 
@@ -845,19 +849,16 @@ def get_unresolved_feedback(
                     continue
             db_id = c.get("databaseId")
             if db_id is not None:
-                # Additional defensive check to ensure db_id is valid before using it
-                comment_id = db_id
-                if comment_id is not None:
-                    unresolved.append(
-                        {
-                            "summary": f"- {login or 'unknown'}: {body}\n  {url}",
-                            "thread_id": thread_id,
-                            "comment_id": comment_id,
-                            "author": login or "unknown",
-                            "url": url,
-                            "is_resolved": bool(t.get("isResolved")),
-                        }
-                    )
+                unresolved.append(
+                    {
+                        "summary": f"- {login or 'unknown'}: {body}\n  {url}",
+                        "thread_id": thread_id,
+                        "comment_id": db_id,
+                        "author": login or "unknown",
+                        "url": url,
+                        "is_resolved": bool(t.get("isResolved")),
+                    }
+                )
     return unresolved
 
 
@@ -1455,30 +1456,31 @@ def main() -> None:
     required = build_required_list(EXECUTOR_POLICY)
     claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
 
-    # Check required commands, and if we fall back from codex-first to codex-only, restart the check
-    policy_changed = False
-    while not policy_changed:
-        all_commands_available = True
+    # Check required commands, with fallback from codex-first to codex-only if Claude fails
+    try:
         for cmd_name in required:
-            try:
-                require_cmd(cmd_name)
-            except RuntimeError as err:
-                if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
-                    print(
-                        "Warning: Claude CLI check failed; falling back to codex-only executor policy."
-                    )
-                    print(f"Details:\n{err}")
-                    EXECUTOR_POLICY = "codex-only"
-                    claude_required = False
-                    # Rebuild required list after policy change to remove claude
-                    required = build_required_list(EXECUTOR_POLICY)
-                    policy_changed = True
-                    break
-                raise SystemExit(f"ERROR: {err}")
-
-        # If we didn't change policy and all commands are available, we're done
-        if not policy_changed:
-            break
+            require_cmd(cmd_name)
+    except RuntimeError as err:
+        if (
+            "claude" in str(err).lower()
+            and "claude" in required
+            and EXECUTOR_POLICY == "codex-first"
+        ):
+            print(
+                "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+            )
+            print(f"Details:\n{err}")
+            EXECUTOR_POLICY = "codex-only"
+            claude_required = False
+            required = build_required_list(EXECUTOR_POLICY)
+            # Retry with new policy
+            for cmd_name in required:
+                try:
+                    require_cmd(cmd_name)
+                except RuntimeError as err2:
+                    raise SystemExit(f"ERROR: {err2}")
+        else:
+            raise SystemExit(f"ERROR: {err}")
     if not claude_required and EXECUTOR_POLICY != "claude-only":
         print(f"Using executor policy: {EXECUTOR_POLICY}")
 
@@ -1514,7 +1516,7 @@ def main() -> None:
                 f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
             )
             print("   Consider committing or stashing changes first.")
-            print("   Use --force flag to override this warning in the future.")
+            # (No --force flag exists; do not reference it.)
             print("\nUncommitted changes:")
             for entry in dirty_entries:
                 print(f"   {entry}")
