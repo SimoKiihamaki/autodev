@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -94,9 +96,10 @@ type model struct {
 	logBuf []string
 
 	// Runner
-	running bool
-	cancel  context.CancelFunc
-	logCh   chan runner.Line
+	running   bool
+	cancel    context.CancelFunc
+	logCh     chan runner.Line
+	runResult chan error
 }
 
 const (
@@ -260,12 +263,73 @@ func (m model) scanPRDsCmd() tea.Cmd {
 
 type prdScanMsg struct{ items []list.Item }
 
+func (m *model) ensureSelectedPRD(items []list.Item) {
+	if len(items) == 0 {
+		m.clearPRDSelection("No PRD files found.")
+		return
+	}
+
+	// Keep current selection if it still exists.
+	for _, it := range items {
+		cand, ok := it.(item)
+		if ok && cand.path == m.selectedPRD {
+			return
+		}
+	}
+
+	var bestPath string
+	var bestTime time.Time
+	for _, it := range items {
+		cand, ok := it.(item)
+		if !ok {
+			continue
+		}
+		if meta, ok := m.cfg.PRDs[cand.path]; ok && !meta.LastUsed.IsZero() {
+			if bestPath == "" || meta.LastUsed.After(bestTime) {
+				bestTime = meta.LastUsed
+				bestPath = cand.path
+			}
+		}
+	}
+
+	if bestPath == "" {
+		if cand, ok := items[0].(item); ok {
+			bestPath = cand.path
+		}
+	}
+
+	prev := m.selectedPRD
+	if bestPath != "" {
+		m.selectedPRD = bestPath
+		if meta, ok := m.cfg.PRDs[bestPath]; ok {
+			m.tags = append([]string{}, meta.Tags...)
+		} else {
+			m.tags = nil
+		}
+		if m.status == "" && prev != bestPath {
+			m.status = "Auto-selected PRD: " + filepath.Base(bestPath)
+		}
+		return
+	}
+
+	m.clearPRDSelection("No PRD files found.")
+}
+
+func (m *model) clearPRDSelection(statusMsg string) {
+	if m.selectedPRD != "" {
+		m.selectedPRD = ""
+	}
+	m.tags = nil
+	m.status = statusMsg
+}
+
 // ------- Runner/logs messages -------
 type runStartMsg struct{}
 type runStopMsg struct{}
 type logLineMsg struct{ line runner.Line }
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
+type runFinishMsg struct{ err error }
 
 // ------- Update -------
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -395,6 +459,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				return m, nil
+			case "r":
+				m.rescanPRDs()
+				m.status = "Rescanning PRDs…"
+				return m, m.scanPRDsCmd()
 			}
 			// Let the list handle up/down arrows and other navigation
 			var cmd tea.Cmd
@@ -568,6 +636,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case prdScanMsg:
 		m.prdList.SetItems(msg.items)
+		m.ensureSelectedPRD(msg.items)
 		return m, nil
 
 	case statusMsg:
@@ -582,7 +651,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runStopMsg:
 		m.running = false
+		m.cancel = nil
 		m.status = "Stopped."
+		return m, nil
+	case runFinishMsg:
+		m.running = false
+		m.cancel = nil
+		m.runResult = nil
+		switch {
+		case msg.err == nil:
+			m.errMsg = ""
+			m.status = "Run finished successfully."
+		case errors.Is(msg.err, context.Canceled):
+			m.errMsg = ""
+			m.status = "Run canceled."
+		default:
+			m.errMsg = msg.err.Error()
+			m.status = "Run failed."
+		}
 		return m, nil
 
 	case logLineMsg:
@@ -882,9 +968,9 @@ func (m *model) startRunCmd() tea.Cmd {
 		m.errMsg = "Select a PRD first (PRD tab)"
 		return func() tea.Msg { return statusMsg{note: "No PRD selected"} }
 	}
-	if m.cfg.PythonScript == "" {
-		m.errMsg = "Set Python script path in Settings"
-		return func() tea.Msg { return statusMsg{note: "Missing Python script path"} }
+	if err := m.preflightChecks(); err != nil {
+		m.errMsg = err.Error()
+		return func() tea.Msg { return statusMsg{note: err.Error()} }
 	}
 	if err := config.Save(m.cfg); err != nil {
 		m.errMsg = "Failed to save config: " + err.Error()
@@ -896,11 +982,12 @@ func (m *model) startRunCmd() tea.Cmd {
 	ch := m.logCh // capture immutable handle for this run
 	m.logBuf = nil
 	m.logs.SetContent("")
+	m.runResult = make(chan error, 1)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	go func(logCh chan runner.Line) {
+	go func(logCh chan runner.Line, resultCh chan error) {
 		o := runner.Options{
 			Config:        m.cfg,
 			PRDPath:       m.selectedPRD,
@@ -914,9 +1001,42 @@ func (m *model) startRunCmd() tea.Cmd {
 			default:
 			}
 		}
-	}(ch)
+		select {
+		case resultCh <- err:
+		default:
+		}
+		close(resultCh)
+	}(ch, m.runResult)
 
-	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
+	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
+}
+
+func (m *model) preflightChecks() error {
+	if strings.TrimSpace(m.cfg.PythonCommand) == "" {
+		return errors.New("Set Python command in Settings")
+	}
+	if _, err := exec.LookPath(m.cfg.PythonCommand); err != nil {
+		return fmt.Errorf("Python command not found on PATH: %w", err)
+	}
+	if strings.TrimSpace(m.cfg.PythonScript) == "" {
+		return errors.New("Set Python script path in Settings")
+	}
+	scriptPath := m.cfg.PythonScript
+	if !filepath.IsAbs(scriptPath) {
+		if abs, err := filepath.Abs(scriptPath); err == nil {
+			scriptPath = abs
+		}
+	}
+	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
+		if err != nil {
+			return fmt.Errorf("Python script not found: %w", err)
+		}
+		return fmt.Errorf("Python script path points to directory: %s", scriptPath)
+	}
+	if _, err := os.Stat(m.selectedPRD); err != nil {
+		return fmt.Errorf("Selected PRD missing: %w", err)
+	}
+	return nil
 }
 
 func (m *model) hydrateConfigFromInputs() {
@@ -953,13 +1073,31 @@ func (m *model) saveConfig() tea.Cmd {
 }
 
 func (m model) readLogs() tea.Cmd {
+	if m.logCh == nil {
+		return nil
+	}
+	ch := m.logCh
 	return func() tea.Msg {
-		line, ok := <-m.logCh
+		line, ok := <-ch
 		if !ok {
 			// log channel closed - stop the read loop cleanly; runner handles process completion messaging
 			return nil
 		}
 		return logLineMsg{line: line}
+	}
+}
+
+func (m model) waitRunResult() tea.Cmd {
+	if m.runResult == nil {
+		return nil
+	}
+	ch := m.runResult
+	return func() tea.Msg {
+		err, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return runFinishMsg{err: err}
 	}
 }
 
@@ -1004,7 +1142,7 @@ func (m model) View() string {
 			b.WriteString("Add tag: " + m.tagInput.View() + "\n")
 			b.WriteString("Press Enter to add tag, Esc to cancel\n")
 		} else {
-			b.WriteString("Keys: ↑/↓ select · ←/→ prev/next · / filter · Enter choose · t add-tag · backspace drop-last · s save-tags\n")
+			b.WriteString("Keys: ↑/↓ select · ←/→ prev/next · / filter · Enter choose · t add-tag · backspace drop-last · s save-tags · r rescan\n")
 		}
 
 	case tabSettings:
@@ -1093,7 +1231,7 @@ func (m model) View() string {
 
 	case tabHelp:
 		b.WriteString(sectionTitle.Render("Help") + "\n")
-		b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · s save\n")
+		b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · s save · r rescan\n")
 		b.WriteString("• Settings: ↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · s save\n")
 		b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish\n")
 		b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle · s save\n")
