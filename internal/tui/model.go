@@ -138,19 +138,10 @@ func (m *model) settingsInputMap() map[string]*textinput.Model {
 
 func New() model {
 	cfg, err := config.Load()
+	var loadStatus string
 	if err != nil {
-		// Fall back to canonical defaults and surface a status.
 		cfg = config.Defaults()
-		// Set a status so users know their config couldn't be loaded.
-		// The status will be displayed in the TUI to inform users about the issue.
-		status := fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
-
-		m := model{
-			tab:    tabRun,
-			cfg:    cfg,
-			status: status,
-		}
-		return m
+		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
 	}
 
 	m := model{
@@ -215,6 +206,11 @@ func New() model {
 	// Scan PRDs
 	m.rescanPRDs()
 
+	// Set load status if config failed to load
+	if loadStatus != "" {
+		m.status = loadStatus
+	}
+
 	return m
 }
 
@@ -227,7 +223,7 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.scanPRDsCmd(), tea.EnterAltScreen)
+	return m.scanPRDsCmd()
 }
 
 // ------- PRD scan -------
@@ -443,8 +439,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.blurAllInputs()
 				return m, nil
 			case "s":
-				m.saveConfig()
-				return m, func() tea.Msg { return statusMsg{note: "Config saved"} }
+				return m, m.saveConfig()
 			}
 
 			// Update focused input if any
@@ -502,8 +497,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.flagInfinite = !m.flagInfinite
 				return m, nil
 			case "s":
-				m.saveConfig()
-				return m, func() tea.Msg { return statusMsg{note: "Config saved"} }
+				return m, m.saveConfig()
 			}
 			return m, nil
 
@@ -793,6 +787,9 @@ func (m *model) navigateSettings(direction string) {
 // The search alternates left and right from the starting column, checking increasing distances,
 // and focuses the first non-empty input found.
 func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
+	if targetRow < 0 || targetRow >= settingsGridRows {
+		return
+	}
 	for offset := 1; offset < settingsGridCols; offset++ {
 		// Check left side first
 		if startCol-offset >= 0 && reverseGrid[targetRow][startCol-offset] != "" {
@@ -911,12 +908,6 @@ func (m *model) startRunCmd() tea.Cmd {
 			default:
 			}
 		}
-		// final line then close
-		select {
-		case logCh <- runner.Line{Time: time.Now(), Text: "process finished", Err: false}:
-		default:
-		}
-		close(logCh)
 	}(ch)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
@@ -947,21 +938,20 @@ func (m *model) hydrateConfigFromInputs() {
 	m.cfg.PhaseExecutors.ReviewFix = strings.TrimSpace(m.inExecRev.Value())
 }
 
-func (m *model) saveConfig() {
+func (m *model) saveConfig() tea.Cmd {
 	m.hydrateConfigFromInputs()
 	if err := config.Save(m.cfg); err != nil {
-		m.status = "Config save failed: " + err.Error()
-		return
+		return func() tea.Msg { return statusMsg{note: "Config save failed: " + err.Error()} }
 	}
+	return func() tea.Msg { return statusMsg{note: "Config saved"} }
 }
 
 func (m model) readLogs() tea.Cmd {
 	return func() tea.Msg {
 		line, ok := <-m.logCh
 		if !ok {
-			// log channel closed - this happens when the process finishes normally
-			// The runner sends "process finished" before closing the channel, so this is expected
-			return runStopMsg{}
+			// log channel closed - stop the read loop cleanly; runner handles process completion messaging
+			return nil
 		}
 		return logLineMsg{line: line}
 	}

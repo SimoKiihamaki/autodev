@@ -9,10 +9,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
 )
+
+// bufferPool reuses byte buffers to reduce allocations
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 64*1024) // 64KB initial capacity
+	},
+}
 
 type Line struct {
 	Time time.Time
@@ -165,8 +173,10 @@ func (o Options) Run(ctx context.Context) error {
 		return err
 	}
 
-	go stream(stdout, false, o.Logs)
-	go stream(stderr, true, o.Logs)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); stream(stdout, false, o.Logs) }()
+	go func() { defer wg.Done(); stream(stderr, true, o.Logs) }()
 
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
@@ -186,16 +196,33 @@ func (o Options) Run(ctx context.Context) error {
 			}
 			<-waitCh
 		}
+		wg.Wait()
+		select {
+		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
+		default:
+		}
+		close(o.Logs)
 		return ctx.Err()
 	case err := <-waitCh:
+		wg.Wait()
+		select {
+		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
+		default:
+		}
+		close(o.Logs)
 		return err
 	}
 }
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
+	defer func() {
+		// Note: We don't return the buffer to the pool here because the scanner
+		// may still hold a reference to it. The GC will clean it up eventually.
+	}()
+
 	sc := bufio.NewScanner(r)
-	// Allow large log lines (up to 1MB); adjust as needed.
-	buf := make([]byte, 0, 64*1024)
+	// Get buffer from pool and allow large log lines (up to 1MB)
+	buf := bufferPool.Get().([]byte)
 	sc.Buffer(buf, 1<<20)
 	for sc.Scan() {
 		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
