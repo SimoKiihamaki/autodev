@@ -105,6 +105,8 @@ const (
 )
 
 // Centralized input names for settings
+// This list defines the linear order of inputs for Tab navigation,
+// while the grid map in navigateSettings defines the 2D spatial layout.
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
 	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
@@ -777,7 +779,9 @@ func (m *model) navigateSettings(direction string) {
 	}
 }
 
-// searchHorizontalInRow searches for the closest input in a specific row, starting from the given column and expanding outward
+// searchHorizontalInRow searches for the nearest non-empty input field in the target row.
+// This function is called when vertical navigation fails to find a direct match above or below,
+// helping handle sparse grid layouts by searching horizontally in the nearest row.
 func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
 	for offset := 1; offset < settingsGridCols; offset++ {
 		// Check left side first
@@ -874,10 +878,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		return func() tea.Msg { return statusMsg{note: "Config save failed"} }
 	}
 
-	// fresh log channel per run
-	if m.logCh != nil {
-		close(m.logCh)
-	}
+	// fresh log channel per run (owned/closed by the run goroutine)
 	m.logCh = make(chan runner.Line, 2048)
 	ch := m.logCh // capture immutable handle for this run
 	m.logBuf = nil
@@ -948,7 +949,8 @@ func (m model) readLogs() tea.Cmd {
 	return func() tea.Msg {
 		line, ok := <-m.logCh
 		if !ok {
-			return nil
+			// process/log streams finished
+			return runStopMsg{}
 		}
 		return logLineMsg{line: line}
 	}
@@ -957,7 +959,7 @@ func (m model) readLogs() tea.Cmd {
 // ------- View -------
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("aprd — PRD→PR TUI") + "\n")
+	b.WriteString(titleStyle.Render("autodev — PRD→PR TUI") + "\n")
 	for i, name := range tabNames {
 		if tab(i) == m.tab {
 			b.WriteString(tabActive.Render(fmt.Sprintf("[%d] %s  ", i+1, name)))

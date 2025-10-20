@@ -18,7 +18,7 @@
 ## Coding Style & Naming Conventions
 - Go code must pass `go fmt ./...`; prefer explicit imports and short receiver names (`func (m *Model)`).
 - Use `goimports` to maintain import ordering.
-- Package names stay lower_snake (`runner`, `config`); exported types use PascalCase (`AppState`), internal helpers use camelCase.
+- Package names should be lowercase (no underscores) to align with Go idioms; examples: runner, config; exported types use PascalCase (`AppState`), internal helpers use camelCase.
 - Constants follow `const FooBar = ...`; avoid all-caps except for env keys (`AUTO_PRD_EXECUTOR_*`).
 
 ## Testing Guidelines

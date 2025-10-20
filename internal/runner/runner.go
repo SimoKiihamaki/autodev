@@ -39,7 +39,7 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	}
 	tmpDir := os.TempDir()
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
-	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by aprd-tui)\n%s\n-->\n\n", prompt)
+	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
 	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o644); err != nil {
 		return "", nil, err
 	}
@@ -173,17 +173,15 @@ func (o Options) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		// Try graceful stop first.
+		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
 		_ = cmd.Process.Signal(os.Interrupt)
-		killCtx, killCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		go func() {
-			select {
-			case <-killCtx.Done():
-				_ = cmd.Process.Kill()
-			case <-waitCh:
-			}
-		}()
-		defer killCancel()
+		select {
+		case <-waitCh:
+			// Process exited; streams will drain/finish.
+		case <-time.After(2 * time.Second):
+			_ = cmd.Process.Kill()
+			<-waitCh
+		}
 		return ctx.Err()
 	case err := <-waitCh:
 		return err
