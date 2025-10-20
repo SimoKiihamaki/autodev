@@ -175,13 +175,15 @@ func (o Options) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		// Try graceful stop first.
 		_ = cmd.Process.Signal(os.Interrupt)
+		killCtx, killCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		go func() {
 			select {
-			case <-time.After(2 * time.Second):
+			case <-killCtx.Done():
 				_ = cmd.Process.Kill()
 			case <-waitCh:
 			}
 		}()
+		defer killCancel()
 		return ctx.Err()
 	case err := <-waitCh:
 		return err

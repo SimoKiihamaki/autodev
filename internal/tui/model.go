@@ -43,11 +43,10 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title + " " + i.path }
 
 type model struct {
-	tab      tab
-	cfg      config.Config
-	cfgSaved bool
-	status   string
-	errMsg   string
+	tab    tab
+	cfg    config.Config
+	status string
+	errMsg string
 
 	// PRD selection
 	prdList     list.Model
@@ -218,7 +217,7 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.scanPRDsCmd()
+	return tea.Batch(m.scanPRDsCmd(), tea.EnterAltScreen)
 }
 
 // ------- PRD scan -------
@@ -227,14 +226,17 @@ func (m *model) rescanPRDs() { m.prdList.SetItems([]list.Item{}) }
 func (m model) scanPRDsCmd() tea.Cmd {
 	return func() tea.Msg {
 		var items []list.Item
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return prdScanMsg{items: nil}
+		}
 		_ = filepath.WalkDir(cwd, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
 				rel, _ := filepath.Rel(cwd, path)
-				if strings.Count(rel, string(os.PathSeparator))+1 > 4 {
+				if strings.Count(rel, string(os.PathSeparator)) > 4 {
 					return filepath.SkipDir
 				}
 				return nil
@@ -383,7 +385,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err := config.Save(m.cfg); err != nil {
 						m.status = "Tag save failed: " + err.Error()
 					} else {
-						m.cfgSaved = true
 						m.status = "Tags saved"
 					}
 				}
@@ -454,7 +455,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "left", "right":
 				if m.focusedFlag != "" {
-					m.toggleFocusedFlag()
+					m.navigateFlags(msg.String())
 				} else {
 					m.navigateFlags("down") // Focus first flag
 				}
@@ -469,13 +470,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.focusedFlag = ""
 				return m, nil
-			case "L":
+			case "L", "l":
 				m.runLocal = !m.runLocal
 				return m, nil
-			case "P":
+			case "P", "p":
 				m.runPR = !m.runPR
 				return m, nil
-			case "R":
+			case "R", "r":
 				m.runReview = !m.runReview
 				return m, nil
 			case "a":
@@ -538,11 +539,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var cmd tea.Cmd
 				m.logs, cmd = m.logs.Update(msg)
 				return m, cmd
-			case "pgup", "pageup":
+			case "pgup":
 				// Page up
 				m.logs.LineUp(10)
 				return m, nil
-			case "pgdown", "pagedown":
+			case "pgdown":
 				// Page down
 				m.logs.LineDown(10)
 				return m, nil
@@ -730,20 +731,8 @@ func (m *model) navigateSettings(direction string) {
 					return
 				}
 			}
-			// If nothing directly above, find the closest input in the row above
-			// Start from current column and search outward
-			for offset := 1; offset < settingsGridCols; offset++ {
-				// Check left side first
-				if col-offset >= 0 && reverseGrid[row-1][col-offset] != "" {
-					m.focusInput(reverseGrid[row-1][col-offset])
-					return
-				}
-				// Then check right side
-				if col+offset < settingsGridCols && reverseGrid[row-1][col+offset] != "" {
-					m.focusInput(reverseGrid[row-1][col+offset])
-					return
-				}
-			}
+			// If nothing directly above, search horizontally in the row above
+			m.searchHorizontalInRow(reverseGrid, row-1, col)
 		}
 	case "down":
 		if row < settingsGridRows-1 {
@@ -754,20 +743,8 @@ func (m *model) navigateSettings(direction string) {
 					return
 				}
 			}
-			// If nothing directly below, find the closest input in the row below
-			// Start from current column and search outward
-			for offset := 1; offset < settingsGridCols; offset++ {
-				// Check left side first
-				if col-offset >= 0 && reverseGrid[row+1][col-offset] != "" {
-					m.focusInput(reverseGrid[row+1][col-offset])
-					return
-				}
-				// Then check right side
-				if col+offset < settingsGridCols && reverseGrid[row+1][col+offset] != "" {
-					m.focusInput(reverseGrid[row+1][col+offset])
-					return
-				}
-			}
+			// If nothing directly below, search horizontally in the row below
+			m.searchHorizontalInRow(reverseGrid, row+1, col)
 		}
 	case "left":
 		if col > 0 {
@@ -796,6 +773,22 @@ func (m *model) navigateSettings(direction string) {
 				m.focusInput(reverseGrid[row][c])
 				return
 			}
+		}
+	}
+}
+
+// searchHorizontalInRow searches for the closest input in a specific row, starting from the given column and expanding outward
+func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
+	for offset := 1; offset < settingsGridCols; offset++ {
+		// Check left side first
+		if startCol-offset >= 0 && reverseGrid[targetRow][startCol-offset] != "" {
+			m.focusInput(reverseGrid[targetRow][startCol-offset])
+			return
+		}
+		// Then check right side
+		if startCol+offset < settingsGridCols && reverseGrid[targetRow][startCol+offset] != "" {
+			m.focusInput(reverseGrid[targetRow][startCol+offset])
+			return
 		}
 	}
 }
@@ -886,26 +879,34 @@ func (m *model) startRunCmd() tea.Cmd {
 		close(m.logCh)
 	}
 	m.logCh = make(chan runner.Line, 2048)
+	ch := m.logCh // capture immutable handle for this run
 	m.logBuf = nil
 	m.logs.SetContent("")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	go func() {
+	go func(logCh chan runner.Line) {
 		o := runner.Options{
 			Config:        m.cfg,
 			PRDPath:       m.selectedPRD,
 			InitialPrompt: m.prompt.Value(),
-			Logs:          m.logCh,
+			Logs:          logCh,
 		}
 		err := o.Run(ctx)
 		if err != nil && err != context.Canceled {
-			m.logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}
+			select {
+			case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
+			default:
+			}
 		}
-		m.logCh <- runner.Line{Time: time.Now(), Text: "process finished", Err: false}
-		close(m.logCh)
-	}()
+		// final line then close
+		select {
+		case logCh <- runner.Line{Time: time.Now(), Text: "process finished", Err: false}:
+		default:
+		}
+		close(logCh)
+	}(ch)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
 }
