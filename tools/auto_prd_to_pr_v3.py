@@ -180,8 +180,11 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         Optional[Path]: A writable directory path if one is found and successfully configured, or None otherwise.
 
     Side effects:
-        Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
-        directory is found.
+        Sets the global CLAUDE_CODE_DEBUG_LOGS_DIR environment variable when a writable
+        directory is found and successfully verified. This environment variable is used
+        by the Claude CLI to determine where to write debug logs, which is critical for
+        troubleshooting in sandboxed or restricted environments where the default
+        debug directory may not be writable.
     """
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     candidates: list[Path] = []
@@ -200,7 +203,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
             if os.access(base, os.W_OK):
                 # Positive write test with proper cleanup handling
                 test_content = f"writecheck-{uuid.uuid4()}"
-                test = None
+                test: Optional[Path] = None
                 try:
                     with tempfile.NamedTemporaryFile(
                         mode="w+",
@@ -303,10 +306,6 @@ def require_cmd(name: str) -> None:
         raise RuntimeError(
             f"'{name}' command not found - not installed or not on PATH."
         )
-
-    # Check if the found command path is actually executable
-    if not os.access(cmd_path, os.X_OK):
-        raise RuntimeError(f"'{name}' found at {cmd_path} but is not executable.")
 
     # Then try to verify it's executable by checking version, help, or running a simple command
     # Some commands don't support --version, so we'll use a more flexible approach
@@ -1547,7 +1546,6 @@ def main() -> None:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
 
     required = build_required_list(EXECUTOR_POLICY)
-    claude_needed_for_initial_policy = EXECUTOR_POLICY in ("codex-first", "claude-only")
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
     claude_failed = False
@@ -1603,36 +1601,37 @@ def main() -> None:
         # When only running review_fix, stay on the current branch unless explicitly provided.
         new_branch = args.branch or git_current_branch(repo_root)
 
-    dirty_entries = git_status_snapshot(repo_root)
-    if dirty_entries:
-        # Make the warning phase-aware with different severity for different phases
-        active_phases_with_commit_risk = selected_phases.intersection(
-            PHASES_WITH_COMMIT_RISK
-        )
+    # Make the warning phase-aware with different severity for different phases
+    active_phases_with_commit_risk = selected_phases.intersection(
+        PHASES_WITH_COMMIT_RISK
+    )
 
-        if active_phases_with_commit_risk:
-            # More prominent warning for phases that might commit changes unintentionally
-            print("⚠️  WARNING: Workspace has uncommitted changes!")
-            print("   This is risky for phases that might commit changes:")
-            print(
-                f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
-            )
-            print("   Consider committing or stashing changes first.")
-            print("\nUncommitted changes:")
-            for entry in dirty_entries:
-                print(f"   {entry}")
-            print()
-            logger.warning(
-                "Uncommitted changes detected in phases with commit risk (%s): %s",
-                ", ".join(sorted(active_phases_with_commit_risk)),
-                "; ".join(dirty_entries),
-            )
-        else:
-            # Standard warning for review_fix phase where uncommitted changes are less problematic
-            logger.warning(
-                "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
-                "\n".join(f"  {entry}" for entry in dirty_entries),
-            )
+    if active_phases_with_commit_risk or selected_phases:
+        dirty_entries = git_status_snapshot(repo_root)
+        if dirty_entries:
+            if active_phases_with_commit_risk:
+                # More prominent warning for phases that might commit changes unintentionally
+                print("⚠️  WARNING: Workspace has uncommitted changes!")
+                print("   This is risky for phases that might commit changes:")
+                print(
+                    f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
+                )
+                print("   Consider committing or stashing changes first.")
+                print("\nUncommitted changes:")
+                for entry in dirty_entries:
+                    print(f"   {entry}")
+                print()
+                logger.warning(
+                    "Uncommitted changes detected in phases with commit risk (%s): %s",
+                    ", ".join(sorted(active_phases_with_commit_risk)),
+                    "; ".join(dirty_entries),
+                )
+            else:
+                # Standard warning for review_fix phase where uncommitted changes are less problematic
+                logger.warning(
+                    "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
+                    "\n".join(f"  {entry}" for entry in dirty_entries),
+                )
 
     if needs_branch_setup:
         try:
