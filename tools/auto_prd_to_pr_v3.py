@@ -177,9 +177,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     """Ensure the Claude CLI can write debug logs even in sandboxed environments.
 
     Returns:
-        Optional[Path]: A writable directory path for Claude debug logs when a writable
-        directory is found AND after the environment variable has been set, or None if no
-        writable directory is found.
+        Optional[Path]: A writable directory path if one is found and successfully configured, or None otherwise.
 
     Side effects:
         Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
@@ -672,9 +670,31 @@ EXECUTOR_CHOICES = {"codex-first", "codex-only", "claude-only"}
 EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
 
+# Fallback policies for when primary tools are unavailable
+FALLBACK_POLICIES = {
+    "codex-first": "codex-only",  # Fallback to codex-only if Claude is unavailable
+}
+
+
+def get_fallback_policy(policy: str) -> Optional[str]:
+    """Get the fallback policy for a given executor policy if a primary tool fails.
+
+    Args:
+        policy: The current executor policy
+
+    Returns:
+        Optional[str]: The fallback policy if one exists, None otherwise
+    """
+    return FALLBACK_POLICIES.get(policy)
+
 
 def build_required_list(policy: str) -> list[str]:
     """Build the list of required commands based on executor policy.
+
+    This function explicitly builds a required list based on policy, not phase.
+    The base commands (coderabbit, git, gh) are included for all policies since
+    they represent the fundamental tooling requirements regardless of which
+    executor will be used.
 
     Args:
         policy: Executor policy string. Must be one of: "codex-first", "codex-only", "claude-only"
@@ -1531,9 +1551,11 @@ def main() -> None:
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
     claude_failed = False
+    verified_commands: set[str] = set()
     for cmd_name in required:
         try:
             require_cmd(cmd_name)
+            verified_commands.add(cmd_name)
         except RuntimeError as err:
             if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
                 claude_failed = True
@@ -1547,15 +1569,21 @@ def main() -> None:
 
     # If claude failed, update policy and retry without claude
     if claude_failed:
-        EXECUTOR_POLICY = "codex-only"
+        fallback_policy = get_fallback_policy(EXECUTOR_POLICY)
+        if fallback_policy is None:
+            raise SystemExit(
+                f"ERROR: Claude CLI check failed and no fallback policy available for '{EXECUTOR_POLICY}'"
+            )
+
+        EXECUTOR_POLICY = fallback_policy
         required = build_required_list(EXECUTOR_POLICY)
-        # Verify commands that are required for codex-only policy
-        # We only need to check codex since other commands were already verified
+        # Only check commands that haven't been verified yet
         for cmd_name in required:
-            try:
-                require_cmd(cmd_name)
-            except RuntimeError as err:
-                raise SystemExit(f"ERROR: {err}")
+            if cmd_name not in verified_commands:
+                try:
+                    require_cmd(cmd_name)
+                except RuntimeError as err:
+                    raise SystemExit(f"ERROR: {err}")
     # Print the final, active executor policy after all fallback logic
     print(f"Using executor policy: {EXECUTOR_POLICY}")
 
@@ -1578,9 +1606,8 @@ def main() -> None:
     dirty_entries = git_status_snapshot(repo_root)
     if dirty_entries:
         # Make the warning phase-aware with different severity for different phases
-        phases_with_commit_risk = PHASES_WITH_COMMIT_RISK
         active_phases_with_commit_risk = selected_phases.intersection(
-            phases_with_commit_risk
+            PHASES_WITH_COMMIT_RISK
         )
 
         if active_phases_with_commit_risk:
