@@ -238,8 +238,6 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                             test_content,
                             read_back,
                         )
-                        if test and test.exists():
-                            test.unlink(missing_ok=True)
                         continue
                 finally:
                     if test and test.exists():
@@ -359,6 +357,14 @@ def require_cmd(name: str) -> None:
             timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS,
         )
         # If we get here without FileNotFoundError, the command exists
+        # Accept return codes 0-2 as reasonable for command existence checks
+        # 0 = success, 1 = general error, 2 = misuse error (common for commands requiring args)
+        if returncode > 2:
+            logger.warning(
+                "Command '%s' returned unusual exit code %s, but still considering it as existing",
+                name,
+                returncode,
+            )
         logger.info(
             "Command '%s' exists and returned exit code %s (may require arguments to run properly)",
             name,
@@ -1686,7 +1692,7 @@ def main() -> None:
                 f"Executor policy chain tried: {executor_policy_chain}\n"
                 f"Commands that failed to verify: {failed_commands}"
             )
-        # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
+        # If any required command fails, the loop will retry with updated EXECUTOR_POLICY and remaining commands
     # Print the final, active executor policy after all fallback logic
     print(
         f"Using executor policy: {EXECUTOR_POLICY}"
