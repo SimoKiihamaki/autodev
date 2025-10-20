@@ -1,6 +1,6 @@
 APP := aprd
 
-.PHONY: build install run clean tidy
+.PHONY: build install run clean tidy ci
 
 build:
 	go mod tidy
@@ -18,3 +18,6 @@ clean:
 
 tidy:
 	go mod tidy
+
+ci:
+	go test ./...

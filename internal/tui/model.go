@@ -265,13 +265,7 @@ type prdScanMsg struct{ items []list.Item }
 
 func (m *model) ensureSelectedPRD(items []list.Item) {
 	if len(items) == 0 {
-		if m.selectedPRD != "" {
-			m.selectedPRD = ""
-			m.tags = nil
-		}
-		if m.status == "" {
-			m.status = "No PRD files found."
-		}
+		m.clearPRDSelection("No PRD files found.")
 		return
 	}
 
@@ -318,11 +312,15 @@ func (m *model) ensureSelectedPRD(items []list.Item) {
 		return
 	}
 
-	m.selectedPRD = ""
-	m.tags = nil
-	if m.status == "" {
-		m.status = "No PRD files found."
+	m.clearPRDSelection("No PRD files found.")
+}
+
+func (m *model) clearPRDSelection(statusMsg string) {
+	if m.selectedPRD != "" {
+		m.selectedPRD = ""
 	}
+	m.tags = nil
+	m.status = statusMsg
 }
 
 // ------- Runner/logs messages -------
@@ -462,8 +460,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "r":
-				m.status = "Rescanning PRDs…"
 				m.rescanPRDs()
+				m.status = "Rescanning PRDs…"
 				return m, m.scanPRDsCmd()
 			}
 			// Let the list handle up/down arrows and other navigation
@@ -1075,11 +1073,12 @@ func (m *model) saveConfig() tea.Cmd {
 }
 
 func (m model) readLogs() tea.Cmd {
+	if m.logCh == nil {
+		return nil
+	}
+	ch := m.logCh
 	return func() tea.Msg {
-		if m.logCh == nil {
-			return nil
-		}
-		line, ok := <-m.logCh
+		line, ok := <-ch
 		if !ok {
 			// log channel closed - stop the read loop cleanly; runner handles process completion messaging
 			return nil
@@ -1089,11 +1088,12 @@ func (m model) readLogs() tea.Cmd {
 }
 
 func (m model) waitRunResult() tea.Cmd {
+	if m.runResult == nil {
+		return nil
+	}
+	ch := m.runResult
 	return func() tea.Msg {
-		if m.runResult == nil {
-			return nil
-		}
-		err, ok := <-m.runResult
+		err, ok := <-ch
 		if !ok {
 			return nil
 		}
