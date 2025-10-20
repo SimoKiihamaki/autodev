@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/runner"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/example/aprd-tui/internal/config"
-	"github.com/example/aprd-tui/internal/runner"
 )
 
 type tab int
@@ -37,16 +37,16 @@ type item struct {
 	title, desc string
 	path        string
 }
+
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title + " " + i.path }
 
 type model struct {
-	tab         tab
-	cfg         config.Config
-	cfgSaved    bool
-	status      string
-	errMsg      string
+	tab    tab
+	cfg    config.Config
+	status string
+	errMsg string
 
 	// PRD selection
 	prdList     list.Model
@@ -70,6 +70,10 @@ type model struct {
 	inPollSec    textinput.Model
 	inIdleMin    textinput.Model
 	inMaxIters   textinput.Model
+
+	// Focus management
+	focusedInput string
+	focusedFlag  string // For Env tab flag selection
 
 	// Phases toggles
 	runLocal  bool
@@ -95,22 +99,64 @@ type model struct {
 	logCh   chan runner.Line
 }
 
+const (
+	settingsGridRows = 9
+	settingsGridCols = 4
+)
+
+// Centralized input names for settings
+// This list defines the linear order of inputs for Tab navigation,
+// while the grid map in navigateSettings defines the 2D spatial layout.
+var settingsInputNames = []string{
+	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
+	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
+}
+
+// Centralized flag names for env tab
+var envFlagNames = []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
+
+// Returns a map of input name to pointer to textinput.Model for the given model instance
+func (m *model) settingsInputMap() map[string]*textinput.Model {
+	return map[string]*textinput.Model{
+		"repo":     &m.inRepo,
+		"base":     &m.inBase,
+		"branch":   &m.inBranch,
+		"codex":    &m.inCodexModel,
+		"pycmd":    &m.inPyCmd,
+		"pyscript": &m.inPyScript,
+		"policy":   &m.inPolicy,
+		"execimpl": &m.inExecImpl,
+		"execfix":  &m.inExecFix,
+		"execpr":   &m.inExecPR,
+		"execrev":  &m.inExecRev,
+		"waitmin":  &m.inWaitMin,
+		"pollsec":  &m.inPollSec,
+		"idlemin":  &m.inIdleMin,
+		"maxiters": &m.inMaxIters,
+	}
+}
+
 func New() model {
-	cfg, _ := config.Load()
-	if cfg.PythonCommand == "" { cfg.PythonCommand = "python3" }
-	if cfg.ExecutorPolicy == "" { cfg.ExecutorPolicy = "codex-first" }
+	cfg, err := config.Load()
+	var loadStatus string
+	if err != nil {
+		cfg = config.Defaults()
+		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
+	}
 
 	m := model{
-		tab:   tabRun,
-		cfg:   cfg,
-		logCh: make(chan runner.Line, 2048),
+		tab: tabRun,
+		cfg: cfg,
 	}
 
 	// PRD list
-	m.prdList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 10)
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	m.prdList = list.New([]list.Item{}, delegate, 0, 0)
 	m.prdList.Title = "Select a PRD (.md)"
 	m.prdList.SetShowHelp(false)
 	m.prdList.SetFilteringEnabled(true)
+	m.prdList.DisableQuitKeybindings()
 
 	// Inputs
 	m.inRepo = mkInput("Repo path", cfg.RepoPath, 60)
@@ -121,9 +167,9 @@ func New() model {
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
 	m.inExecImpl = mkInput("Exec (implement): codex|claude|<empty>", cfg.PhaseExecutors.Implement, 16)
-	m.inExecFix  = mkInput("Exec (fix): codex|claude|<empty>", cfg.PhaseExecutors.Fix, 16)
-	m.inExecPR   = mkInput("Exec (pr): codex|claude|<empty>", cfg.PhaseExecutors.PR, 16)
-	m.inExecRev  = mkInput("Exec (review_fix): codex|claude|<empty>", cfg.PhaseExecutors.ReviewFix, 22)
+	m.inExecFix = mkInput("Exec (fix): codex|claude|<empty>", cfg.PhaseExecutors.Fix, 16)
+	m.inExecPR = mkInput("Exec (pr): codex|claude|<empty>", cfg.PhaseExecutors.PR, 16)
+	m.inExecRev = mkInput("Exec (review_fix): codex|claude|<empty>", cfg.PhaseExecutors.ReviewFix, 22)
 	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(cfg.Timings.WaitMinutes), 6)
 	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
 	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
@@ -154,8 +200,16 @@ func New() model {
 	// Tags
 	m.tagInput = mkInput("Add tag", "", 24)
 
+	// Initially blur all inputs (after prompt is initialized)
+	m.blurAllInputs()
+
 	// Scan PRDs
 	m.rescanPRDs()
+
+	// Set load status if config failed to load
+	if loadStatus != "" {
+		m.status = loadStatus
+	}
 
 	return m
 }
@@ -169,7 +223,7 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.scanPRDsCmd(), tea.EnterAltScreen)
+	return m.scanPRDsCmd()
 }
 
 // ------- PRD scan -------
@@ -178,11 +232,17 @@ func (m *model) rescanPRDs() { m.prdList.SetItems([]list.Item{}) }
 func (m model) scanPRDsCmd() tea.Cmd {
 	return func() tea.Msg {
 		var items []list.Item
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return prdScanMsg{items: nil}
+		}
 		_ = filepath.WalkDir(cwd, func(path string, d os.DirEntry, err error) error {
-			if err != nil { return nil }
+			if err != nil {
+				return nil
+			}
 			if d.IsDir() {
-				if strings.Count(path, string(os.PathSeparator)) - strings.Count(cwd, string(os.PathSeparator)) > 4 {
+				rel, _ := filepath.Rel(cwd, path)
+				if strings.Count(rel, string(os.PathSeparator)) > 4 {
 					return filepath.SkipDir
 				}
 				return nil
@@ -210,6 +270,13 @@ type statusMsg struct{ note string }
 // ------- Update -------
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Handle terminal resize
+		w, h := msg.Width, msg.Height
+		m.prdList.SetSize(w-2, h-10)
+		m.logs.Width, m.logs.Height = w-2, h-8
+		m.prompt.SetWidth(w - 2)
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -219,26 +286,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "q":
-			if m.running { return m, nil }
+			if m.running {
+				return m, nil
+			}
 			return m, tea.Quit
 		case "?":
-			m.tab = tabHelp; return m, nil
-		case "1": m.tab = tabRun
-		case "2": m.tab = tabPRD
-		case "3": m.tab = tabSettings
-		case "4": m.tab = tabEnv
-		case "5": m.tab = tabPrompt
-		case "6": m.tab = tabLogs
+			m.tab = tabHelp
+			m.blurAllInputs()
+			return m, nil
+		case "1":
+			m.tab = tabRun
+			m.blurAllInputs()
+			return m, nil
+		case "2":
+			m.tab = tabPRD
+			m.blurAllInputs()
+			return m, nil
+		case "3":
+			m.tab = tabSettings
+			m.blurAllInputs()
+			return m, nil
+		case "4":
+			m.tab = tabEnv
+			m.blurAllInputs()
+			return m, nil
+		case "5":
+			m.tab = tabPrompt
+			m.blurAllInputs()
+			return m, nil
+		case "6":
+			m.tab = tabLogs
+			m.blurAllInputs()
+			return m, nil
 		}
 
 		switch m.tab {
 		case tabRun:
 			if msg.String() == "enter" {
-				if m.running { return m, nil }
+				if m.running {
+					return m, nil
+				}
 				return m, m.startRunCmd()
 			}
 
 		case tabPRD:
+			// Check if tag input is focused
+			if m.tagInput.Focused() {
+				switch msg.String() {
+				case "enter":
+					if tag := strings.TrimSpace(m.tagInput.Value()); tag != "" {
+						m.tags = append(m.tags, tag)
+						m.tagInput.SetValue("")
+						m.tagInput.Blur()
+					}
+					return m, nil
+				case "esc":
+					m.tagInput.Blur()
+					return m, nil
+				}
+				var cmd tea.Cmd
+				m.tagInput, cmd = m.tagInput.Update(msg)
+				return m, cmd
+			}
+
+			// PRD list navigation and tag management
 			switch msg.String() {
 			case "enter":
 				if sel, ok := m.prdList.SelectedItem().(item); ok {
@@ -252,60 +363,204 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "t":
 				m.tagInput.Focus()
+				return m, nil
+			case "left", "right":
+				// Let the list handle left/right for filtering
+				var cmd tea.Cmd
+				m.prdList, cmd = m.prdList.Update(msg)
+				return m, cmd
 			case "backspace":
-				if len(m.tags) > 0 { m.tags = m.tags[:len(m.tags)-1] }
+				if m.prdList.FilterState() == list.Filtering {
+					var cmd tea.Cmd
+					m.prdList, cmd = m.prdList.Update(msg)
+					return m, cmd
+				}
+				if len(m.tags) > 0 {
+					m.tags = m.tags[:len(m.tags)-1]
+				}
+				return m, nil
 			case "s":
 				if m.selectedPRD != "" {
-					if m.cfg.PRDs == nil { m.cfg.PRDs = map[string]config.PRDMeta{} }
+					if m.cfg.PRDs == nil {
+						m.cfg.PRDs = map[string]config.PRDMeta{}
+					}
 					meta := m.cfg.PRDs[m.selectedPRD]
 					meta.Tags = append([]string{}, m.tags...)
 					meta.LastUsed = time.Now()
 					m.cfg.PRDs[m.selectedPRD] = meta
-					_ = config.Save(m.cfg)
-					m.cfgSaved = true
+					if err := config.Save(m.cfg); err != nil {
+						m.status = "Tag save failed: " + err.Error()
+					} else {
+						m.status = "Tags saved"
+					}
 				}
+				return m, nil
 			}
+			// Let the list handle up/down arrows and other navigation
 			var cmd tea.Cmd
 			m.prdList, cmd = m.prdList.Update(msg)
 			return m, cmd
 
-		case tabSettings, tabEnv:
+		case tabSettings:
+			// Handle input field focus and navigation for Settings
 			switch msg.String() {
-			case "L": m.runLocal = !m.runLocal
-			case "P": m.runPR = !m.runPR
-			case "R": m.runReview = !m.runReview
-			case "a": m.flagAllowUnsafe = !m.flagAllowUnsafe
-			case "d": m.flagDryRun = !m.flagDryRun
-			case "g": m.flagSyncGit = !m.flagSyncGit
-			case "i": m.flagInfinite = !m.flagInfinite
+			case "up", "down", "left", "right":
+				if m.focusedInput == "" {
+					m.focusInput("repo")
+				} else {
+					m.navigateSettings(msg.String())
+				}
+				return m, nil
+			case "tab":
+				// Keep Tab as an alternative navigation
+				inputs := settingsInputNames
+				if m.focusedInput == "" {
+					m.focusInput(inputs[0])
+				} else {
+					for i, input := range inputs {
+						if input == m.focusedInput {
+							nextIndex := (i + 1) % len(inputs)
+							m.focusInput(inputs[nextIndex])
+							break
+						}
+					}
+				}
+				return m, nil
+			case "enter":
+				// If no input is focused, focus the first one
+				if m.focusedInput == "" {
+					m.focusInput("repo")
+				} else {
+					// Unfocus current input
+					m.blurAllInputs()
+				}
+				return m, nil
+			case "esc":
+				m.blurAllInputs()
+				return m, nil
 			case "s":
-				m.saveConfig()
-				return m, func() tea.Msg { return statusMsg{note: "Config saved"} }
+				return m, m.saveConfig()
 			}
-			var cmds []tea.Cmd
-			m.inRepo, cmds = appendCmd(m.inRepo, msg, cmds)
-			m.inBase, cmds = appendCmd(m.inBase, msg, cmds)
-			m.inBranch, cmds = appendCmd(m.inBranch, msg, cmds)
-			m.inCodexModel, cmds = appendCmd(m.inCodexModel, msg, cmds)
-			m.inPyCmd, cmds = appendCmd(m.inPyCmd, msg, cmds)
-			m.inPyScript, cmds = appendCmd(m.inPyScript, msg, cmds)
-			m.inPolicy, cmds = appendCmd(m.inPolicy, msg, cmds)
-			m.inExecImpl, cmds = appendCmd(m.inExecImpl, msg, cmds)
-			m.inExecFix, cmds = appendCmd(m.inExecFix, msg, cmds)
-			m.inExecPR, cmds = appendCmd(m.inExecPR, msg, cmds)
-			m.inExecRev, cmds = appendCmd(m.inExecRev, msg, cmds)
-			m.inWaitMin, cmds = appendCmd(m.inWaitMin, msg, cmds)
-			m.inPollSec, cmds = appendCmd(m.inPollSec, msg, cmds)
-			m.inIdleMin, cmds = appendCmd(m.inIdleMin, msg, cmds)
-			m.inMaxIters, cmds = appendCmd(m.inMaxIters, msg, cmds)
-			return m, tea.Batch(cmds...)
+
+			// Update focused input if any
+			if m.focusedInput != "" {
+				if field := m.getInputField(m.focusedInput); field != nil {
+					var cmd tea.Cmd
+					*field, cmd = (*field).Update(msg)
+					return m, cmd
+				}
+			}
+			return m, nil
+
+		case tabEnv:
+			// Handle flag navigation for Env tab
+			switch msg.String() {
+			case "up", "down":
+				m.navigateFlags(msg.String())
+				return m, nil
+			case "left", "right":
+				if m.focusedFlag != "" {
+					m.navigateFlags(msg.String())
+				} else {
+					m.navigateFlags("down") // Focus first flag
+				}
+				return m, nil
+			case "enter":
+				if m.focusedFlag != "" {
+					m.toggleFocusedFlag()
+				} else {
+					m.focusFlag("local") // Focus first flag
+				}
+				return m, nil
+			case "esc":
+				m.focusedFlag = ""
+				return m, nil
+			case "L", "l":
+				m.runLocal = !m.runLocal
+				return m, nil
+			case "P", "p":
+				m.runPR = !m.runPR
+				return m, nil
+			case "R", "r":
+				m.runReview = !m.runReview
+				return m, nil
+			case "a":
+				m.flagAllowUnsafe = !m.flagAllowUnsafe
+				return m, nil
+			case "d":
+				m.flagDryRun = !m.flagDryRun
+				return m, nil
+			case "g":
+				m.flagSyncGit = !m.flagSyncGit
+				return m, nil
+			case "i":
+				m.flagInfinite = !m.flagInfinite
+				return m, nil
+			case "s":
+				return m, m.saveConfig()
+			}
+			return m, nil
 
 		case tabPrompt:
-			var cmd tea.Cmd
-			m.prompt, cmd = m.prompt.Update(msg)
-			return m, cmd
+			switch msg.String() {
+			case "enter":
+				if !m.prompt.Focused() {
+					m.focusInput("prompt")
+				} else {
+					// Add newline if already focused
+					var cmd tea.Cmd
+					m.prompt, cmd = m.prompt.Update(msg)
+					return m, cmd
+				}
+				return m, nil
+			case "up", "down", "left", "right":
+				if !m.prompt.Focused() {
+					// Arrow keys focus the prompt when not focused
+					m.focusInput("prompt")
+					return m, nil
+				}
+				// If focused, let the textarea handle the arrows
+				var cmd tea.Cmd
+				m.prompt, cmd = m.prompt.Update(msg)
+				return m, cmd
+			case "esc":
+				m.blurAllInputs()
+				return m, nil
+			}
+
+			// Update the prompt if focused
+			if m.prompt.Focused() {
+				var cmd tea.Cmd
+				m.prompt, cmd = m.prompt.Update(msg)
+				return m, cmd
+			}
+			return m, nil
 
 		case tabLogs:
+			switch msg.String() {
+			case "up", "down":
+				// Ensure viewport handles arrow keys properly
+				var cmd tea.Cmd
+				m.logs, cmd = m.logs.Update(msg)
+				return m, cmd
+			case "pgup":
+				// Page up
+				m.logs.LineUp(10)
+				return m, nil
+			case "pgdown":
+				// Page down
+				m.logs.LineDown(10)
+				return m, nil
+			case "home":
+				// Go to top
+				m.logs.GotoTop()
+				return m, nil
+			case "end":
+				// Go to bottom
+				m.logs.GotoBottom()
+				return m, nil
+			}
+			// Update the logs viewport for any other keys
 			var cmd tea.Cmd
 			m.logs, cmd = m.logs.Update(msg)
 			return m, cmd
@@ -320,37 +575,351 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case runStartMsg:
-		m.running = true; m.errMsg = ""; m.status = "Running…"
+		m.running = true
+		m.errMsg = ""
+		m.status = "Running…"
 		return m, nil
 
 	case runStopMsg:
-		m.running = false; m.status = "Stopped."
+		m.running = false
+		m.status = "Stopped."
 		return m, nil
 
 	case logLineMsg:
 		line := msg.line
 		prefix := ""
-		if line.Err { prefix = "[ERR] " }
+		if line.Err {
+			prefix = "[ERR] "
+		}
 		m.logBuf = append(m.logBuf, prefix+line.Text)
-		if len(m.logBuf) > 2000 { m.logBuf = m.logBuf[len(m.logBuf)-2000:] }
+		if len(m.logBuf) > 2000 {
+			m.logBuf = m.logBuf[len(m.logBuf)-2000:]
+		}
 		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
 		// keep reading
 		return m, m.readLogs()
 
 	case runErrMsg:
-		m.running = false; m.errMsg = msg.err.Error(); m.status = "Error."
+		m.running = false
+		m.errMsg = msg.err.Error()
+		m.status = "Error."
 		return m, nil
 	}
 	return m, nil
 }
 
-func appendCmd(t textinput.Model, msg tea.Msg, cmds []tea.Cmd) (textinput.Model, []tea.Cmd) {
-	ti, cmd := t.Update(msg); cmds = append(cmds, cmd); return ti, cmds
+// Input focus management helpers
+func (m *model) blurAllInputs() {
+	m.inRepo.Blur()
+	m.inBase.Blur()
+	m.inBranch.Blur()
+	m.inCodexModel.Blur()
+	m.inPyCmd.Blur()
+	m.inPyScript.Blur()
+	m.inPolicy.Blur()
+	m.inExecImpl.Blur()
+	m.inExecFix.Blur()
+	m.inExecPR.Blur()
+	m.inExecRev.Blur()
+	m.inWaitMin.Blur()
+	m.inPollSec.Blur()
+	m.inIdleMin.Blur()
+	m.inMaxIters.Blur()
+	m.prompt.Blur()
+	m.tagInput.Blur()
+	m.focusedInput = ""
+	m.focusedFlag = ""
+}
+
+// Define the grid layout for Settings tab
+// Grid layout (row, col):
+// (0,0) repo                    (0,1) -
+// (1,0) base                    (1,1) -
+// (2,0) branch                  (2,1) -
+// (3,0) codex                   (3,1) -
+// (4,0) pycmd                   (4,1) -
+// (5,0) pyscript                (5,1) -
+// (6,0) policy                  (6,1) -
+// (7,0) execimpl  (7,1) execfix (7,2) execpr (7,3) execrev
+// (8,0) waitmin   (8,1) pollsec (8,2) idlemin (8,3) maxiters
+
+func (m *model) focusInput(inputName string) {
+	m.blurAllInputs()
+	m.focusedInput = inputName
+
+	switch inputName {
+	case "repo":
+		m.inRepo.Focus()
+	case "base":
+		m.inBase.Focus()
+	case "branch":
+		m.inBranch.Focus()
+	case "codex":
+		m.inCodexModel.Focus()
+	case "pycmd":
+		m.inPyCmd.Focus()
+	case "pyscript":
+		m.inPyScript.Focus()
+	case "policy":
+		m.inPolicy.Focus()
+	case "execimpl":
+		m.inExecImpl.Focus()
+	case "execfix":
+		m.inExecFix.Focus()
+	case "execpr":
+		m.inExecPR.Focus()
+	case "execrev":
+		m.inExecRev.Focus()
+	case "waitmin":
+		m.inWaitMin.Focus()
+	case "pollsec":
+		m.inPollSec.Focus()
+	case "idlemin":
+		m.inIdleMin.Focus()
+	case "maxiters":
+		m.inMaxIters.Focus()
+	case "prompt":
+		m.prompt.Focus()
+	}
+}
+
+// Navigate with arrow keys in Settings tab
+func (m *model) navigateSettings(direction string) {
+	if m.focusedInput == "" {
+		m.focusInput("repo")
+		return
+	}
+
+	// Define grid positions
+	grid := map[string][2]int{
+		"repo":     {0, 0},
+		"base":     {1, 0},
+		"branch":   {2, 0},
+		"codex":    {3, 0},
+		"pycmd":    {4, 0},
+		"pyscript": {5, 0},
+		"policy":   {6, 0},
+		"execimpl": {7, 0},
+		"execfix":  {7, 1},
+		"execpr":   {7, 2},
+		"execrev":  {7, 3},
+		"waitmin":  {8, 0},
+		"pollsec":  {8, 1},
+		"idlemin":  {8, 2},
+		"maxiters": {8, 3},
+	}
+
+	// Reverse mapping for finding inputs by position
+	var reverseGrid [settingsGridRows][settingsGridCols]string
+	for input, pos := range grid {
+		if pos[0] < settingsGridRows && pos[1] < settingsGridCols {
+			reverseGrid[pos[0]][pos[1]] = input
+		}
+	}
+
+	currentPos, exists := grid[m.focusedInput]
+	if !exists {
+		m.focusInput("repo")
+		return
+	}
+
+	row, col := currentPos[0], currentPos[1]
+
+	switch direction {
+	case "up":
+		if row > 0 {
+			// Find the closest input above
+			for r := row - 1; r >= 0; r-- {
+				if reverseGrid[r][col] != "" {
+					m.focusInput(reverseGrid[r][col])
+					return
+				}
+			}
+			// If nothing directly above, search horizontally in the row above
+			m.searchHorizontalInRow(reverseGrid, row-1, col)
+		}
+	case "down":
+		if row < settingsGridRows-1 {
+			// Find the closest input below
+			for r := row + 1; r < settingsGridRows; r++ {
+				if reverseGrid[r][col] != "" {
+					m.focusInput(reverseGrid[r][col])
+					return
+				}
+			}
+			// If nothing directly below, search horizontally in the row below
+			m.searchHorizontalInRow(reverseGrid, row+1, col)
+		}
+	case "left":
+		if col > 0 {
+			if reverseGrid[row][col-1] != "" {
+				m.focusInput(reverseGrid[row][col-1])
+				return
+			}
+		}
+		// Try to find any input to the left in the same row
+		for c := col - 1; c >= 0; c-- {
+			if reverseGrid[row][c] != "" {
+				m.focusInput(reverseGrid[row][c])
+				return
+			}
+		}
+	case "right":
+		if col < settingsGridCols-1 {
+			if reverseGrid[row][col+1] != "" {
+				m.focusInput(reverseGrid[row][col+1])
+				return
+			}
+		}
+		// Try to find any input to the right in the same row
+		for c := col + 1; c < settingsGridCols; c++ {
+			if reverseGrid[row][c] != "" {
+				m.focusInput(reverseGrid[row][c])
+				return
+			}
+		}
+	}
+}
+
+// searchHorizontalInRow searches for the nearest non-empty input field in the target row.
+// This function is called when vertical navigation fails to find a direct match above or below,
+// helping handle sparse grid layouts by searching horizontally in the nearest row.
+// The search alternates left and right from the starting column, checking increasing distances,
+// and focuses the first non-empty input found.
+//
+// Parameters:
+//
+//	reverseGrid: a 2D array representing the settings grid, where each cell contains the input field name or an empty string if no input is present.
+//	targetRow: the row index (0-based) in which to search for a non-empty input field.
+//	startCol: the starting column index (0-based) from which to begin the horizontal search.
+func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
+	if targetRow < 0 || targetRow >= settingsGridRows {
+		return
+	}
+	for offset := 1; offset < settingsGridCols; offset++ {
+		// Check left side first
+		if startCol-offset >= 0 && reverseGrid[targetRow][startCol-offset] != "" {
+			m.focusInput(reverseGrid[targetRow][startCol-offset])
+			return
+		}
+		// Then check right side
+		if startCol+offset < settingsGridCols && reverseGrid[targetRow][startCol+offset] != "" {
+			m.focusInput(reverseGrid[targetRow][startCol+offset])
+			return
+		}
+	}
+}
+
+// Flag navigation for Env tab
+func (m *model) focusFlag(flagName string) {
+	m.focusedFlag = flagName
+}
+
+func (m *model) navigateFlags(direction string) {
+	flags := envFlagNames
+
+	if m.focusedFlag == "" {
+		m.focusFlag(flags[0])
+		return
+	}
+
+	// Find current flag index
+	currentIndex := -1
+	for i, flag := range flags {
+		if flag == m.focusedFlag {
+			currentIndex = i
+			break
+		}
+	}
+
+	if currentIndex == -1 {
+		m.focusFlag(flags[0])
+		return
+	}
+
+	switch direction {
+	case "up":
+		newIndex := (currentIndex - 1 + len(flags)) % len(flags)
+		m.focusFlag(flags[newIndex])
+	case "down":
+		newIndex := (currentIndex + 1) % len(flags)
+		m.focusFlag(flags[newIndex])
+	case "left", "right":
+		// Left/right toggles the focused flag
+		m.toggleFocusedFlag()
+	}
+}
+
+func (m *model) toggleFocusedFlag() {
+	switch m.focusedFlag {
+	case "local":
+		m.runLocal = !m.runLocal
+	case "pr":
+		m.runPR = !m.runPR
+	case "review":
+		m.runReview = !m.runReview
+	case "unsafe":
+		m.flagAllowUnsafe = !m.flagAllowUnsafe
+	case "dryrun":
+		m.flagDryRun = !m.flagDryRun
+	case "syncgit":
+		m.flagSyncGit = !m.flagSyncGit
+	case "infinite":
+		m.flagInfinite = !m.flagInfinite
+	}
+}
+
+func (m *model) getInputField(inputName string) *textinput.Model {
+	return m.settingsInputMap()[inputName]
 }
 
 // ------- Run command -------
 func (m *model) startRunCmd() tea.Cmd {
 	// hydrate cfg from inputs
+	m.hydrateConfigFromInputs()
+
+	if m.selectedPRD == "" {
+		m.errMsg = "Select a PRD first (PRD tab)"
+		return func() tea.Msg { return statusMsg{note: "No PRD selected"} }
+	}
+	if m.cfg.PythonScript == "" {
+		m.errMsg = "Set Python script path in Settings"
+		return func() tea.Msg { return statusMsg{note: "Missing Python script path"} }
+	}
+	if err := config.Save(m.cfg); err != nil {
+		m.errMsg = "Failed to save config: " + err.Error()
+		return func() tea.Msg { return statusMsg{note: "Config save failed"} }
+	}
+
+	// fresh log channel per run (owned/closed by the run goroutine)
+	m.logCh = make(chan runner.Line, 2048)
+	ch := m.logCh // capture immutable handle for this run
+	m.logBuf = nil
+	m.logs.SetContent("")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+
+	go func(logCh chan runner.Line) {
+		o := runner.Options{
+			Config:        m.cfg,
+			PRDPath:       m.selectedPRD,
+			InitialPrompt: m.prompt.Value(),
+			Logs:          logCh,
+		}
+		err := o.Run(ctx)
+		if err != nil && err != context.Canceled {
+			select {
+			case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
+			default:
+			}
+		}
+	}(ch)
+
+	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
+}
+
+func (m *model) hydrateConfigFromInputs() {
 	m.cfg.RepoPath = strings.TrimSpace(m.inRepo.Value())
 	m.cfg.BaseBranch = strings.TrimSpace(m.inBase.Value())
 	m.cfg.Branch = strings.TrimSpace(m.inBranch.Value())
@@ -366,51 +935,30 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.cfg.Flags.DryRun = m.flagDryRun
 	m.cfg.Flags.SyncGit = m.flagSyncGit
 	m.cfg.Flags.InfiniteReviews = m.flagInfinite
-
 	m.cfg.RunPhases.Local = m.runLocal
 	m.cfg.RunPhases.PR = m.runPR
 	m.cfg.RunPhases.ReviewFix = m.runReview
-
 	m.cfg.PhaseExecutors.Implement = strings.TrimSpace(m.inExecImpl.Value())
 	m.cfg.PhaseExecutors.Fix = strings.TrimSpace(m.inExecFix.Value())
 	m.cfg.PhaseExecutors.PR = strings.TrimSpace(m.inExecPR.Value())
 	m.cfg.PhaseExecutors.ReviewFix = strings.TrimSpace(m.inExecRev.Value())
+}
 
-	if m.selectedPRD == "" {
-		m.errMsg = "Select a PRD first (PRD tab)"
-		return func() tea.Msg { return statusMsg{note: "No PRD selected"} }
+func (m *model) saveConfig() tea.Cmd {
+	m.hydrateConfigFromInputs()
+	if err := config.Save(m.cfg); err != nil {
+		return func() tea.Msg { return statusMsg{note: "Config save failed: " + err.Error()} }
 	}
-	if m.cfg.PythonScript == "" {
-		m.errMsg = "Set Python script path in Settings"
-		return func() tea.Msg { return statusMsg{note: "Missing Python script path"} }
-	}
-	_ = config.Save(m.cfg)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-
-	go func() {
-		o := runner.Options{
-			Config:        m.cfg,
-			PRDPath:       m.selectedPRD,
-			InitialPrompt: m.prompt.Value(),
-			Logs:          m.logCh,
-		}
-		err := o.Run(ctx)
-		if err != nil && err != context.Canceled {
-			m.logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}
-		}
-		m.logCh <- runner.Line{Time: time.Now(), Text: "process finished", Err: false}
-		close(m.logCh)
-	}()
-
-	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
+	return func() tea.Msg { return statusMsg{note: "Config saved"} }
 }
 
 func (m model) readLogs() tea.Cmd {
 	return func() tea.Msg {
 		line, ok := <-m.logCh
-		if !ok { return nil }
+		if !ok {
+			// log channel closed - stop the read loop cleanly; runner handles process completion messaging
+			return nil
+		}
 		return logLineMsg{line: line}
 	}
 }
@@ -418,7 +966,7 @@ func (m model) readLogs() tea.Cmd {
 // ------- View -------
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("aprd — PRD→PR TUI") + "\n")
+	b.WriteString(titleStyle.Render("autodev — PRD→PR TUI") + "\n")
 	for i, name := range tabNames {
 		if tab(i) == m.tab {
 			b.WriteString(tabActive.Render(fmt.Sprintf("[%d] %s  ", i+1, name)))
@@ -431,13 +979,17 @@ func (m model) View() string {
 	switch m.tab {
 	case tabRun:
 		b.WriteString(sectionTitle.Render("Run") + "\n")
-		if m.selectedPRD == "" { b.WriteString("PRD: (none selected)\n") } else { b.WriteString("PRD: " + m.selectedPRD + "\n") }
+		if m.selectedPRD == "" {
+			b.WriteString("PRD: (none selected)\n")
+		} else {
+			b.WriteString("PRD: " + m.selectedPRD + "\n")
+		}
 		b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 		b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
 		if m.running {
 			b.WriteString(okStyle.Render("Status: Running (Ctrl+C to stop)") + "\n")
 		} else if m.errMsg != "" {
-			b.WriteString(errorStyle.Render("Status: Error: " + m.errMsg) + "\n")
+			b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
 		} else if m.status != "" {
 			b.WriteString("Status: " + m.status + "\n")
 		}
@@ -448,56 +1000,116 @@ func (m model) View() string {
 		b.WriteString(m.prdList.View())
 		b.WriteString("\nSelected: " + m.selectedPRD + "\n")
 		b.WriteString("Tags: " + strings.Join(m.tags, ", ") + "\n")
-		b.WriteString("Keys: ↑/↓ select · Enter choose · t add-tag · backspace drop-last · s save-tags\n")
+		if m.tagInput.Focused() {
+			b.WriteString("Add tag: " + m.tagInput.View() + "\n")
+			b.WriteString("Press Enter to add tag, Esc to cancel\n")
+		} else {
+			b.WriteString("Keys: ↑/↓ select · ←/→ prev/next · / filter · Enter choose · t add-tag · backspace drop-last · s save-tags\n")
+		}
 
 	case tabSettings:
 		b.WriteString(sectionTitle.Render("Settings") + "\n")
-		b.WriteString(m.inRepo.View()+"\n")
-		b.WriteString(m.inBase.View()+"\n")
-		b.WriteString(m.inBranch.View()+"\n")
-		b.WriteString(m.inCodexModel.View()+"\n")
-		b.WriteString(m.inPyCmd.View()+"\n")
-		b.WriteString(m.inPyScript.View()+"\n")
-		b.WriteString(m.inPolicy.View()+"\n")
-		b.WriteString(m.inExecImpl.View()+"  "+m.inExecFix.View()+"  "+m.inExecPR.View()+"  "+m.inExecRev.View()+"\n")
-		b.WriteString(m.inWaitMin.View()+"  ")
-		b.WriteString(m.inPollSec.View()+"  ")
-		b.WriteString(m.inIdleMin.View()+"  ")
-		b.WriteString(m.inMaxIters.View()+"\n")
-		b.WriteString("\nPress 's' to save.\n")
+		b.WriteString(m.inRepo.View() + "\n")
+		b.WriteString(m.inBase.View() + "\n")
+		b.WriteString(m.inBranch.View() + "\n")
+		b.WriteString(m.inCodexModel.View() + "\n")
+		b.WriteString(m.inPyCmd.View() + "\n")
+		b.WriteString(m.inPyScript.View() + "\n")
+		b.WriteString(m.inPolicy.View() + "\n")
+		b.WriteString(m.inExecImpl.View() + "  " + m.inExecFix.View() + "  " + m.inExecPR.View() + "  " + m.inExecRev.View() + "\n")
+		b.WriteString(m.inWaitMin.View() + "  ")
+		b.WriteString(m.inPollSec.View() + "  ")
+		b.WriteString(m.inIdleMin.View() + "  ")
+		b.WriteString(m.inMaxIters.View() + "\n")
+
+		if m.focusedInput != "" {
+			b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
+		} else {
+			b.WriteString("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · s to save · 1-6,? to switch tabs\n")
+		}
 
 	case tabEnv:
 		b.WriteString(sectionTitle.Render("Env & Flags") + "\n")
-		b.WriteString("Phases: [L] Local="+fmt.Sprint(m.runLocal)+"  [P] PR="+fmt.Sprint(m.runPR)+"  [R] ReviewFix="+fmt.Sprint(m.runReview)+"\n")
-		b.WriteString(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)\n", m.flagAllowUnsafe))
-		b.WriteString(fmt.Sprintf("[d] Dry Run:     %v\n", m.flagDryRun))
-		b.WriteString(fmt.Sprintf("[g] Sync Git:    %v\n", m.flagSyncGit))
-		b.WriteString(fmt.Sprintf("[i] Infinite Reviews: %v\n", m.flagInfinite))
-		b.WriteString(lipgloss.NewStyle().Faint(true).Render("Toggle with the highlighted keys. Save with 's'."))
+
+		// Render phases with focus indication
+		localStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "local" {
+			localStyle = localStyle.Background(lipgloss.Color("240"))
+		}
+		prStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "pr" {
+			prStyle = prStyle.Background(lipgloss.Color("240"))
+		}
+		reviewStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "review" {
+			reviewStyle = reviewStyle.Background(lipgloss.Color("240"))
+		}
+
+		b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
+			prStyle.Render("[P] PR="+fmt.Sprint(m.runPR)) + "  " +
+			reviewStyle.Render("[R] ReviewFix="+fmt.Sprint(m.runReview)) + "\n")
+
+		// Render flags with focus indication
+		unsafeStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "unsafe" {
+			unsafeStyle = unsafeStyle.Background(lipgloss.Color("240"))
+		}
+		dryrunStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "dryrun" {
+			dryrunStyle = dryrunStyle.Background(lipgloss.Color("240"))
+		}
+		syncgitStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "syncgit" {
+			syncgitStyle = syncgitStyle.Background(lipgloss.Color("240"))
+		}
+		infiniteStyle := lipgloss.NewStyle()
+		if m.focusedFlag == "infinite" {
+			infiniteStyle = infiniteStyle.Background(lipgloss.Color("240"))
+		}
+
+		b.WriteString(unsafeStyle.Render(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)", m.flagAllowUnsafe)) + "\n")
+		b.WriteString(dryrunStyle.Render(fmt.Sprintf("[d] Dry Run:     %v", m.flagDryRun)) + "\n")
+		b.WriteString(syncgitStyle.Render(fmt.Sprintf("[g] Sync Git:    %v", m.flagSyncGit)) + "\n")
+		b.WriteString(infiniteStyle.Render(fmt.Sprintf("[i] Infinite Reviews: %v", m.flagInfinite)) + "\n")
+
+		if m.focusedFlag != "" {
+			b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc unfocus)") + "\n")
+		} else {
+			b.WriteString("\n" + lipgloss.NewStyle().Faint(true).Render("Arrow keys to navigate · Enter/←/→ toggle · Letter keys for direct toggle · s save"))
+		}
 
 	case tabPrompt:
-		b.WriteString(sectionTitle.Render("Initial Prompt (optional)")+"\n")
-		b.WriteString(m.prompt.View()+"\n")
+		b.WriteString(sectionTitle.Render("Initial Prompt (optional)") + "\n")
+		b.WriteString(m.prompt.View() + "\n")
+		if m.prompt.Focused() {
+			b.WriteString(okStyle.Render("Text area focused (Esc to unfocus)") + "\n")
+		} else {
+			b.WriteString("Press Enter to edit text, Esc to unfocus\n")
+		}
 
 	case tabLogs:
 		b.WriteString(sectionTitle.Render("Logs") + "\n")
-		b.WriteString(m.logs.View()+"\n")
+		b.WriteString(m.logs.View() + "\n")
 
 	case tabHelp:
 		b.WriteString(sectionTitle.Render("Help") + "\n")
-		b.WriteString("• PRD tab: pick a Markdown spec. Add tags and save.\n")
-		b.WriteString("• Settings & Env: fill values; save with 's'.\n")
-		b.WriteString("• Prompt: optional initial instruction.\n")
-		b.WriteString("• Run tab: press Enter. Logs stream in the Logs tab.\n")
-		b.WriteString("• Quit with 'q'. Stop with Ctrl+C.\n")
-		b.WriteString("\nTabs: 1 Run · 2 PRD · 3 Settings · 4 Env · 5 Prompt · 6 Logs · ? Help")
+		b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · s save\n")
+		b.WriteString("• Settings: ↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · s save\n")
+		b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish\n")
+		b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle · s save\n")
+		b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom\n")
+		b.WriteString("• Run: Enter to start · Ctrl+C to stop\n")
+		b.WriteString("\nGlobal: 1-6 tabs · ? help · q quit · Ctrl+C force quit\n")
+		b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
 	}
 	return b.String()
 }
 
 func atoiSafe(s string) int {
 	s = strings.TrimSpace(s)
-	if s == "" { return 0 }
+	if s == "" {
+		return 0
+	}
 	var n int
 	fmt.Sscanf(s, "%d", &n)
 	return n

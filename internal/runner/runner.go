@@ -9,10 +9,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/example/aprd-tui/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/config"
 )
+
+// bufferPool reuses byte buffers to reduce allocations
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 64*1024) // 64KB initial capacity
+	},
+}
 
 type Line struct {
 	Time time.Time
@@ -31,7 +39,7 @@ type Options struct {
 // makeTempPRD optionally prepends an initial prompt into a temp PRD file.
 func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if strings.TrimSpace(prompt) == "" {
-		return prdPath, func(){}, nil
+		return prdPath, func() {}, nil
 	}
 	origBytes, err := os.ReadFile(prdPath)
 	if err != nil {
@@ -39,7 +47,7 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	}
 	tmpDir := os.TempDir()
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
-	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by aprd-tui)\n%s\n-->\n\n", prompt)
+	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
 	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o644); err != nil {
 		return "", nil, err
 	}
@@ -87,9 +95,15 @@ func buildArgs(c config.Config, prd string) []string {
 
 	// Phases selection
 	phases := []string{}
-	if c.RunPhases.Local { phases = append(phases, "local") }
-	if c.RunPhases.PR    { phases = append(phases, "pr") }
-	if c.RunPhases.ReviewFix { phases = append(phases, "review_fix") }
+	if c.RunPhases.Local {
+		phases = append(phases, "local")
+	}
+	if c.RunPhases.PR {
+		phases = append(phases, "pr")
+	}
+	if c.RunPhases.ReviewFix {
+		phases = append(phases, "review_fix")
+	}
 	if len(phases) > 0 {
 		args = append(args, "--phases", strings.Join(phases, ","))
 	}
@@ -143,33 +157,74 @@ func (o Options) Run(ctx context.Context) error {
 		env = append(env, o.ExtraEnv...)
 	}
 
-	cmd := exec.CommandContext(ctx, o.Config.PythonCommand, args...)
+	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
+	cmd := exec.Command(o.Config.PythonCommand, args...)
 	cmd.Env = env
 
-	stdout, err := cmd.StdoutPipe(); if err != nil { return err }
-	stderr, err := cmd.StderrPipe(); if err != nil { return err }
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	go stream(stdout, false, o.Logs)
-	go stream(stderr, true, o.Logs)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); stream(stdout, false, o.Logs) }()
+	go func() { defer wg.Done(); stream(stderr, true, o.Logs) }()
 
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
 	select {
 	case <-ctx.Done():
-		_ = cmd.Process.Kill()
+		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
+		if sigErr := cmd.Process.Signal(os.Interrupt); sigErr != nil {
+			o.Logs <- Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true}
+		}
+		select {
+		case <-waitCh:
+			// Process exited; streams will drain/finish.
+		case <-time.After(2 * time.Second):
+			if killErr := cmd.Process.Kill(); killErr != nil {
+				o.Logs <- Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true}
+			}
+			<-waitCh
+		}
+		wg.Wait()
+		select {
+		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
+		default:
+		}
+		close(o.Logs)
 		return ctx.Err()
 	case err := <-waitCh:
+		wg.Wait()
+		select {
+		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
+		default:
+		}
+		close(o.Logs)
 		return err
 	}
 }
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	sc := bufio.NewScanner(r)
+	// Get buffer from pool and allow large log lines (up to 1MB)
+	buf := bufferPool.Get().([]byte)
+	sc.Buffer(buf, 1<<20)
+	defer func() {
+		// Return buffer to pool for reuse; scanner is out of scope when this runs
+		bufferPool.Put(buf[:0])
+	}()
+
 	for sc.Scan() {
 		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
 	}
