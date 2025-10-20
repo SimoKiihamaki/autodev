@@ -180,7 +180,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         Optional[Path]: A writable directory path if one is found and successfully configured, or None otherwise.
 
     Side effects:
-        Sets the global CLAUDE_CODE_DEBUG_LOGS_DIR environment variable when a writable
+        Sets the CLAUDE_CODE_DEBUG_LOGS_DIR environment variable when a writable
         directory is found and successfully verified. This environment variable is used
         by the Claude CLI to determine where to write debug logs, which is critical for
         troubleshooting in sandboxed or restricted environments where the default
@@ -216,13 +216,6 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                         tmpf.write(test_content)
                         tmpf.flush()
                         tmpf_name = tmpf.name
-                    # After closing, reopen for reading to verify persistence
-                    with open(tmpf_name, "r", encoding="utf-8") as verify_f:
-                        read_back = verify_f.read()
-                        if read_back != test_content:
-                            raise OSError(
-                                f"Failed to verify write/read in {base}: expected {test_content!r}, got {read_back!r}"
-                            )
                     test = Path(tmpf_name)
                 finally:
                     if test and test.exists():
@@ -298,7 +291,12 @@ def require_cmd(name: str) -> None:
         name (str): The name of the command to check (e.g., 'git', 'python').
 
     Raises:
-        RuntimeError: If the command is not found, not executable, or cannot be run.
+        RuntimeError: If the command is not found (i.e., not installed or not on PATH).
+
+    Note:
+        This function does not raise an error if the command exists but fails to execute
+        successfully (e.g., returns a nonzero exit code or times out). It only checks for
+        the presence and basic executability of the command.
     """
     # First check if command exists using shutil.which
     cmd_path = shutil.which(name)
@@ -691,9 +689,10 @@ def build_required_list(policy: str) -> list[str]:
     """Build the list of required commands based on executor policy.
 
     This function explicitly builds a required list based on policy, not phase.
-    The base commands (coderabbit, git, gh) are included for all policies since
-    they represent the fundamental tooling requirements regardless of which
-    executor will be used.
+    The base commands (coderabbit, git, gh) are included for all policies because
+    the script's broader workflow depends on them for review processing and
+    git/GitHub operations, regardless of which executor is selected for code
+    generation tasks.
 
     Args:
         policy: Executor policy string. Must be one of: "codex-first", "codex-only", "claude-only"
@@ -1606,7 +1605,7 @@ def main() -> None:
         PHASES_WITH_COMMIT_RISK
     )
 
-    if active_phases_with_commit_risk or selected_phases:
+    if selected_phases:
         dirty_entries = git_status_snapshot(repo_root)
         if dirty_entries:
             if active_phases_with_commit_risk:
