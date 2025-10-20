@@ -217,6 +217,14 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                         tmpf.flush()
                         tmpf_name = tmpf.name
                     test = Path(tmpf_name)
+                    # Verify the content is readable and matches what was written
+                    with open(tmpf_name, "r", encoding="utf-8") as verify_f:
+                        read_back = verify_f.read()
+                    if read_back != test_content:
+                        # Content does not match, skip this directory
+                        if test and test.exists():
+                            test.unlink(missing_ok=True)
+                        continue
                 finally:
                     if test and test.exists():
                         test.unlink(missing_ok=True)
@@ -1560,19 +1568,19 @@ def main() -> None:
                     "Warning: Claude CLI check failed; falling back to codex-only executor policy."
                 )
                 print(f"Details:\n{err}")
+                # Update EXECUTOR_POLICY immediately when fallback decision is made
+                fallback_policy = get_fallback_policy(EXECUTOR_POLICY)
+                if fallback_policy is None:
+                    raise SystemExit(
+                        f"ERROR: Claude CLI check failed and no fallback policy available for '{EXECUTOR_POLICY}'"
+                    )
+                EXECUTOR_POLICY = fallback_policy
                 continue  # Skip claude and continue with other commands
             else:
                 raise SystemExit(f"ERROR: {err}")
 
-    # If claude failed, update policy and retry without claude
+    # If claude failed, retry verification with remaining commands (policy already updated)
     if claude_failed:
-        fallback_policy = get_fallback_policy(EXECUTOR_POLICY)
-        if fallback_policy is None:
-            raise SystemExit(
-                f"ERROR: Claude CLI check failed and no fallback policy available for '{EXECUTOR_POLICY}'"
-            )
-
-        EXECUTOR_POLICY = fallback_policy
         required = build_required_list(EXECUTOR_POLICY)
         # Only check commands that haven't been verified yet
         for cmd_name in required:
@@ -1600,12 +1608,11 @@ def main() -> None:
         # When only running review_fix, stay on the current branch unless explicitly provided.
         new_branch = args.branch or git_current_branch(repo_root)
 
-    # Make the warning phase-aware with different severity for different phases
-    active_phases_with_commit_risk = selected_phases.intersection(
-        PHASES_WITH_COMMIT_RISK
-    )
-
     if selected_phases:
+        # Make the warning phase-aware with different severity for different phases
+        active_phases_with_commit_risk = selected_phases.intersection(
+            PHASES_WITH_COMMIT_RISK
+        )
         dirty_entries = git_status_snapshot(repo_root)
         if dirty_entries:
             if active_phases_with_commit_risk:
