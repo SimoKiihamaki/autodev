@@ -202,7 +202,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
                 # Positive write test with proper cleanup handling
-                test_content = f"writecheck-{uuid.uuid4()}"
+                test_content = f"writecheck-{uuid.uuid4()}-{os.getpid()}-{datetime.now(timezone.utc).isoformat()}"
                 test: Optional[Path] = None
                 try:
                     with tempfile.NamedTemporaryFile(
@@ -221,7 +221,13 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                     with open(tmpf_name, "r", encoding="utf-8") as verify_f:
                         read_back = verify_f.read()
                     if read_back != test_content:
-                        # Content does not match, skip this directory
+                        # Content does not match, log a warning and skip this directory
+                        logging.warning(
+                            "Write verification failed for %s: expected %r, got %r",
+                            base,
+                            test_content,
+                            read_back,
+                        )
                         if test and test.exists():
                             test.unlink(missing_ok=True)
                         continue
@@ -1552,43 +1558,39 @@ def main() -> None:
     if EXECUTOR_POLICY not in EXECUTOR_CHOICES:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
 
-    required = build_required_list(EXECUTOR_POLICY)
+    def verify_required_commands(required, executor_policy, verified_commands):
+        claude_failed = False
+        for cmd_name in required:
+            try:
+                require_cmd(cmd_name)
+                verified_commands.add(cmd_name)
+            except RuntimeError as err:
+                if cmd_name == "claude" and executor_policy == "codex-first":
+                    claude_failed = True
+                    print(
+                        "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+                    )
+                    print(f"Details:\n{err}")
+                    fallback_policy = get_fallback_policy(executor_policy)
+                    if fallback_policy is None:
+                        raise SystemExit(
+                            f"ERROR: Claude CLI check failed and no fallback policy available for '{executor_policy}'"
+                        )
+                    executor_policy = fallback_policy
+                    break  # Stop and retry with new policy
+                else:
+                    raise SystemExit(f"ERROR: {err}")
+        return claude_failed, executor_policy, verified_commands
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
-    claude_failed = False
     verified_commands: set[str] = set()
-    for cmd_name in required:
-        try:
-            require_cmd(cmd_name)
-            verified_commands.add(cmd_name)
-        except RuntimeError as err:
-            if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
-                claude_failed = True
-                print(
-                    "Warning: Claude CLI check failed; falling back to codex-only executor policy."
-                )
-                print(f"Details:\n{err}")
-                # Update EXECUTOR_POLICY immediately when fallback decision is made
-                fallback_policy = get_fallback_policy(EXECUTOR_POLICY)
-                if fallback_policy is None:
-                    raise SystemExit(
-                        f"ERROR: Claude CLI check failed and no fallback policy available for '{EXECUTOR_POLICY}'"
-                    )
-                EXECUTOR_POLICY = fallback_policy
-                continue  # Skip claude and continue with other commands
-            else:
-                raise SystemExit(f"ERROR: {err}")
-
-    # If claude failed, retry verification with remaining commands (policy already updated)
-    if claude_failed:
-        required = build_required_list(EXECUTOR_POLICY)
-        # Only check commands that haven't been verified yet
-        for cmd_name in required:
-            if cmd_name not in verified_commands:
-                try:
-                    require_cmd(cmd_name)
-                except RuntimeError as err:
-                    raise SystemExit(f"ERROR: {err}")
+    while True:
+        claude_failed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
+            build_required_list(EXECUTOR_POLICY), EXECUTOR_POLICY, verified_commands
+        )
+        if not claude_failed:
+            break
+        # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
     # Print the final, active executor policy after all fallback logic
     print(f"Using executor policy: {EXECUTOR_POLICY}")
 
@@ -1608,36 +1610,35 @@ def main() -> None:
         # When only running review_fix, stay on the current branch unless explicitly provided.
         new_branch = args.branch or git_current_branch(repo_root)
 
-    if selected_phases:
-        # Make the warning phase-aware with different severity for different phases
-        active_phases_with_commit_risk = selected_phases.intersection(
-            PHASES_WITH_COMMIT_RISK
-        )
-        dirty_entries = git_status_snapshot(repo_root)
-        if dirty_entries:
-            if active_phases_with_commit_risk:
-                # More prominent warning for phases that might commit changes unintentionally
-                print("⚠️  WARNING: Workspace has uncommitted changes!")
-                print("   This is risky for phases that might commit changes:")
-                print(
-                    f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
-                )
-                print("   Consider committing or stashing changes first.")
-                print("\nUncommitted changes:")
-                for entry in dirty_entries:
-                    print(f"   {entry}")
-                print()
-                logger.warning(
-                    "Uncommitted changes detected in phases with commit risk (%s): %s",
-                    ", ".join(sorted(active_phases_with_commit_risk)),
-                    "; ".join(dirty_entries),
-                )
-            else:
-                # Standard warning for review_fix phase where uncommitted changes are less problematic
-                logger.warning(
-                    "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
-                    "\n".join(f"  {entry}" for entry in dirty_entries),
-                )
+    # Make the warning phase-aware with different severity for different phases
+    active_phases_with_commit_risk = selected_phases.intersection(
+        PHASES_WITH_COMMIT_RISK
+    )
+    dirty_entries = git_status_snapshot(repo_root)
+    if dirty_entries:
+        if active_phases_with_commit_risk:
+            # More prominent warning for phases that might commit changes unintentionally
+            print("⚠️  WARNING: Workspace has uncommitted changes!")
+            print("   This is risky for phases that might commit changes:")
+            print(
+                f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
+            )
+            print("   Consider committing or stashing changes first.")
+            print("\nUncommitted changes:")
+            for entry in dirty_entries:
+                print(f"   {entry}")
+            print()
+            logger.warning(
+                "Uncommitted changes detected in phases with commit risk (%s): %s",
+                ", ".join(sorted(active_phases_with_commit_risk)),
+                "; ".join(dirty_entries),
+            )
+        else:
+            # Standard warning for review_fix phase where uncommitted changes are less problematic
+            logger.warning(
+                "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
+                "\n".join(f"  {entry}" for entry in dirty_entries),
+            )
 
     if needs_branch_setup:
         try:
