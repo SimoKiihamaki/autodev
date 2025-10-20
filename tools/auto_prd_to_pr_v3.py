@@ -267,7 +267,7 @@ def require_cmd(name: str) -> None:
     if shutil.which(name) is None:
         raise RuntimeError(f"'{name}' is not installed or on PATH.")
 
-    # Then try to verify it works by checking version or running a simple command
+    # Then try to verify it's executable by checking version, help, or running a simple command
     # Some commands don't support --version, so we'll use a more flexible approach
     version_checks = [
         [name, "--version"],
@@ -830,6 +830,7 @@ def get_unresolved_feedback(
             continue
         thread_id = t.get("id")
         if thread_id is None:
+            logging.warning(f"Encountered review thread without an ID: {t!r}")
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
         for c in comments:
