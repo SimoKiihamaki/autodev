@@ -1584,12 +1584,20 @@ def main() -> None:
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
     verified_commands: set[str] = set()
+    max_fallback_attempts = 5
+    fallback_attempts = 0
     while True:
         claude_failed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
             build_required_list(EXECUTOR_POLICY), EXECUTOR_POLICY, verified_commands
         )
         if not claude_failed:
             break
+        fallback_attempts += 1
+        if fallback_attempts >= max_fallback_attempts:
+            raise SystemExit(
+                f"ERROR: Exceeded maximum fallback attempts ({max_fallback_attempts}) while verifying required commands. "
+                f"Possible cycle or persistent failure in executor policy fallback logic."
+            )
         # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
     # Print the final, active executor policy after all fallback logic
     print(f"Using executor policy: {EXECUTOR_POLICY}")
@@ -1614,31 +1622,32 @@ def main() -> None:
     active_phases_with_commit_risk = selected_phases.intersection(
         PHASES_WITH_COMMIT_RISK
     )
-    dirty_entries = git_status_snapshot(repo_root)
-    if dirty_entries:
-        if active_phases_with_commit_risk:
-            # More prominent warning for phases that might commit changes unintentionally
-            print("⚠️  WARNING: Workspace has uncommitted changes!")
-            print("   This is risky for phases that might commit changes:")
-            print(
-                f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
-            )
-            print("   Consider committing or stashing changes first.")
-            print("\nUncommitted changes:")
-            for entry in dirty_entries:
-                print(f"   {entry}")
-            print()
-            logger.warning(
-                "Uncommitted changes detected in phases with commit risk (%s): %s",
-                ", ".join(sorted(active_phases_with_commit_risk)),
-                "; ".join(dirty_entries),
-            )
-        else:
-            # Standard warning for review_fix phase where uncommitted changes are less problematic
-            logger.warning(
-                "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
-                "\n".join(f"  {entry}" for entry in dirty_entries),
-            )
+    if not args.dry_run:
+        dirty_entries = git_status_snapshot(repo_root)
+        if dirty_entries:
+            if active_phases_with_commit_risk:
+                # More prominent warning for phases that might commit changes unintentionally
+                print("⚠️  WARNING: Workspace has uncommitted changes!")
+                print("   This is risky for phases that might commit changes:")
+                print(
+                    f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
+                )
+                print("   Consider committing or stashing changes first.")
+                print("\nUncommitted changes:")
+                for entry in dirty_entries:
+                    print(f"   {entry}")
+                print()
+                logger.warning(
+                    "Uncommitted changes detected in phases with commit risk (%s): %s",
+                    ", ".join(sorted(active_phases_with_commit_risk)),
+                    "; ".join(dirty_entries),
+                )
+            else:
+                # Standard warning for review_fix phase where uncommitted changes are less problematic
+                logger.warning(
+                    "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
+                    "\n".join(f"  {entry}" for entry in dirty_entries),
+                )
 
     if needs_branch_setup:
         try:
