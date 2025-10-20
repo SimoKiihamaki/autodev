@@ -191,7 +191,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     if existing:
         try:
             candidates.append(Path(existing).expanduser())
-        except Exception:
+        except (ValueError, RuntimeError, OSError):
             pass
     candidates += [
         Path(tempfile.gettempdir()) / "claude_code_logs",
@@ -222,7 +222,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                         read_back = verify_f.read()
                     if read_back != test_content:
                         # Content does not match, log a warning and skip this directory
-                        logging.warning(
+                        logger.warning(
                             "Write verification failed for %s: expected %r, got %r",
                             base,
                             test_content,
@@ -1707,7 +1707,7 @@ def main() -> None:
             head_branch = git_current_branch(repo_root)
             try:
                 pr_number = get_pr_number_for_head(head_branch, repo_root)
-            except Exception:
+            except (ValueError, RuntimeError, OSError):
                 pr_number = None
             if pr_number is None:
                 print(
