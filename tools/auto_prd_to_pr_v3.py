@@ -65,6 +65,7 @@ SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
 SAFE_CWD_ROOTS: set[Path] = {Path(__file__).resolve().parent}
 logger = logging.getLogger(__name__)
 VALID_PHASES = ("local", "pr", "review_fix")
+PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -183,7 +184,13 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         directory is found.
     """
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
-    candidates: list[Path] = ([Path(existing).expanduser()] if existing else []) + [
+    candidates: list[Path] = []
+    if existing:
+        try:
+            candidates.append(Path(existing).expanduser())
+        except Exception:
+            pass
+    candidates += [
         Path(tempfile.gettempdir()) / "claude_code_logs",
         Path.cwd() / ".claude-debug",
     ]
@@ -830,7 +837,7 @@ def get_unresolved_feedback(
             continue
         thread_id = t.get("id")
         if thread_id is None:
-            logging.warning(f"Encountered review thread without an ID: {t!r}")
+            logger.warning(f"Encountered review thread without an ID: {t!r}")
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
         for c in comments:
@@ -1504,7 +1511,7 @@ def main() -> None:
     dirty_entries = git_status_snapshot(repo_root)
     if dirty_entries:
         # Make the warning phase-aware with different severity for different phases
-        phases_with_commit_risk = {"local", "pr"}
+        phases_with_commit_risk = PHASES_WITH_COMMIT_RISK
         active_phases_with_commit_risk = selected_phases.intersection(
             phases_with_commit_risk
         )
@@ -1517,7 +1524,6 @@ def main() -> None:
                 f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
             )
             print("   Consider committing or stashing changes first.")
-            # (No --force flag exists; do not reference it.)
             print("\nUncommitted changes:")
             for entry in dirty_entries:
                 print(f"   {entry}")
