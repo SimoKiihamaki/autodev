@@ -687,6 +687,10 @@ FALLBACK_POLICIES = {
     "codex-first": "codex-only",  # Fallback to codex-only if Claude is unavailable
 }
 
+# Maximum fallback attempts when verifying required commands
+# Set to 2 since FALLBACK_POLICIES only has one entry (one original attempt + one fallback)
+MAX_FALLBACK_ATTEMPTS = 2
+
 
 def get_fallback_policy(policy: str) -> Optional[str]:
     """Get the fallback policy for a given executor policy if a primary tool fails.
@@ -704,9 +708,9 @@ def build_required_list(policy: str) -> list[str]:
     """Build the list of required commands based on executor policy.
 
     This function explicitly builds a required list based on policy, not phase.
-    Core workflow dependencies (review processing and git/GitHub operations) are
-    required for all policies since the automation pipeline depends on these tools
-    regardless of which executor is selected for code generation tasks.
+    Includes core workflow dependencies (review processing and git/GitHub operations)
+    that are commonly needed across the automation pipeline, though specific usage
+    may vary depending on the selected phases and execution context.
 
     Args:
         policy: Executor policy string. Must be one of: "codex-first", "codex-only", "claude-only"
@@ -1584,7 +1588,6 @@ def main() -> None:
 
     # Check required commands, with fallback from codex-first to codex-only if Claude fails
     verified_commands: set[str] = set()
-    max_fallback_attempts = 5
     fallback_attempts = 0
     while True:
         claude_failed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
@@ -1593,9 +1596,9 @@ def main() -> None:
         if not claude_failed:
             break
         fallback_attempts += 1
-        if fallback_attempts >= max_fallback_attempts:
+        if fallback_attempts >= MAX_FALLBACK_ATTEMPTS:
             raise SystemExit(
-                f"ERROR: Exceeded maximum fallback attempts ({max_fallback_attempts}) while verifying required commands. "
+                f"ERROR: Exceeded maximum fallback attempts ({MAX_FALLBACK_ATTEMPTS}) while verifying required commands. "
                 f"Possible cycle or persistent failure in executor policy fallback logic."
             )
         # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
