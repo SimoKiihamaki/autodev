@@ -174,12 +174,16 @@ func (o Options) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
-		_ = cmd.Process.Signal(os.Interrupt)
+		if sigErr := cmd.Process.Signal(os.Interrupt); sigErr != nil {
+			o.Logs <- Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true}
+		}
 		select {
 		case <-waitCh:
 			// Process exited; streams will drain/finish.
 		case <-time.After(2 * time.Second):
-			_ = cmd.Process.Kill()
+			if killErr := cmd.Process.Kill(); killErr != nil {
+				o.Logs <- Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true}
+			}
 			<-waitCh
 		}
 		return ctx.Err()

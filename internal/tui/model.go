@@ -141,8 +141,16 @@ func New() model {
 	if err != nil {
 		// Fall back to canonical defaults and surface a status.
 		cfg = config.Defaults()
-		// Optional: set a status so users know their config couldn't be loaded.
-		// (If you prefer, return a tea.Cmd statusMsg from New via Init.)
+		// Set a status so users know their config couldn't be loaded.
+		// The status will be displayed in the TUI to inform users about the issue.
+		status := fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
+
+		m := model{
+			tab:    tabRun,
+			cfg:    cfg,
+			status: status,
+		}
+		return m
 	}
 
 	m := model{
@@ -782,6 +790,8 @@ func (m *model) navigateSettings(direction string) {
 // searchHorizontalInRow searches for the nearest non-empty input field in the target row.
 // This function is called when vertical navigation fails to find a direct match above or below,
 // helping handle sparse grid layouts by searching horizontally in the nearest row.
+// The search alternates left and right from the starting column, checking increasing distances,
+// and focuses the first non-empty input found.
 func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
 	for offset := 1; offset < settingsGridCols; offset++ {
 		// Check left side first
@@ -949,7 +959,8 @@ func (m model) readLogs() tea.Cmd {
 	return func() tea.Msg {
 		line, ok := <-m.logCh
 		if !ok {
-			// process/log streams finished
+			// log channel closed - this happens when the process finishes normally
+			// The runner sends "process finished" before closing the channel, so this is expected
 			return runStopMsg{}
 		}
 		return logLineMsg{line: line}
