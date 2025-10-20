@@ -24,7 +24,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
@@ -68,7 +67,7 @@ VALID_PHASES = ("local", "pr", "review_fix")
 PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 
 # Timeout for command execution verification in resource-constrained environments
-COMMAND_VERIFICATION_TIMEOUT_SECONDS = 5
+COMMAND_VERIFICATION_TIMEOUT_SECONDS = 3
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -211,7 +210,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
                 # Positive write test with proper cleanup handling
-                test_content = f"writecheck-{uuid.uuid4()}-{os.getpid()}-{now_iso}"
+                test_content = f"writecheck-{os.getpid()}-{now_iso}"
                 test: Optional[Path] = None
                 try:
                     with tempfile.NamedTemporaryFile(
@@ -970,9 +969,17 @@ def get_unresolved_feedback(
             continue
         thread_id = t.get("id")
         if not thread_id:
+            # Avoid logging the full thread object to prevent leaking sensitive info
+            preview = ""
+            comments = t.get("comments", {}).get("nodes", [])
+            if comments and isinstance(comments, list):
+                first_comment = comments[0]
+                body = (first_comment.get("body") or "").strip()
+                if body:
+                    preview = f' Preview of first comment: "{body[:50]}{"..." if len(body) > 50 else ""}"'
             logger.warning(
-                "Encountered review thread without an ID: %r. Skipping this thread; unable to gather comments for review processing. This may cause some review comments to be missed.",
-                t,
+                "Encountered review thread without an ID. Skipping this thread; unable to gather comments for review processing. This may cause some review comments to be missed.%s",
+                preview,
             )
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
@@ -1641,7 +1648,14 @@ def main() -> None:
             )
         # If claude failed, loop will retry with updated EXECUTOR_POLICY and remaining commands
     # Print the final, active executor policy after all fallback logic
-    print(f"Using executor policy: {EXECUTOR_POLICY}")
+    print(
+        f"Using executor policy: {EXECUTOR_POLICY}"
+        + (
+            f" (fallback from {initial_executor_policy})"
+            if EXECUTOR_POLICY != initial_executor_policy
+            else ""
+        )
+    )
 
     ensure_gh_alias()
 
