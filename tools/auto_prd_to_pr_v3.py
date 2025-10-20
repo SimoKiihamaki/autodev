@@ -252,9 +252,16 @@ def require_cmd(name: str) -> None:
     except FileNotFoundError as exc:
         raise RuntimeError(f"'{name}' is not installed or on PATH.") from exc
     except subprocess.CalledProcessError as exc:
-        stderr = (exc.stderr or "").strip()
-        stdout = (exc.stdout or "").strip()
-        details = stderr or stdout or f"exit code {exc.returncode}"
+        stderr = getattr(exc, "stderr", None)
+        # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
+        stdout = getattr(exc, "output", None)
+        if stdout is None:
+            stdout = getattr(exc, "stdout", None)
+        details = (
+            (stderr or "").strip()
+            or (stdout or "").strip()
+            or f"exit code {exc.returncode}"
+        )
         raise RuntimeError(f"'{name} --version' failed: {details}") from exc
 
 
@@ -327,7 +334,12 @@ RATE_LIMIT_STATUS = {"403", "429"}
 
 
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
-    text = (exc.stderr or "") + "\n" + (exc.stdout or "")
+    stderr = getattr(exc, "stderr", None)
+    # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
+    stdout = getattr(exc, "output", None)
+    if stdout is None:
+        stdout = getattr(exc, "stdout", None)
+    text = (stderr or "") + "\n" + (stdout or "")
     match = re.search(r"HTTP\s+(\d{3})", text)
     if match:
         return match.group(1)
@@ -489,7 +501,12 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             out, _, _ = run_cmd(args, cwd=repo_root)
             return out.strip()
         except subprocess.CalledProcessError as exc:
-            msg = (exc.stderr or exc.stdout or "").strip()
+            stderr = getattr(exc, "stderr", None)
+            # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
+            stdout = getattr(exc, "output", None)
+            if stdout is None:
+                stdout = getattr(exc, "stdout", None)
+            msg = (stderr or stdout or "").strip()
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
                 logger.warning(
@@ -1445,7 +1462,12 @@ def main() -> None:
             if rc != 0:
                 run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         except subprocess.CalledProcessError as exc:
-            details = (exc.stderr or exc.stdout or "").strip()
+            stderr = getattr(exc, "stderr", None)
+            # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
+            stdout = getattr(exc, "output", None)
+            if stdout is None:
+                stdout = getattr(exc, "stdout", None)
+            details = (stderr or stdout or "").strip()
             print(
                 f"Warning: git branch setup failed ({details}); continuing on current branch."
             )
