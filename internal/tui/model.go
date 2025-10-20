@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/runner"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/example/aprd-tui/internal/config"
-	"github.com/example/aprd-tui/internal/runner"
 )
 
 type tab int
@@ -101,7 +101,11 @@ type model struct {
 }
 
 func New() model {
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		// Keep defaults if config fails to load
+		cfg = config.Config{}
+	}
 	if cfg.PythonCommand == "" {
 		cfg.PythonCommand = "python3"
 	}
@@ -110,9 +114,8 @@ func New() model {
 	}
 
 	m := model{
-		tab:   tabRun,
-		cfg:   cfg,
-		logCh: make(chan runner.Line, 2048),
+		tab: tabRun,
+		cfg: cfg,
 	}
 
 	// PRD list
@@ -141,9 +144,6 @@ func New() model {
 	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
 	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
 
-	// Initially blur all inputs
-	m.blurAllInputs()
-
 	// Phases
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
@@ -169,6 +169,9 @@ func New() model {
 	// Tags
 	m.tagInput = mkInput("Add tag", "", 24)
 	m.tagInput.Blur()
+
+	// Initially blur all inputs (after prompt is initialized)
+	m.blurAllInputs()
 
 	// Scan PRDs
 	m.rescanPRDs()
@@ -197,10 +200,12 @@ func (m model) scanPRDsCmd() tea.Cmd {
 		cwd, _ := os.Getwd()
 		_ = filepath.WalkDir(cwd, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
+				// optionally set a status message; keep walking
 				return nil
 			}
 			if d.IsDir() {
-				if strings.Count(path, string(os.PathSeparator))-strings.Count(cwd, string(os.PathSeparator)) > 4 {
+				rel, _ := filepath.Rel(cwd, path)
+				if strings.Count(rel, string(os.PathSeparator)) > 4 {
 					return filepath.SkipDir
 				}
 				return nil
@@ -228,6 +233,15 @@ type statusMsg struct{ note string }
 // ------- Update -------
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Handle terminal resize
+		w, h := msg.Width, msg.Height
+		if m.tab == tabPRD {
+			m.prdList.SetSize(w-2, h-10)
+		}
+		m.logs.Width, m.logs.Height = w-2, h-8
+		m.prompt.SetWidth(w - 2)
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -310,16 +324,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tagInput.Focus()
 				return m, nil
 			case "left", "right":
-				// Left/right arrows can be used for tag navigation when available
-				if len(m.tags) > 0 {
-					// Could implement tag selection/editing here if needed
-					return m, nil
-				}
 				// Let the list handle left/right for filtering
 				var cmd tea.Cmd
 				m.prdList, cmd = m.prdList.Update(msg)
 				return m, cmd
 			case "backspace":
+				if m.prdList.FilterState() == list.Filtering {
+					var cmd tea.Cmd
+					m.prdList, cmd = m.prdList.Update(msg)
+					return m, cmd
+				}
 				if len(m.tags) > 0 {
 					m.tags = m.tags[:len(m.tags)-1]
 				}
@@ -344,13 +358,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 
 		case tabSettings:
-			// Handle tab switching first
-			switch msg.String() {
-			case "1", "2", "3", "4", "5", "6", "?":
-				// Let the global handler deal with tab switching
-				break
-			}
-
 			// Handle input field focus and navigation for Settings
 			switch msg.String() {
 			case "up", "down", "left", "right":
@@ -404,14 +411,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tabEnv:
-			// Handle tab switching first
-			switch msg.String() {
-			case "1", "2", "3", "4", "5", "6", "?":
-				// Let the global handler deal with tab switching
-				m.blurAllInputs()
-				break
-			}
-
 			// Handle flag navigation for Env tab
 			switch msg.String() {
 			case "up", "down":
@@ -462,12 +461,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tabPrompt:
-			// Handle tab switching
 			switch msg.String() {
-			case "1", "2", "3", "4", "5", "6", "?":
-				// Let the global handler deal with tab switching
-				m.blurAllInputs()
-				break
 			case "enter":
 				if !m.prompt.Focused() {
 					m.focusInput("prompt")
@@ -502,11 +496,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tabLogs:
-			// Handle tab switching
 			switch msg.String() {
-			case "1", "2", "3", "4", "5", "6", "?":
-				// Let the global handler deal with tab switching
-				break
 			case "up", "down":
 				// Ensure viewport handles arrow keys properly
 				var cmd tea.Cmd
@@ -575,12 +565,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
-}
-
-func appendCmd(t textinput.Model, msg tea.Msg, cmds []tea.Cmd) (textinput.Model, []tea.Cmd) {
-	ti, cmd := t.Update(msg)
-	cmds = append(cmds, cmd)
-	return ti, cmds
 }
 
 // Input focus management helpers
@@ -864,30 +848,7 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 // ------- Run command -------
 func (m *model) startRunCmd() tea.Cmd {
 	// hydrate cfg from inputs
-	m.cfg.RepoPath = strings.TrimSpace(m.inRepo.Value())
-	m.cfg.BaseBranch = strings.TrimSpace(m.inBase.Value())
-	m.cfg.Branch = strings.TrimSpace(m.inBranch.Value())
-	m.cfg.CodexModel = strings.TrimSpace(m.inCodexModel.Value())
-	m.cfg.PythonCommand = strings.TrimSpace(m.inPyCmd.Value())
-	m.cfg.PythonScript = strings.TrimSpace(m.inPyScript.Value())
-	m.cfg.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
-	m.cfg.Timings.WaitMinutes = atoiSafe(m.inWaitMin.Value())
-	m.cfg.Timings.ReviewPollSeconds = atoiSafe(m.inPollSec.Value())
-	m.cfg.Timings.IdleGraceMinutes = atoiSafe(m.inIdleMin.Value())
-	m.cfg.Timings.MaxLocalIters = atoiSafe(m.inMaxIters.Value())
-	m.cfg.Flags.AllowUnsafe = m.flagAllowUnsafe
-	m.cfg.Flags.DryRun = m.flagDryRun
-	m.cfg.Flags.SyncGit = m.flagSyncGit
-	m.cfg.Flags.InfiniteReviews = m.flagInfinite
-
-	m.cfg.RunPhases.Local = m.runLocal
-	m.cfg.RunPhases.PR = m.runPR
-	m.cfg.RunPhases.ReviewFix = m.runReview
-
-	m.cfg.PhaseExecutors.Implement = strings.TrimSpace(m.inExecImpl.Value())
-	m.cfg.PhaseExecutors.Fix = strings.TrimSpace(m.inExecFix.Value())
-	m.cfg.PhaseExecutors.PR = strings.TrimSpace(m.inExecPR.Value())
-	m.cfg.PhaseExecutors.ReviewFix = strings.TrimSpace(m.inExecRev.Value())
+	m.hydrateConfigFromInputs()
 
 	if m.selectedPRD == "" {
 		m.errMsg = "Select a PRD first (PRD tab)"
@@ -897,7 +858,15 @@ func (m *model) startRunCmd() tea.Cmd {
 		m.errMsg = "Set Python script path in Settings"
 		return func() tea.Msg { return statusMsg{note: "Missing Python script path"} }
 	}
-	_ = config.Save(m.cfg)
+	if err := config.Save(m.cfg); err != nil {
+		m.errMsg = "Failed to save config: " + err.Error()
+		return func() tea.Msg { return statusMsg{note: "Config save failed"} }
+	}
+
+	// fresh log channel per run
+	m.logCh = make(chan runner.Line, 2048)
+	m.logBuf = nil
+	m.logs.SetContent("")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
@@ -920,7 +889,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs())
 }
 
-func (m *model) saveConfig() {
+func (m *model) hydrateConfigFromInputs() {
 	m.cfg.RepoPath = strings.TrimSpace(m.inRepo.Value())
 	m.cfg.BaseBranch = strings.TrimSpace(m.inBase.Value())
 	m.cfg.Branch = strings.TrimSpace(m.inBranch.Value())
@@ -943,7 +912,14 @@ func (m *model) saveConfig() {
 	m.cfg.PhaseExecutors.Fix = strings.TrimSpace(m.inExecFix.Value())
 	m.cfg.PhaseExecutors.PR = strings.TrimSpace(m.inExecPR.Value())
 	m.cfg.PhaseExecutors.ReviewFix = strings.TrimSpace(m.inExecRev.Value())
-	_ = config.Save(m.cfg)
+}
+
+func (m *model) saveConfig() {
+	m.hydrateConfigFromInputs()
+	if err := config.Save(m.cfg); err != nil {
+		m.status = "Config save failed: " + err.Error()
+		return
+	}
 }
 
 func (m model) readLogs() tea.Cmd {
@@ -968,11 +944,6 @@ func (m model) View() string {
 		}
 	}
 	b.WriteString("\n\n")
-
-	// Set list size dynamically for PRD tab
-	if m.tab == tabPRD {
-		m.prdList.SetSize(80, 15)
-	}
 
 	switch m.tab {
 	case tabRun:

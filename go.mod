@@ -1,4 +1,4 @@
-module github.com/example/aprd-tui
+module github.com/SimoKiihamaki/autodev
 
 go 1.22
 

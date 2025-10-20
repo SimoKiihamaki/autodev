@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
+	"github.com/SimoKiihamaki/autodev/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/example/aprd-tui/internal/tui"
 )
 
 func main() {

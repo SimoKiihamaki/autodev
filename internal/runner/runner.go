@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/aprd-tui/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/config"
 )
 
 type Line struct {
@@ -31,7 +31,7 @@ type Options struct {
 // makeTempPRD optionally prepends an initial prompt into a temp PRD file.
 func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if strings.TrimSpace(prompt) == "" {
-		return prdPath, func(){}, nil
+		return prdPath, func() {}, nil
 	}
 	origBytes, err := os.ReadFile(prdPath)
 	if err != nil {
@@ -87,9 +87,15 @@ func buildArgs(c config.Config, prd string) []string {
 
 	// Phases selection
 	phases := []string{}
-	if c.RunPhases.Local { phases = append(phases, "local") }
-	if c.RunPhases.PR    { phases = append(phases, "pr") }
-	if c.RunPhases.ReviewFix { phases = append(phases, "review_fix") }
+	if c.RunPhases.Local {
+		phases = append(phases, "local")
+	}
+	if c.RunPhases.PR {
+		phases = append(phases, "pr")
+	}
+	if c.RunPhases.ReviewFix {
+		phases = append(phases, "review_fix")
+	}
 	if len(phases) > 0 {
 		args = append(args, "--phases", strings.Join(phases, ","))
 	}
@@ -146,8 +152,14 @@ func (o Options) Run(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, o.Config.PythonCommand, args...)
 	cmd.Env = env
 
-	stdout, err := cmd.StdoutPipe(); if err != nil { return err }
-	stderr, err := cmd.StderrPipe(); if err != nil { return err }
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
