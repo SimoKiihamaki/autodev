@@ -191,8 +191,12 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     if existing:
         try:
             candidates.append(Path(existing).expanduser())
-        except (ValueError, RuntimeError, OSError):
-            pass
+        except (ValueError, RuntimeError, OSError) as e:
+            logger.warning(
+                "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to other candidates.",
+                existing,
+                e,
+            )
     candidates += [
         Path(tempfile.gettempdir()) / "claude_code_logs",
         Path.cwd() / ".claude-debug",
@@ -298,7 +302,8 @@ def require_cmd(name: str) -> None:
     Ensure that a given command-line tool is available on the system and can be invoked.
 
     This function checks if the specified command exists in the system's PATH and attempts
-    to run common version/help commands to verify it can be invoked. If all version/help
+    multiple verification approaches including running common version/help commands and
+    executing the command with no arguments to verify it can be invoked. If all version/help
     checks fail, it tries to execute the command with no arguments as a last resort to
     confirm basic invocability.
 
@@ -682,9 +687,18 @@ EXECUTOR_CHOICES = {"codex-first", "codex-only", "claude-only"}
 EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
 
-# Fallback policies for when primary tools are unavailable
+# Fallback policies for when primary tools are unavailable.
+# Currently, only a single fallback is implemented ("codex-first" → "codex-only").
+# This structure is designed to support multiple fallback chains in the future;
+# add additional entries as new executor policies and fallbacks are introduced.
 FALLBACK_POLICIES = {
     "codex-first": "codex-only",  # Fallback to codex-only if Claude is unavailable
+}
+
+# Command-specific fallback configurations for when tools fail verification
+# Maps command names to the executor policies that should trigger fallbacks
+COMMAND_FALLBACK_CONFIG = {
+    "claude": {"codex-first"},  # Claude failure triggers fallback in codex-first policy
 }
 
 # Maximum fallback attempts when verifying required commands
@@ -1353,7 +1367,7 @@ def review_fix_loop(
         print(f"Waiting {initial_wait_minutes} minutes for bot reviews...")
         time.sleep(initial_wait_seconds)
 
-    idle_grace_seconds: float = max(0, idle_grace * 60)
+    idle_grace_seconds = max(0, idle_grace * 60)
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
@@ -1565,37 +1579,39 @@ def main() -> None:
     def verify_required_commands(
         required: list[str], executor_policy: str, verified_commands: set[str]
     ) -> tuple[bool, str, set[str]]:
-        claude_failed = False
+        policy_changed = False
         for cmd_name in required:
             try:
                 require_cmd(cmd_name)
                 verified_commands.add(cmd_name)
             except RuntimeError as err:
-                if cmd_name == "claude" and executor_policy == "codex-first":
-                    claude_failed = True
+                # Check if this command failure should trigger a policy fallback
+                trigger_policies = COMMAND_FALLBACK_CONFIG.get(cmd_name, set())
+                if executor_policy in trigger_policies:
+                    policy_changed = True
                     print(
-                        "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+                        f"Warning: {cmd_name} CLI check failed; falling back to alternative executor policy."
                     )
                     print(f"Details:\n{err}")
                     fallback_policy = get_fallback_policy(executor_policy)
                     if fallback_policy is None:
                         raise SystemExit(
-                            f"ERROR: Claude CLI check failed and no fallback policy available for '{executor_policy}'"
+                            f"ERROR: {cmd_name} CLI check failed and no fallback policy available for '{executor_policy}'"
                         )
                     executor_policy = fallback_policy
                     break  # Stop and retry with new policy
                 else:
                     raise SystemExit(f"ERROR: {err}")
-        return claude_failed, executor_policy, verified_commands
+        return policy_changed, executor_policy, verified_commands
 
-    # Check required commands, with fallback from codex-first to codex-only if Claude fails
+    # Check required commands, with fallback based on command-specific configurations
     verified_commands: set[str] = set()
     fallback_attempts = 0
     while True:
-        claude_failed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
+        policy_changed, EXECUTOR_POLICY, verified_commands = verify_required_commands(
             build_required_list(EXECUTOR_POLICY), EXECUTOR_POLICY, verified_commands
         )
-        if not claude_failed:
+        if not policy_changed:
             break
         fallback_attempts += 1
         if fallback_attempts >= MAX_FALLBACK_ATTEMPTS:
