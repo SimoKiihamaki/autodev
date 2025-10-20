@@ -203,14 +203,14 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         Path(tempfile.gettempdir()) / "claude_code_logs",
         Path.cwd() / ".claude-debug",
     ]
-    # Cache the timestamp once for all candidate iterations
-    now_iso = datetime.now(timezone.utc).isoformat()
     for base in candidates:
         try:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
                 # Positive write test with proper cleanup handling
-                test_content = f"writecheck-{os.getpid()}-{now_iso}"
+                now_iso = datetime.now(timezone.utc).isoformat()
+                rand_str = f"{random.getrandbits(64):016x}"
+                test_content = f"writecheck-{os.getpid()}-{now_iso}-{rand_str}"
                 test: Optional[Path] = None
                 try:
                     with tempfile.NamedTemporaryFile(
@@ -223,8 +223,11 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                     ) as tmpf:
                         tmpf.write(test_content)
                         tmpf.flush()
+                        os.fsync(tmpf.fileno())
                         tmpf_name = tmpf.name
                     test = Path(tmpf_name)
+                    # Small delay to ensure filesystem operations are fully committed
+                    time.sleep(0.01)
                     # Verify the content is readable and matches what was written
                     with open(tmpf_name, "r", encoding="utf-8") as verify_f:
                         read_back = verify_f.read()
@@ -708,9 +711,26 @@ COMMAND_FALLBACK_CONFIG = {
     "claude": {"codex-first"},  # Claude failure triggers fallback in codex-first policy
 }
 
-# Maximum fallback attempts when verifying required commands
-# Set to 2 since FALLBACK_POLICIES only has one entry (one original attempt + one fallback)
-MAX_FALLBACK_ATTEMPTS = 2
+
+def _compute_max_fallback_attempts(fallback_policies: dict) -> int:
+    """Compute the maximum number of fallback attempts based on the fallback policy chains."""
+
+    def chain_length(policy: str, visited: set) -> int:
+        length = 0
+        while policy in fallback_policies and policy not in visited:
+            visited.add(policy)
+            policy = fallback_policies[policy]
+            length += 1
+        return length
+
+    max_chain = 0
+    for policy in fallback_policies:
+        max_chain = max(max_chain, chain_length(policy, set()))
+    return max_chain + 1  # +1 for the initial attempt
+
+
+# Dynamically computed as the longest fallback chain plus the initial attempt.
+MAX_FALLBACK_ATTEMPTS = _compute_max_fallback_attempts(FALLBACK_POLICIES)
 
 
 def get_fallback_policy(policy: str) -> Optional[str]:
@@ -1640,9 +1660,30 @@ def main() -> None:
             failed_commands = [
                 cmd for cmd in last_required if cmd not in verified_commands
             ]
+
+            # Check for actual cycles in the executor policy chain
+            cycle_detected = False
+            cycle_info = ""
+            if len(executor_policy_chain) != len(set(executor_policy_chain)):
+                # Find the cycle
+                seen = set()
+                for i, policy in enumerate(executor_policy_chain):
+                    if policy in seen:
+                        cycle_start = executor_policy_chain.index(policy)
+                        cycle_policies = executor_policy_chain[cycle_start:]
+                        cycle_detected = True
+                        cycle_info = (
+                            f"Detected cycle: {' -> '.join(cycle_policies)} -> {policy}"
+                        )
+                        break
+                    seen.add(policy)
+
+            error_type = "Cycle detected" if cycle_detected else "Persistent failure"
+            cycle_message = f"\n{cycle_info}" if cycle_detected else ""
+
             raise SystemExit(
                 f"ERROR: Exceeded maximum fallback attempts ({MAX_FALLBACK_ATTEMPTS}) while verifying required commands.\n"
-                f"Possible cycle or persistent failure in executor policy fallback logic.\n"
+                f"{error_type} in executor policy fallback logic.{cycle_message}\n"
                 f"Executor policy chain tried: {executor_policy_chain}\n"
                 f"Commands that failed to verify: {failed_commands}"
             )
