@@ -295,11 +295,12 @@ def run_sh(
 
 def require_cmd(name: str) -> None:
     """
-    Ensure that a given command-line tool is available and executable on the system.
+    Ensure that a given command-line tool is available on the system and can be invoked.
 
-    This function checks if the specified command exists in the system's PATH, verifies that it is executable,
-    and attempts to run common version/help commands to confirm it is working. If all version/help checks fail,
-    it tries to execute the command with no arguments as a last resort.
+    This function checks if the specified command exists in the system's PATH and attempts
+    to run common version/help commands to verify it can be invoked. If all version/help
+    checks fail, it tries to execute the command with no arguments as a last resort to
+    confirm basic invocability.
 
     Parameters:
         name (str): The name of the command to check (e.g., 'git', 'python').
@@ -308,9 +309,9 @@ def require_cmd(name: str) -> None:
         RuntimeError: If the command is not found (i.e., not installed or not on PATH).
 
     Note:
-        This function does not raise an error if the command exists but fails to execute
-        successfully (e.g., returns a nonzero exit code or times out). It only checks for
-        the presence and basic executability of the command.
+        This function only verifies that the command exists and can be invoked; it does not
+        guarantee the command will work correctly with production arguments or return
+        successful exit codes for all operations.
     """
     # First check if command exists using shutil.which
     cmd_path = shutil.which(name)
@@ -703,10 +704,9 @@ def build_required_list(policy: str) -> list[str]:
     """Build the list of required commands based on executor policy.
 
     This function explicitly builds a required list based on policy, not phase.
-    The base commands (coderabbit, git, gh) are included for all policies because
-    the script's broader workflow depends on them for review processing and
-    git/GitHub operations, regardless of which executor is selected for code
-    generation tasks.
+    Core workflow dependencies (review processing and git/GitHub operations) are
+    required for all policies since the automation pipeline depends on these tools
+    regardless of which executor is selected for code generation tasks.
 
     Args:
         policy: Executor policy string. Must be one of: "codex-first", "codex-only", "claude-only"
