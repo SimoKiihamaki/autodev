@@ -177,8 +177,9 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     """Ensure the Claude CLI can write debug logs even in sandboxed environments.
 
     Returns:
-        Optional[Path]: A writable directory path for Claude debug logs when successfully found
-        and the environment variable is set, or None if no writable directory is found.
+        Optional[Path]: A writable directory path for Claude debug logs when a writable
+        directory is found AND after the environment variable has been set, or None if no
+        writable directory is found.
 
     Side effects:
         Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
@@ -213,13 +214,15 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                     ) as tmpf:
                         tmpf.write(test_content)
                         tmpf.flush()
-                        tmpf.seek(0)
-                        read_back = tmpf.read()
+                        tmpf_name = tmpf.name
+                    # After closing, reopen for reading to verify persistence
+                    with open(tmpf_name, "r", encoding="utf-8") as verify_f:
+                        read_back = verify_f.read()
                         if read_back != test_content:
                             raise OSError(
                                 f"Failed to verify write/read in {base}: expected {test_content!r}, got {read_back!r}"
                             )
-                    test = Path(tmpf.name)
+                    test = Path(tmpf_name)
                 finally:
                     if test and test.exists():
                         test.unlink(missing_ok=True)
@@ -283,6 +286,19 @@ def run_sh(
 
 
 def require_cmd(name: str) -> None:
+    """
+    Ensure that a given command-line tool is available and executable on the system.
+
+    This function checks if the specified command exists in the system's PATH, verifies that it is executable,
+    and attempts to run common version/help commands to confirm it is working. If all version/help checks fail,
+    it tries to execute the command with no arguments as a last resort.
+
+    Parameters:
+        name (str): The name of the command to check (e.g., 'git', 'python').
+
+    Raises:
+        RuntimeError: If the command is not found, not executable, or cannot be run.
+    """
     # First check if command exists using shutil.which
     cmd_path = shutil.which(name)
     if cmd_path is None:
@@ -895,7 +911,7 @@ def get_unresolved_feedback(
         if t.get("isResolved") is True:
             continue
         thread_id = t.get("id")
-        if thread_id is None:
+        if not thread_id:
             logger.warning("Encountered review thread without an ID: %r", t)
             continue
         comments = _gather_thread_comments(thread_id, t.get("comments"))
@@ -1509,7 +1525,6 @@ def main() -> None:
     EXECUTOR_POLICY = args.executor_policy or policy_from_env or EXECUTOR_POLICY_DEFAULT
     if EXECUTOR_POLICY not in EXECUTOR_CHOICES:
         raise SystemExit(f"Invalid executor policy: {EXECUTOR_POLICY}")
-    print(f"Executor policy: {EXECUTOR_POLICY}")
 
     required = build_required_list(EXECUTOR_POLICY)
     claude_needed_for_initial_policy = EXECUTOR_POLICY in ("codex-first", "claude-only")
@@ -1537,16 +1552,12 @@ def main() -> None:
         # Verify commands that are required for codex-only policy
         # We only need to check codex since other commands were already verified
         for cmd_name in required:
-            if cmd_name == "claude":
-                continue  # Skip claude since we know it failed
             try:
                 require_cmd(cmd_name)
             except RuntimeError as err:
                 raise SystemExit(f"ERROR: {err}")
-    # Print the final policy if we didn't start with a claude-required policy
-    # This shows the active policy after potential fallback from codex-first to codex-only
-    if not claude_needed_for_initial_policy:
-        print(f"Using executor policy: {EXECUTOR_POLICY}")
+    # Print the final, active executor policy after all fallback logic
+    print(f"Using executor policy: {EXECUTOR_POLICY}")
 
     ensure_gh_alias()
 
