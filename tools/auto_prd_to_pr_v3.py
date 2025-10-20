@@ -22,7 +22,7 @@ import re
 import random
 import shutil
 import subprocess
-import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +63,7 @@ SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
 SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
 SAFE_CWD_ROOTS: set[Path] = {Path(__file__).resolve().parent}
 logger = logging.getLogger(__name__)
+VALID_PHASES = ("local", "pr", "review_fix")
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -163,6 +164,41 @@ def env_with_zsh(extra: dict | None = None) -> dict:
         env.update(extra)
     return env
 
+
+def ensure_claude_debug_dir() -> Optional[Path]:
+    """Ensure the Claude CLI can write debug logs even in sandboxed environments."""
+    existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
+    if existing:
+        path = Path(existing).expanduser()
+        if path.is_dir():
+            filename = f"claude_{time.time_ns()}.log"
+            path.mkdir(parents=True, exist_ok=True)
+            path = path / filename
+            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return path
+        except OSError:
+            pass
+
+    base_dirs = [
+        Path(tempfile.gettempdir()) / "claude_code_logs",
+        Path.cwd() / ".claude-debug",
+    ]
+    for base in base_dirs:
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            continue
+        log_path = base / f"claude_{time.time_ns()}.log"
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(log_path)
+            return log_path
+        except OSError:
+            continue
+    return None
+
 def run_cmd(cmd: list[str], cwd: Optional[Path] = None, check: bool = True,
             capture: bool = True, timeout: Optional[int] = None,
             extra_env: Optional[dict] = None, stdin: Optional[str] = None) -> Tuple[str, str, int]:
@@ -190,10 +226,13 @@ def run_sh(script: str, cwd: Optional[Path] = None, check: bool = True,
 def require_cmd(name: str):
     try:
         run_cmd([name, "--version"], check=True, capture=True)
-    except FileNotFoundError:
-        sys.exit(f"ERROR: '{name}' is not installed or on PATH.")
-    except subprocess.CalledProcessError as e:
-        sys.exit(f"ERROR: '{name} --version' failed: {e.stderr.strip()}")
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"'{name}' is not installed or on PATH.") from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        stdout = (exc.output or "").strip()
+        details = stderr or stdout or f"exit code {exc.returncode}"
+        raise RuntimeError(f"'{name} --version' failed: {details}") from exc
 
 # ---------------------------- git helpers ----------------------------
 
@@ -209,15 +248,6 @@ def parse_owner_repo_from_git() -> str:
     return f"{m.group(1)}/{m.group(2)}"
 
 def ensure_gh_alias():
-
-    # Determine phases to run
-    phases = [p.strip().lower() for p in (args.phases or "").split(",") if p.strip()]
-    valid_phases = {"local", "pr", "review_fix"}
-    if any(p not in valid_phases for p in phases):
-        raise SystemExit(f"Invalid phases list {phases}; valid: local, pr, review_fix")
-
-    def include(phase: str) -> bool:
-        return phase in phases
     out,_,_ = run_cmd(["gh","alias","list"])
     if "save-me-copilot" not in out:
         # Unofficial way to request Copilot review for a PR
@@ -1094,7 +1124,26 @@ def main():
         default=None,
         help="Executor policy: 'codex-first' (default), 'codex-only', or 'claude-only'. Can also use AUTO_PRD_EXECUTOR_POLICY.",
     )
+    ap.add_argument(
+        "--phases",
+        default=None,
+        help="Comma-separated list of phases to run (local,pr,review_fix). Default: all phases.",
+    )
     args = ap.parse_args()
+    ensure_claude_debug_dir()
+
+    if args.phases is None:
+        selected_phases = set(VALID_PHASES)
+    else:
+        selected_phases = {p.strip().lower() for p in args.phases.split(",") if p.strip()}
+        invalid = selected_phases.difference(VALID_PHASES)
+        if invalid:
+            raise SystemExit(
+                f"Invalid phase(s): {', '.join(sorted(invalid))}. Valid options: {', '.join(VALID_PHASES)}"
+            )
+
+    def include(phase: str) -> bool:
+        return phase in selected_phases
 
     policy_from_env = os.getenv("AUTO_PRD_EXECUTOR_POLICY")
     global EXECUTOR_POLICY
@@ -1106,10 +1155,23 @@ def main():
     required = ["coderabbit", "git", "gh"]
     if EXECUTOR_POLICY in ("codex-first", "codex-only"):
         required.append("codex")
-    if EXECUTOR_POLICY in ("codex-first", "claude-only"):
+    claude_required = EXECUTOR_POLICY in ("codex-first", "claude-only")
+    if claude_required:
         required.append("claude")
+
     for cmd_name in required:
-        require_cmd(cmd_name)
+        try:
+            require_cmd(cmd_name)
+        except RuntimeError as err:
+            if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
+                print("Warning: Claude CLI check failed; falling back to codex-only executor policy.")
+                print(f"Details:\n{err}")
+                EXECUTOR_POLICY = "codex-only"
+                claude_required = False
+                continue
+            raise SystemExit(f"ERROR: {err}")
+    if not claude_required and EXECUTOR_POLICY != "claude-only":
+        print(f"Using executor policy: {EXECUTOR_POLICY}")
 
     ensure_gh_alias()
 
@@ -1120,26 +1182,44 @@ def main():
 
     owner_repo = args.repo_slug or parse_owner_repo_from_git()
     base_branch = args.base
-    new_branch = args.branch or f"codex/{slugify(prd_path.stem)}-{now_stamp()}"
-
-    if not args.dry_run and workspace_has_changes(repo_root):
-        dirty_summary = "\n".join(git_status_snapshot(repo_root))
-        raise RuntimeError(
-            "Workspace has uncommitted changes; please commit, stash, or clean before running.\n"
-            f"Pending entries:\n{dirty_summary}"
-        )
-
-    if args.sync_git:
-        print("Synchronizing base branch from origin…")
-        run_cmd(["git","fetch","origin"], cwd=repo_root)
-        run_cmd(["git","checkout",base_branch], cwd=repo_root)
-        run_cmd(["git","pull","--ff-only"], cwd=repo_root)
+    needs_branch_setup = include("local") or include("pr")
+    if needs_branch_setup:
+        new_branch = args.branch or f"codex/{slugify(prd_path.stem)}-{now_stamp()}"
     else:
-        print("Skipping git fetch/pull (pass --sync-git to enable).")
-        run_cmd(["git","checkout",base_branch], cwd=repo_root)
-    _, _, rc = run_cmd(["git","checkout","-b",new_branch], cwd=repo_root, check=False)
-    if rc != 0:
-        run_cmd(["git","checkout",new_branch], cwd=repo_root)
+        # When only running review_fix, stay on the current branch unless explicitly provided.
+        new_branch = args.branch or git_current_branch(repo_root)
+
+    dirty_entries = git_status_snapshot(repo_root)
+    if dirty_entries:
+        print("Warning: workspace has uncommitted changes; continuing:")
+        for entry in dirty_entries:
+            print(f"  {entry}")
+
+    if needs_branch_setup:
+        try:
+            if args.sync_git:
+                print("Synchronizing base branch from origin…")
+                run_cmd(["git","fetch","origin"], cwd=repo_root)
+                run_cmd(["git","checkout",base_branch], cwd=repo_root)
+                run_cmd(["git","pull","--ff-only"], cwd=repo_root)
+            else:
+                print("Skipping git fetch/pull (pass --sync-git to enable).")
+                run_cmd(["git","checkout",base_branch], cwd=repo_root)
+            _, _, rc = run_cmd(["git","checkout","-b",new_branch], cwd=repo_root, check=False)
+            if rc != 0:
+                run_cmd(["git","checkout",new_branch], cwd=repo_root)
+        except subprocess.CalledProcessError as exc:
+            details = (exc.stderr or exc.output or "").strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+            if not details:
+                details = str(exc)
+            print(f"Warning: git branch setup failed ({details}); continuing on current branch.")
+            new_branch = git_current_branch(repo_root)
+    else:
+        print("Skipping branch setup (local/pr phases disabled).")
+        if args.branch:
+            run_cmd(["git","checkout",new_branch], cwd=repo_root)
+        else:
+            print(f"Continuing on current branch: {new_branch}")
 
     print_codex_diagnostics(repo_root)
     tasks_left = -1
