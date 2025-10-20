@@ -230,7 +230,6 @@ func (m model) scanPRDsCmd() tea.Cmd {
 		cwd, _ := os.Getwd()
 		_ = filepath.WalkDir(cwd, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				// optionally set a status message; keep walking
 				return nil
 			}
 			if d.IsDir() {
@@ -733,7 +732,7 @@ func (m *model) navigateSettings(direction string) {
 			}
 			// If nothing directly above, find the closest input in the row above
 			// Start from current column and search outward
-			for offset := 0; offset < settingsGridCols; offset++ {
+			for offset := 1; offset < settingsGridCols; offset++ {
 				// Check left side first
 				if col-offset >= 0 && reverseGrid[row-1][col-offset] != "" {
 					m.focusInput(reverseGrid[row-1][col-offset])
@@ -757,7 +756,7 @@ func (m *model) navigateSettings(direction string) {
 			}
 			// If nothing directly below, find the closest input in the row below
 			// Start from current column and search outward
-			for offset := 0; offset < settingsGridCols; offset++ {
+			for offset := 1; offset < settingsGridCols; offset++ {
 				// Check left side first
 				if col-offset >= 0 && reverseGrid[row+1][col-offset] != "" {
 					m.focusInput(reverseGrid[row+1][col-offset])
@@ -883,6 +882,9 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	// fresh log channel per run
+	if m.logCh != nil {
+		close(m.logCh)
+	}
 	m.logCh = make(chan runner.Line, 2048)
 	m.logBuf = nil
 	m.logs.SetContent("")
