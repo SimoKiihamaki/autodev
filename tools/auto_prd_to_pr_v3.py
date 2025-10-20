@@ -24,9 +24,10 @@ import shutil
 import subprocess
 import tempfile
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 CHECKBOX_ANY_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", flags=re.MULTILINE)
 CHECKBOX_UNCHECKED_RE = re.compile(r"^\s*[-*]\s*\[\s\]", flags=re.MULTILINE)
@@ -177,23 +178,22 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     Returns:
         Path: A writable directory path for Claude debug logs
         None: No writable directory found - caller should handle this scenario gracefully
+
+    Side effects:
+        Sets CLAUDE_CODE_DEBUG_LOGS_DIR environment variable globally when a writable
+        directory is found.
     """
-    candidates: list[Path] = []
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
-    if existing:
-        candidates.append(Path(existing).expanduser())
-    candidates.extend(
-        [
-            Path(tempfile.gettempdir()) / "claude_code_logs",
-            Path.cwd() / ".claude-debug",
-        ]
-    )
+    candidates: list[Path] = ([Path(existing).expanduser()] if existing else []) + [
+        Path(tempfile.gettempdir()) / "claude_code_logs",
+        Path.cwd() / ".claude-debug",
+    ]
     for base in candidates:
         try:
             base.mkdir(parents=True, exist_ok=True)
             if os.access(base, os.W_OK):
                 # Positive write test
-                test = base / f".writecheck_{time.time_ns()}.tmp"
+                test = base / f".writecheck_{uuid.uuid4()}.tmp"
                 with open(test, "a", encoding="utf-8"):
                     pass
                 try:
@@ -265,16 +265,7 @@ def require_cmd(name: str) -> None:
     except FileNotFoundError as exc:
         raise RuntimeError(f"'{name}' is not installed or on PATH.") from exc
     except subprocess.CalledProcessError as exc:
-        stderr = getattr(exc, "stderr", None)
-        # CalledProcessError uses 'output' for stdout in some cases, 'stdout' in others
-        stdout = getattr(exc, "output", None)
-        if stdout is None:
-            stdout = getattr(exc, "stdout", None)
-        details = (
-            (stderr or "").strip()
-            or (stdout or "").strip()
-            or f"exit code {exc.returncode}"
-        )
+        details = extract_called_process_error_details(exc)
         raise RuntimeError(f"'{name} --version' failed: {details}") from exc
 
 
@@ -597,7 +588,7 @@ EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAU
 
 def policy_runner(
     policy: str | None, i: int | None = None, phase: str = "implement"
-) -> Tuple[callable, str]:
+) -> Tuple[Callable[..., str], str]:
     """
     Decide which executor to use for a given phase/iteration.
     Returns (callable, human_label).
@@ -1428,23 +1419,29 @@ def main() -> None:
     if claude_required:
         required.append("claude")
 
-    for cmd_name in required:
-        try:
-            require_cmd(cmd_name)
-        except RuntimeError as err:
-            if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
-                print(
-                    "Warning: Claude CLI check failed; falling back to codex-only executor policy."
-                )
-                print(f"Details:\n{err}")
-                EXECUTOR_POLICY = "codex-only"
-                claude_required = False
-                # Rebuild required list after policy change to remove claude
-                required = ["coderabbit", "git", "gh"]
-                if EXECUTOR_POLICY in ("codex-first", "codex-only"):
-                    required.append("codex")
-                continue
-            raise SystemExit(f"ERROR: {err}")
+    # Check required commands, and if we fall back from codex-first to codex-only, restart the check
+    while True:
+        for cmd_name in required:
+            try:
+                require_cmd(cmd_name)
+            except RuntimeError as err:
+                if cmd_name == "claude" and EXECUTOR_POLICY == "codex-first":
+                    print(
+                        "Warning: Claude CLI check failed; falling back to codex-only executor policy."
+                    )
+                    print(f"Details:\n{err}")
+                    EXECUTOR_POLICY = "codex-only"
+                    claude_required = False
+                    # Rebuild required list after policy change to remove claude
+                    required = ["coderabbit", "git", "gh"]
+                    if EXECUTOR_POLICY in ("codex-first", "codex-only"):
+                        required.append("codex")
+                    # Restart the check with the new policy and required list
+                    break
+                raise SystemExit(f"ERROR: {err}")
+        else:
+            # All required commands found, exit the while loop
+            break
     if not claude_required and EXECUTOR_POLICY != "claude-only":
         print(f"Using executor policy: {EXECUTOR_POLICY}")
 
@@ -1466,9 +1463,11 @@ def main() -> None:
 
     dirty_entries = git_status_snapshot(repo_root)
     if dirty_entries:
-        print("Warning: workspace has uncommitted changes; continuing:")
+        logger.warning(
+            "Workspace has uncommitted changes; continuing with relaxed behavior:"
+        )
         for entry in dirty_entries:
-            print(f"  {entry}")
+            logger.warning("  %s", entry)
 
     if needs_branch_setup:
         try:
@@ -1487,8 +1486,8 @@ def main() -> None:
                 run_cmd(["git", "checkout", new_branch], cwd=repo_root)
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
-            print(
-                f"Warning: git branch setup failed ({details}); continuing on current branch."
+            logger.warning(
+                "Git branch setup failed (%s); continuing on current branch", details
             )
             new_branch = git_current_branch(repo_root)
     else:
@@ -1498,9 +1497,10 @@ def main() -> None:
                 run_cmd(["git", "checkout", new_branch], cwd=repo_root)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                print(
-                    f"Warning: failed to switch to '{new_branch}' for review_fix "
-                    f"({details}); continuing on current branch."
+                logger.warning(
+                    "Failed to switch to '%s' for review_fix (%s); continuing on current branch",
+                    new_branch,
+                    details,
                 )
                 new_branch = git_current_branch(repo_root)
         else:
