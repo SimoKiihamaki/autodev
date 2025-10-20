@@ -100,17 +100,40 @@ type model struct {
 	logCh   chan runner.Line
 }
 
+// Centralized input names for settings
+var settingsInputNames = []string{
+	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
+	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
+}
+
+// Returns a map of input name to pointer to textinput.Model for the given model instance
+func (m *model) settingsInputMap() map[string]*textinput.Model {
+	return map[string]*textinput.Model{
+		"repo":     &m.inRepo,
+		"base":     &m.inBase,
+		"branch":   &m.inBranch,
+		"codex":    &m.inCodexModel,
+		"pycmd":    &m.inPyCmd,
+		"pyscript": &m.inPyScript,
+		"policy":   &m.inPolicy,
+		"execimpl": &m.inExecImpl,
+		"execfix":  &m.inExecFix,
+		"execpr":   &m.inExecPR,
+		"execrev":  &m.inExecRev,
+		"waitmin":  &m.inWaitMin,
+		"pollsec":  &m.inPollSec,
+		"idlemin":  &m.inIdleMin,
+		"maxiters": &m.inMaxIters,
+	}
+}
+
 func New() model {
 	cfg, err := config.Load()
 	if err != nil {
-		// Keep defaults if config fails to load
-		cfg = config.Config{}
-	}
-	if cfg.PythonCommand == "" {
-		cfg.PythonCommand = "python3"
-	}
-	if cfg.ExecutorPolicy == "" {
-		cfg.ExecutorPolicy = "codex-first"
+		// Fall back to canonical defaults and surface a status.
+		cfg = config.Defaults()
+		// Optional: set a status so users know their config couldn't be loaded.
+		// (If you prefer, return a tea.Cmd statusMsg from New via Init.)
 	}
 
 	m := model{
@@ -188,7 +211,7 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.scanPRDsCmd(), tea.EnterAltScreen)
+	return m.scanPRDsCmd()
 }
 
 // ------- PRD scan -------
@@ -236,9 +259,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		// Handle terminal resize
 		w, h := msg.Width, msg.Height
-		if m.tab == tabPRD {
-			m.prdList.SetSize(w-2, h-10)
-		}
+		m.prdList.SetSize(w-2, h-10)
 		m.logs.Width, m.logs.Height = w-2, h-8
 		m.prompt.SetWidth(w - 2)
 		return m, nil
@@ -262,21 +283,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "1":
 			m.tab = tabRun
 			m.blurAllInputs()
+			return m, nil
 		case "2":
 			m.tab = tabPRD
 			m.blurAllInputs()
+			return m, nil
 		case "3":
 			m.tab = tabSettings
 			m.blurAllInputs()
+			return m, nil
 		case "4":
 			m.tab = tabEnv
 			m.blurAllInputs()
+			return m, nil
 		case "5":
 			m.tab = tabPrompt
 			m.blurAllInputs()
+			return m, nil
 		case "6":
 			m.tab = tabLogs
 			m.blurAllInputs()
+			return m, nil
 		}
 
 		switch m.tab {
@@ -347,8 +374,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					meta.Tags = append([]string{}, m.tags...)
 					meta.LastUsed = time.Now()
 					m.cfg.PRDs[m.selectedPRD] = meta
-					_ = config.Save(m.cfg)
-					m.cfgSaved = true
+					if err := config.Save(m.cfg); err != nil {
+						m.status = "Tag save failed: " + err.Error()
+					} else {
+						m.cfgSaved = true
+						m.status = "Tags saved"
+					}
 				}
 				return m, nil
 			}
@@ -369,8 +400,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "tab":
 				// Keep Tab as an alternative navigation
-				inputs := []string{"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
-					"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters"}
+				inputs := settingsInputNames
 				if m.focusedInput == "" {
 					m.focusInput(inputs[0])
 				} else {
@@ -809,40 +839,7 @@ func (m *model) toggleFocusedFlag() {
 }
 
 func (m *model) getInputField(inputName string) *textinput.Model {
-	switch inputName {
-	case "repo":
-		return &m.inRepo
-	case "base":
-		return &m.inBase
-	case "branch":
-		return &m.inBranch
-	case "codex":
-		return &m.inCodexModel
-	case "pycmd":
-		return &m.inPyCmd
-	case "pyscript":
-		return &m.inPyScript
-	case "policy":
-		return &m.inPolicy
-	case "execimpl":
-		return &m.inExecImpl
-	case "execfix":
-		return &m.inExecFix
-	case "execpr":
-		return &m.inExecPR
-	case "execrev":
-		return &m.inExecRev
-	case "waitmin":
-		return &m.inWaitMin
-	case "pollsec":
-		return &m.inPollSec
-	case "idlemin":
-		return &m.inIdleMin
-	case "maxiters":
-		return &m.inMaxIters
-	default:
-		return nil
-	}
+	return m.settingsInputMap()[inputName]
 }
 
 // ------- Run command -------
@@ -973,7 +970,7 @@ func (m model) View() string {
 			b.WriteString("Add tag: " + m.tagInput.View() + "\n")
 			b.WriteString("Press Enter to add tag, Esc to cancel\n")
 		} else {
-			b.WriteString("Keys: ↑/↓ select · Enter choose · t add-tag · backspace drop-last · s save-tags\n")
+			b.WriteString("Keys: ↑/↓ select · ←/→ prev/next · / filter · Enter choose · t add-tag · backspace drop-last · s save-tags\n")
 		}
 
 	case tabSettings:

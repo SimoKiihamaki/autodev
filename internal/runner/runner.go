@@ -173,7 +173,15 @@ func (o Options) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		_ = cmd.Process.Kill()
+		// Try graceful stop first.
+		_ = cmd.Process.Signal(os.Interrupt)
+		go func() {
+			select {
+			case <-time.After(2 * time.Second):
+				_ = cmd.Process.Kill()
+			case <-waitCh:
+			}
+		}()
 		return ctx.Err()
 	case err := <-waitCh:
 		return err
@@ -182,6 +190,9 @@ func (o Options) Run(ctx context.Context) error {
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	sc := bufio.NewScanner(r)
+	// Allow large log lines (up to 1MB); adjust as needed.
+	buf := make([]byte, 0, 64*1024)
+	sc.Buffer(buf, 1<<20)
 	for sc.Scan() {
 		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
 	}
