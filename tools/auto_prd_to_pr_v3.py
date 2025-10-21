@@ -1467,10 +1467,13 @@ Prepare and push a PR for this branch:
                 )
                 return None
             print(
-                "Failed to create PR automatically via gh CLI. "
-                "Please check authentication and rerun `gh auth login` if needed."
+                "Failed to create PR automatically via gh CLI.\n"
+                "Troubleshooting steps:\n"
+                "  1. Verify authentication: `gh auth status`\n"
+                "  2. Re-authenticate if needed: `gh auth login`\n"
+                f"  3. Manually create PR: `gh pr create --base {base_branch} --head {new_branch}`"
             )
-            print(f"gh pr create stderr:\n{stderr}\n")
+            print(f"gh pr create error details:\n{stderr}\n")
             return None
         pr_number = get_pr_number_for_head(new_branch, repo_root)
     print(f"Opened PR #{pr_number}")
@@ -1623,7 +1626,11 @@ def main() -> None:
     ap.add_argument(
         "--repo-slug", default=None, help="owner/repo; default parsed from git remote"
     )
-    ap.add_argument("--base", default="main", help="Base branch (default: main)")
+    ap.add_argument(
+        "--base",
+        default=None,
+        help="Base branch (default: repository default branch)",
+    )
     ap.add_argument(
         "--branch", default=None, help="Feature branch (default: from PRD filename)"
     )
@@ -1804,7 +1811,8 @@ def main() -> None:
     os.chdir(repo_root)
 
     owner_repo = args.repo_slug or parse_owner_repo_from_git()
-    base_branch = args.base or "main"
+    repo_default_branch = git_default_branch(repo_root)
+    base_branch = args.base or repo_default_branch or "main"
     needs_branch_setup = include("local") or include("pr")
     should_checkout_base = include("local") or args.sync_git
     if needs_branch_setup:
@@ -1882,20 +1890,28 @@ def main() -> None:
     if needs_branch_setup:
         try:
             if should_checkout_base:
-                if args.sync_git and base_branch_exists:
-                    print("Synchronizing base branch from origin…")
-                    run_cmd(["git", "fetch", "origin"], cwd=repo_root)
-                    if git_current_branch(repo_root) != base_branch:
+                current_branch = git_current_branch(repo_root)
+                if base_branch_exists:
+                    if args.sync_git:
+                        print("Synchronizing base branch from origin…")
+                        run_cmd(["git", "fetch", "origin"], cwd=repo_root)
+                    else:
+                        print("Skipping git fetch/pull (pass --sync-git to enable).")
+                    if current_branch != base_branch:
                         run_cmd(["git", "checkout", base_branch], cwd=repo_root)
-                    run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
+                        current_branch = base_branch
+                    if args.sync_git:
+                        run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
                 else:
-                    print("Skipping git fetch/pull (pass --sync-git to enable).")
-                    if base_branch_exists and git_current_branch(repo_root) != base_branch:
-                        run_cmd(["git", "checkout", base_branch], cwd=repo_root)
-                    elif not base_branch_exists:
+                    if args.sync_git:
                         print(
-                            f"Base branch '{base_branch}' unavailable; staying on '{git_current_branch(repo_root)}'."
+                            f"Cannot synchronize; base branch '{base_branch}' is unavailable."
                         )
+                    else:
+                        print("Skipping git fetch/pull (pass --sync-git to enable).")
+                    print(
+                        f"Base branch '{base_branch}' unavailable; staying on '{current_branch}'."
+                    )
             else:
                 print(
                     "PR-only mode: branching directly from current HEAD without checking out base branch."
