@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/bubbles/textinput"
+import (
+	"log"
+
+	"github.com/charmbracelet/bubbles/textinput"
+)
 
 func (m *model) blurAllInputs() {
 	m.inRepo.Blur()
@@ -63,6 +67,7 @@ func (m *model) focusInput(inputName string) {
 		m.prompt.Focus()
 	default:
 		// Unknown input: clear state so tab navigation can recover gracefully.
+		log.Printf("tui: unknown settings input focus request %q", inputName)
 		m.focusedInput = ""
 		return
 	}
@@ -107,6 +112,7 @@ func (m *model) navigateSettings(direction string) {
 
 	row, col := currentPos[0], currentPos[1]
 	if row < 0 || row >= settingsGridRows || col < 0 || col >= settingsGridCols {
+		log.Printf("tui: detected out-of-bounds settings grid position row=%d col=%d", row, col)
 		m.focusInput("repo")
 		return
 	}
