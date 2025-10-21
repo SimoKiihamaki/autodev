@@ -1468,10 +1468,11 @@ Prepare and push a PR for this branch:
                 return None
             print(
                 "Failed to create PR automatically via gh CLI.\n"
-                "Troubleshooting steps:\n"
-                "  1. Verify authentication: `gh auth status`\n"
-                "  2. Re-authenticate if needed: `gh auth login`\n"
-                f"  3. Manually create PR: `gh pr create --base {base_branch} --head {new_branch}`"
+                "Troubleshooting guidance (common causes include authentication, network hiccups, branch protection rules, required status checks, or permissions):\n"
+                "  1. Review the error details below for specifics.\n"
+                "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
+                "  3. Confirm branch protection and required status checks permit PR creation.\n"
+                f"  4. Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
             )
             print(f"gh pr create error details:\n{stderr}\n")
             return None
@@ -1812,6 +1813,7 @@ def main() -> None:
 
     owner_repo = args.repo_slug or parse_owner_repo_from_git()
     repo_default_branch = git_default_branch(repo_root)
+    # Note: base_branch existence is validated below before use.
     base_branch = args.base or repo_default_branch or "main"
     needs_branch_setup = include("local") or include("pr")
     should_checkout_base = include("local") or args.sync_git
@@ -1835,7 +1837,6 @@ def main() -> None:
             f"Base branch '{base_branch}' still not found; falling back to current branch '{current_branch}'."
         )
         base_branch = current_branch
-        base_branch_exists = git_branch_exists(repo_root, base_branch)
 
     # Make the warning phase-aware with different severity for different phases
     active_phases_with_commit_risk = selected_phases.intersection(
