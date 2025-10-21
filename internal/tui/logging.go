@@ -25,21 +25,34 @@ func (m *model) prepareRunLogFile() {
 		return
 	}
 	logDir := filepath.Join(cfgDir, "logs")
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		m.status = "Failed to create log directory: " + err.Error()
 		m.logFile = nil
 		m.logFilePath = ""
 		m.logStatus = "unavailable: " + err.Error()
 		return
 	}
+	if err := os.Chmod(logDir, 0o700); err != nil {
+		m.status = "Failed to secure log directory: " + err.Error()
+		m.logStatus = "unavailable: " + err.Error()
+		return
+	}
 	name := fmt.Sprintf("run_%s.log", time.Now().Format("20060102_150405"))
 	path := filepath.Join(logDir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		m.status = "Failed to open log file: " + err.Error()
 		m.logFile = nil
 		m.logFilePath = ""
 		m.logStatus = "unavailable: " + err.Error()
+		return
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		m.status = "Failed to secure log file: " + err.Error()
+		m.logStatus = "unavailable: " + err.Error()
+		_ = f.Close()
+		m.logFile = nil
+		m.logFilePath = ""
 		return
 	}
 	m.logFile = f

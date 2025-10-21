@@ -61,10 +61,14 @@ func detectPythonScript(configured, repo string) (resolved string, reason string
 		if abs == "" {
 			continue
 		}
-		if _, ok := seen[abs]; ok {
+		key := abs
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[abs] = struct{}{}
+		seen[key] = struct{}{}
 		if isFile(abs) {
 			changed := !pathsEqual(abs, configuredAbs)
 			return abs, cand.reason, changed, true
@@ -117,11 +121,23 @@ func abbreviatePath(path string) string {
 	home, err := os.UserHomeDir()
 	if err == nil {
 		home = canonicalize(home)
-		if strings.HasPrefix(path, home+string(filepath.Separator)) {
-			return "~" + strings.TrimPrefix(path, home)
-		}
-		if path == home {
-			return "~"
+		sep := string(filepath.Separator)
+		if runtime.GOOS == "windows" {
+			pathLower := strings.ToLower(path)
+			homeLower := strings.ToLower(home)
+			if strings.HasPrefix(pathLower, homeLower+sep) {
+				return "~" + path[len(home):]
+			}
+			if strings.EqualFold(path, home) {
+				return "~"
+			}
+		} else {
+			if strings.HasPrefix(path, home+sep) {
+				return "~" + strings.TrimPrefix(path, home)
+			}
+			if path == home {
+				return "~"
+			}
 		}
 	}
 	return path

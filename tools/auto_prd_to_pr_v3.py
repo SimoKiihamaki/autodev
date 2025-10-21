@@ -82,11 +82,17 @@ ORIGINAL_PRINT = builtins.print
 PRINT_HOOK_INSTALLED = False
 
 
+VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
 def resolve_log_level(level_name: str) -> int:
     level_value = getattr(logging, level_name.upper(), None)
     if isinstance(level_value, int):
         return level_value
-    raise SystemExit(f"Invalid log level: {level_name}")
+    valid_levels = ", ".join(VALID_LOG_LEVELS)
+    raise SystemExit(
+        f"Invalid log level: {level_name}. Valid levels are: {valid_levels}"
+    )
 
 
 def setup_file_logging(log_path: Path, level_name: str) -> None:
@@ -94,6 +100,10 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     numeric_level = resolve_log_level(level_name)
     USER_LOG_LEVEL = numeric_level
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path.parent.chmod(0o700)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path.parent)
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
     root_logger.setLevel(logging.DEBUG)
@@ -101,6 +111,10 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root_logger.addHandler(file_handler)
+    try:
+        log_path.chmod(0o600)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path)
     logger.setLevel(numeric_level)
     CURRENT_LOG_PATH = log_path
     install_print_logger()
@@ -128,7 +142,11 @@ def install_print_logger() -> None:
     def tee_print(*args, **kwargs):
         message = format_print_message(*args, **kwargs)
         if message:
-            target_level = logging.WARNING if kwargs.get("file") is sys.stderr else logging.INFO
+            target_level = (
+                logging.WARNING
+                if kwargs.get("file") == sys.stderr
+                else logging.INFO
+            )
             print_logger.log(target_level, message)
         ORIGINAL_PRINT(*args, **kwargs)
 
@@ -346,8 +364,10 @@ def run_cmd(
         logger.debug("Command cwd: %s", cwd)
     if timeout is not None:
         logger.debug("Command timeout: %ss", timeout)
+    stdin_bytes: Optional[bytes] = None
     if stdin is not None:
-        logger.debug("Command stdin bytes: %s", len(stdin.encode("utf-8")))
+        stdin_bytes = stdin.encode("utf-8")
+        logger.debug("Command stdin bytes: %s", len(stdin_bytes))
     start_time = time.monotonic()
     try:
         proc = subprocess.run(
@@ -355,10 +375,10 @@ def run_cmd(
             cwd=str(cwd) if cwd else None,
             check=False,
             capture_output=capture,
-            text=True,
+            text=False,
             timeout=timeout,
             env=env,
-            input=stdin,
+            input=stdin_bytes,
         )
     except Exception:
         duration = time.monotonic() - start_time
@@ -367,8 +387,10 @@ def run_cmd(
         )
         raise
     duration = time.monotonic() - start_time
-    stdout_text = proc.stdout or ""
-    stderr_text = proc.stderr or ""
+    stdout_bytes = proc.stdout or b""
+    stderr_bytes = proc.stderr or b""
+    stdout_text = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+    stderr_text = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
     if capture:
         if stdout_text:
             logger.debug("Command stdout: %s", truncate_for_log(stdout_text))
@@ -390,7 +412,7 @@ def run_cmd(
         )
     if check and proc.returncode != 0:
         raise subprocess.CalledProcessError(
-            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+            proc.returncode, cmd, output=stdout_text, stderr=stderr_text
         )
     return stdout_text, stderr_text, proc.returncode
 
@@ -1746,7 +1768,7 @@ def main() -> None:
     ap.add_argument(
         "--log-level",
         default="INFO",
-        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        choices=VALID_LOG_LEVELS,
         help="Log level for command diagnostics (default: INFO)",
     )
     ap.add_argument(
@@ -1830,7 +1852,20 @@ def main() -> None:
         if not log_path.is_absolute():
             log_path = (repo_root / log_path).resolve()
     else:
-        log_dir = repo_root / DEFAULT_LOG_DIR_NAME
+        xdg_config = os.getenv("XDG_CONFIG_HOME", None)
+        if xdg_config:
+            base_config = Path(xdg_config).expanduser()
+        else:
+            base_config = Path.home() / ".config"
+        preferred_dir = base_config / "aprd" / DEFAULT_LOG_DIR_NAME
+        try:
+            preferred_dir.mkdir(parents=True, exist_ok=True)
+            if not os.access(preferred_dir, os.W_OK | os.X_OK):
+                raise PermissionError("log directory not writable")
+            log_dir = preferred_dir
+        except Exception:
+            log_dir = repo_root / DEFAULT_LOG_DIR_NAME
+            log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"auto_prd_{now_stamp()}.log"
 
     setup_file_logging(log_path, args.log_level)

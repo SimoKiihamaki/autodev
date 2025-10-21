@@ -12,15 +12,27 @@ func setupProcessGroup(cmd *exec.Cmd) {
 }
 
 func interruptProcess(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
+	if cmd.Process == nil || (cmd.ProcessState != nil && cmd.ProcessState.Exited()) {
 		return nil
 	}
-	return syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+		if err == syscall.ESRCH || err == syscall.EINVAL {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func forceKillProcess(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
+	if cmd.Process == nil || (cmd.ProcessState != nil && cmd.ProcessState.Exited()) {
 		return nil
 	}
-	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+		if err == syscall.ESRCH || err == syscall.EINVAL {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

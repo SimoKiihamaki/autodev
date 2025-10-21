@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -43,6 +44,7 @@ type Phases struct {
 
 type Config struct {
 	ExecutorPolicy string             `yaml:"executor_policy"`
+	LogLevel       string             `yaml:"log_level"`
 	PythonCommand  string             `yaml:"python_command"`
 	PythonScript   string             `yaml:"python_script"`
 	RepoPath       string             `yaml:"repo_path"`
@@ -60,6 +62,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		ExecutorPolicy: "codex-first",
+		LogLevel:       "INFO",
 		PythonCommand:  "python3",
 		PythonScript:   "tools/auto_prd_to_pr_v3.py",
 		RepoPath:       "",
@@ -126,6 +129,9 @@ func Load() (Config, error) {
 	var c Config
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return Config{}, err
+	}
+	if strings.TrimSpace(c.LogLevel) == "" {
+		c.LogLevel = "INFO"
 	}
 	return c, nil
 }

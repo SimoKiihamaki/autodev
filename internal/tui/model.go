@@ -35,6 +35,8 @@ const (
 	tabHelp
 )
 
+const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
+
 var tabNames = []string{"Run", "PRD", "Settings", "Env", "Prompt", "Logs", "Help"}
 
 type item struct {
@@ -168,6 +170,11 @@ func New() model {
 	if err != nil {
 		cfg = config.Defaults()
 		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
+	}
+	if lvl := strings.TrimSpace(cfg.LogLevel); lvl == "" {
+		cfg.LogLevel = "INFO"
+	} else {
+		cfg.LogLevel = strings.ToUpper(lvl)
 	}
 
 	m := model{
@@ -765,6 +772,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.errMsg = msg.err.Error()
 		m.status = "Error."
+		m.closeLogFile("failed")
+		m.cancel = nil
+		m.runResult = nil
+		m.logCh = nil
+		m.cancelling = false
 		return m, nil
 	}
 	return m, nil
@@ -1040,6 +1052,11 @@ func (m *model) startRunCmd() tea.Cmd {
 	// hydrate cfg from inputs
 	m.hydrateConfigFromInputs()
 	m.resolvePythonScript(false)
+	if lvl := strings.TrimSpace(m.cfg.LogLevel); lvl == "" {
+		m.cfg.LogLevel = "INFO"
+	} else {
+		m.cfg.LogLevel = strings.ToUpper(lvl)
+	}
 	m.cancelling = false
 
 	if m.selectedPRD == "" {
@@ -1074,6 +1091,8 @@ func (m *model) startRunCmd() tea.Cmd {
 			PRDPath:       m.selectedPRD,
 			InitialPrompt: m.prompt.Value(),
 			Logs:          logCh,
+			LogFilePath:   m.logFilePath,
+			LogLevel:      m.cfg.LogLevel,
 		}
 		err := o.Run(ctx)
 		if err != nil && err != context.Canceled {
@@ -1105,9 +1124,15 @@ func (m *model) preflightChecks() error {
 	scriptPath := m.cfg.PythonScript
 	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
 		if err != nil {
-			return fmt.Errorf("Python script not found: %s", abbreviatePath(scriptPath))
+			return fmt.Errorf(
+				"Python script not found: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+				abbreviatePath(scriptPath),
+			)
 		}
-		return fmt.Errorf("Python script path points to directory: %s", abbreviatePath(scriptPath))
+		return fmt.Errorf(
+			"Python script path points to directory: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+			abbreviatePath(scriptPath),
+		)
 	}
 	if _, err := os.Stat(m.selectedPRD); err != nil {
 		return fmt.Errorf("Selected PRD missing: %w", err)
@@ -1233,8 +1258,6 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 		style = logSuccessStyle
 	case strings.HasPrefix(plain, "→"):
 		style = logActionStyle
-	case strings.HasPrefix(lower, "process finished"):
-		style = logSystemStyle
 	case strings.Contains(lower, "process finished"):
 		style = logSystemStyle
 	case strings.Contains(lower, "review loop"):
@@ -1454,9 +1477,10 @@ func (m model) View() string {
 			}
 
 			if m.running {
-				b.WriteString(helpStyle.Render("Ctrl+C cancel · ↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow\n"))
+				b.WriteString(helpStyle.Render(fmt.Sprintf("Ctrl+C cancel · %s\n", runScrollHelp)))
 			} else {
-				b.WriteString(helpStyle.Render("Enter start · ↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow\n"))
+				b.WriteString(helpStyle.Render("Press Enter to start a new run\n"))
+				b.WriteString(helpStyle.Render(fmt.Sprintf("Enter start · %s\n", runScrollHelp)))
 			}
 		} else {
 			b.WriteString(sectionTitle.Render("Run") + "\n")

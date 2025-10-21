@@ -34,6 +34,8 @@ type Options struct {
 	InitialPrompt string
 	ExtraEnv      []string
 	Logs          chan Line
+	LogFilePath   string
+	LogLevel      string
 }
 
 func trySend(logs chan Line, line Line) bool {
@@ -71,7 +73,7 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	return tmpPath, cleanup, nil
 }
 
-func buildArgs(c config.Config, prd string) []string {
+func buildArgs(c config.Config, prd string, logFile string, logLevel string) []string {
 	args := []string{c.PythonScript, "--prd", prd}
 	if c.RepoPath != "" {
 		args = append(args, "--repo", c.RepoPath)
@@ -134,6 +136,20 @@ func buildArgs(c config.Config, prd string) []string {
 		args = append(args, "--allow-unsafe-execution")
 	}
 
+	if logFile != "" {
+		args = append(args, "--log-file", logFile)
+	}
+
+	level := strings.TrimSpace(logLevel)
+	if level == "" {
+		level = strings.TrimSpace(c.LogLevel)
+	}
+	if level == "" {
+		level = "INFO"
+	}
+	level = strings.ToUpper(level)
+	args = append(args, "--log-level", level)
+
 	return args
 }
 
@@ -145,7 +161,7 @@ func (o Options) Run(ctx context.Context) error {
 	}
 	defer cleanup()
 
-	args := buildArgs(o.Config, tmpPath)
+	args := buildArgs(o.Config, tmpPath, o.LogFilePath, o.LogLevel)
 
 	// Build env
 	env := os.Environ()
@@ -249,7 +265,7 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			sendLine(logs, Line{Time: time.Now(), Text: "log backlog full; dropping output", Err: true})
+			sendLine(logs, Line{Time: time.Now(), Text: "log backlog full; dropping output. Consider increasing the buffer or slowing downstream consumers.", Err: true})
 		}
 	}
 	if err := sc.Err(); err != nil {
