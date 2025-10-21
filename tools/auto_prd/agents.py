@@ -103,6 +103,9 @@ def claude_exec(
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
 ) -> str:
+    """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
+    if not (yolo or allow_unsafe_execution):
+        raise SystemExit("Claude executor requires allow_unsafe_execution=True to bypass permissions.")
     os.environ.setdefault("CI", "1")
     verify_unsafe_execution_ready()
     args: list[str] = ["claude", "--dangerously-skip-permissions"]

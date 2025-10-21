@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -102,12 +103,14 @@ func (m *model) consumeRunSummary(rawLine string) {
 			m.runIterCurrent = cur
 		} else {
 			m.runIterCurrent = 0
+			log.Printf("tui: unable to parse iteration index %q: %v", match[1], err)
 		}
 		if match[2] != "" {
 			if total, err := strconv.Atoi(match[2]); err == nil {
 				m.runIterTotal = total
 			} else {
 				m.runIterTotal = 0
+				log.Printf("tui: unable to parse iteration total %q: %v", match[2], err)
 			}
 		} else {
 			m.runIterTotal = 0

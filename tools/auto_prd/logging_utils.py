@@ -96,7 +96,7 @@ def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
     if len(text) <= limit:
         return text
     omitted = len(text) - limit
-    return f"{text[:limit]}…(truncated {omitted} chars)…"
+    return f"{text[:limit]}... (truncated {omitted} chars)"
 
 
 def decode_output(data: bytes) -> str:

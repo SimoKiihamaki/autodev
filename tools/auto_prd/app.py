@@ -6,12 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from .command import ensure_claude_debug_dir, register_safe_cwd, run_cmd
-from .constants import (
-    DEFAULT_LOG_DIR_NAME,
-    PHASES_WITH_COMMIT_RISK,
-    SAFE_ENV_VAR,
-    VALID_PHASES,
-)
+from .constants import DEFAULT_LOG_DIR_NAME, PHASES_WITH_COMMIT_RISK, VALID_PHASES
 from .gh_ops import get_pr_number_for_head, post_final_comment
 from .git_ops import (
     ensure_gh_alias,
@@ -31,8 +26,7 @@ from .git_ops import (
     print_codex_diagnostics,
 )
 from .local_loop import orchestrate_local_loop
-from .logging_utils import CURRENT_LOG_PATH, ORIGINAL_PRINT, logger, setup_file_logging
-from .policy import set_executor_policy
+from .logging_utils import logger, setup_file_logging
 from .executor import resolve_executor_policy
 from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop

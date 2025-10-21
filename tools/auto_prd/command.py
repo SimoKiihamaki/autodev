@@ -49,6 +49,7 @@ def sanitize_args(args: Sequence[str]) -> list[str]:
             skip_next = False
             continue
 
+        # Treat shell scripts passed via -c/-lc as sensitive because they can embed secrets.
         if arg in ("-c", "-lc") and idx + 1 < len(args):
             sanitized.append(arg)
             sanitized.append("<REDACTED_SCRIPT>")

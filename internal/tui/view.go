@@ -251,10 +251,10 @@ func renderLogsView(b *strings.Builder, m model) {
 
 func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Help") + "\n")
-	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · s save · r rescan\n")
-	b.WriteString("• Settings: ↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · s save\n")
-	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish\n")
-	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle · s save\n")
+	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · Ctrl+S save · r rescan\n")
+	b.WriteString("• Settings: Tab cycle · Alt+↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · Ctrl+S save\n")
+	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
+	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
 	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom · files saved in ~/.config/aprd/logs\n")
 	b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
 	b.WriteString(fmt.Sprintf("\nGlobal: 1-%d tabs · ? help · q quit · Ctrl+C force quit\n", len(tabNames)))

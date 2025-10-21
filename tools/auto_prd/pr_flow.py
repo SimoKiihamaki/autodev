@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .gh_ops import branch_has_commits_since, get_pr_number_for_head
+from .gh_ops import get_pr_number_for_head
 from .git_ops import git_push_branch
 from .logging_utils import logger
 from .policy import EXECUTOR_POLICY, policy_runner
@@ -61,11 +61,33 @@ Prepare and push a PR for this branch:
                 git_push_branch(repo_root, new_branch)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to push branch '{new_branch}': {details}") from exc
+                raise SystemExit(
+                    f"Failed to push branch '{new_branch}': {details}\n"
+                    "Troubleshooting guidance (common causes include authentication, network hiccups, branch protection rules, required status checks, or permissions):\n"
+                    "  1. Review the error details above for specifics.\n"
+                    "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
+                    "  3. Confirm branch protection and required status checks permit pushing.\n"
+                    f"  4. Manually push the branch if necessary: `git push -u origin {new_branch}`"
+                ) from exc
 
     pr_number = get_pr_number_for_head(new_branch, repo_root)
     if pr_number is None:
-        if not branch_has_commits_since(base_branch, repo_root):
+        out, _, _ = run_cmd(
+            [
+                "git",
+                "rev-list",
+                "--count",
+                f"{base_branch}..{new_branch}",
+            ],
+            cwd=repo_root,
+        )
+        has_commits = False
+        out_stripped = (out or "0").strip()
+        try:
+            has_commits = int(out_stripped or "0") > 0
+        except ValueError:
+            logger.warning("Could not parse commit count for %s..%s: %r", base_branch, new_branch, out_stripped)
+        if not has_commits:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
         run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
@@ -114,6 +136,9 @@ Prepare and push a PR for this branch:
             return None
         if pr_number is None:
             pr_number = get_pr_number_for_head(new_branch, repo_root)
-    print(f"Opened PR #{pr_number}")
+    if pr_number is not None:
+        print(f"Opened PR #{pr_number}")
+    else:
+        print("No PR opened.")
 
     return pr_number

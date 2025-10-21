@@ -13,6 +13,29 @@ from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
 
 
+GATHER_THREAD_COMMENTS_QUERY = """
+query($threadId:ID!,$cursor:String){
+  node(id:$threadId){
+    ... on PullRequestReviewThread{
+      comments(first:20,after:$cursor){
+        nodes{
+          author{login}
+          body
+          url
+          commit{oid}
+          databaseId
+        }
+        pageInfo{
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+"""
+
+
 def gh_graphql(query: str, variables: dict) -> dict:
     payload = json.dumps({"query": query, "variables": variables})
 
@@ -77,10 +100,7 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
     page_info = comments_block.get("pageInfo") or {}
     cursor = page_info.get("endCursor")
     while page_info.get("hasNextPage"):
-        data = gh_graphql(
-            "query($threadId:ID!,$cursor:String){node(id:$threadId){... on PullRequestReviewThread{comments(first:20,after:$cursor){nodes{author{login}body url commit{oid} databaseId}} pageInfo{hasNextPage endCursor}}}}",
-            {"threadId": thread_id, "cursor": cursor},
-        )
+        data = gh_graphql(GATHER_THREAD_COMMENTS_QUERY, {"threadId": thread_id, "cursor": cursor})
         comments = ((data.get("data") or {}).get("node") or {}).get("comments") or {}
         extra_nodes = comments.get("nodes") or []
         results.extend(extra_nodes)
@@ -210,7 +230,7 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
         if isinstance(comment_id, int) and comment_id not in processed_ids:
             author = (item.get("author") or "").strip().lower()
             mention = f"@{author}" if author else "@CodeRabbitAI"
-            reply_body = f"Fix applied in the latest push—thanks for the review! {mention}"
+            reply_body = f"Fix applied in the latest push — thanks for the review! {mention}"
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
                 processed_ids.add(comment_id)

@@ -89,7 +89,11 @@ func (m *model) preflightChecks() error {
 	if strings.TrimSpace(m.cfg.PythonCommand) == "" {
 		return errors.New("Set Python command in Settings")
 	}
-	if _, err := exec.LookPath(m.cfg.PythonCommand); err != nil {
+	exeParts := strings.Fields(m.cfg.PythonCommand)
+	if len(exeParts) == 0 {
+		return errors.New("Set Python command in Settings")
+	}
+	if _, err := exec.LookPath(exeParts[0]); err != nil {
 		return fmt.Errorf("Python command not found on PATH: %w", err)
 	}
 	if strings.TrimSpace(m.cfg.PythonScript) == "" {

@@ -26,7 +26,10 @@ CODEX_READONLY_ERROR_MSG = (
 
 ZSH_PATH = shutil.which("zsh")
 if not ZSH_PATH:
-    raise RuntimeError("'zsh' binary not found on PATH; install zsh or update PATH to continue.")
+    raise RuntimeError(
+        "'zsh' binary not found on PATH; zsh is required for the shell environment policy. "
+        "Install zsh or update your PATH to include it before continuing."
+    )
 COMMAND_ALLOWLIST = {
     "codex",
     "coderabbit",

@@ -22,27 +22,37 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "shift+tab":
 		m.navigateSettings("up")
 		return *m, nil
-	case "left":
+	case "up":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+	case "down":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+	case "alt+left":
 		if m.focusedInput != "" {
 			m.navigateSettings("left")
 			return *m, nil
 		}
-	case "right":
+	case "alt+right":
 		if m.focusedInput != "" {
 			m.navigateSettings("right")
 			return *m, nil
 		}
-	case "up":
+	case "alt+up":
 		if m.focusedInput != "" {
 			m.navigateSettings("up")
 			return *m, nil
 		}
-	case "down":
+	case "alt+down":
 		if m.focusedInput != "" {
 			m.navigateSettings("down")
 			return *m, nil
 		}
-	case "s":
+	case "ctrl+s":
 		return *m, m.saveConfig()
 	}
 
@@ -80,12 +90,15 @@ func (m *model) handleEnvTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return *m, nil
 	case "enter":
 		if m.focusedFlag == "" {
+			if len(envFlagNames) == 0 {
+				return *m, nil
+			}
 			m.focusFlag(envFlagNames[0])
 		} else {
 			m.toggleFocusedFlag()
 		}
 		return *m, nil
-	case "s":
+	case "ctrl+s":
 		return *m, m.saveConfig()
 	default:
 		flagMap := map[string]string{
@@ -118,7 +131,7 @@ func (m *model) handlePromptTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			m.prompt.Blur()
 			return *m, nil
 		}
-	case "s":
+	case "ctrl+s":
 		return *m, m.saveConfig()
 	}
 	var cmd tea.Cmd
