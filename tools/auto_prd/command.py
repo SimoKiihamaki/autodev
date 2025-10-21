@@ -13,6 +13,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Optional
 
 from .constants import (
@@ -40,12 +41,18 @@ SENSITIVE_KEYS = {
 }
 
 
-def sanitize_args(args: list[str]) -> list[str]:
+def sanitize_args(args: Sequence[str]) -> list[str]:
     sanitized: list[str] = []
     skip_next = False
     for idx, arg in enumerate(args):
         if skip_next:
             skip_next = False
+            continue
+
+        if arg in ("-c", "-lc") and idx + 1 < len(args):
+            sanitized.append(arg)
+            sanitized.append("<REDACTED_SCRIPT>")
+            skip_next = True
             continue
 
         match = REDACT_EQ_PATTERN.match(arg)
@@ -83,15 +90,21 @@ def is_within(path: Path, root: Path) -> bool:
     return path_resolved == root_resolved or root_resolved in path_resolved.parents
 
 
-def validate_command_args(cmd: list[str]) -> None:
-    if not isinstance(cmd, list) or not cmd:
+def validate_command_args(cmd: Sequence[str]) -> None:
+    if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
         raise ValueError("cmd must be a non-empty list of strings")
     for arg in cmd:
         if not isinstance(arg, str):
-            raise TypeError("command arguments must be strings")
+            raise ValueError("command arguments must be strings")
     binary = cmd[0]
-    if binary not in COMMAND_ALLOWLIST:
-        raise SystemExit(f"Command not allowed: {binary}")
+    if binary in COMMAND_ALLOWLIST:
+        return
+    binary_path = Path(binary)
+    if binary_path.is_absolute() and binary_path.exists():
+        for root in SAFE_CWD_ROOTS:
+            if is_within(binary_path, root):
+                return
+    raise SystemExit(f"Command not allowed: {binary}")
 
 
 def validate_cwd(cwd: Optional[Path]) -> None:
@@ -118,9 +131,11 @@ def validate_stdin(stdin: Optional[str]) -> None:
 def validate_extra_env(extra_env: Optional[dict]) -> None:
     if not extra_env:
         return
-    for key in extra_env:
-        if not key.startswith("AUTO_PRD_"):
-            raise SystemExit(f"Illegal environment override: {key}")
+    for key, value in extra_env.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise SystemExit(f"Environment variable keys and values must be strings: {key}={value!r}")
+        if "\n" in key or "\n" in value:
+            raise SystemExit(f"Environment variable keys and values must not contain newlines: {key}={value!r}")
 
 
 def verify_unsafe_execution_ready() -> None:
@@ -273,6 +288,7 @@ def run_sh(
     timeout: Optional[int] = None,
     extra_env: Optional[dict] = None,
 ) -> tuple[str, str, int]:
+    verify_unsafe_execution_ready()
     return run_cmd(
         [ZSH_PATH, "-lc", script],
         cwd=cwd,
@@ -281,4 +297,3 @@ def run_sh(
         timeout=timeout,
         extra_env=extra_env,
     )
-

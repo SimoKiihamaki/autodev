@@ -25,6 +25,7 @@ LOCAL_QA_REMINDER = "Remember the QA SOP from your first pass: `make ci` must be
 
 NO_FINDINGS_STREAK_LIMIT = 2
 MAX_EMPTY_CHANGE_STREAK = 3
+NO_CHANGES_ERROR = "Codex iterations produced no file changes or commits after multiple passes."
 
 
 def orchestrate_local_loop(
@@ -161,9 +162,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                 empty_change_streak += 1
                 print(f"Empty-change streak: {empty_change_streak}/{MAX_EMPTY_CHANGE_STREAK}")
                 if empty_change_streak >= MAX_EMPTY_CHANGE_STREAK:
-                    raise RuntimeError(
-                        "Codex iterations produced no file changes or commits after multiple passes."
-                    )
+                    raise RuntimeError(NO_CHANGES_ERROR)
                 continue
         else:
             empty_change_streak = 0

@@ -5,14 +5,21 @@ from __future__ import annotations
 import argparse
 
 from .app import run
-from .constants import SAFE_ENV_VAR, ACCEPTED_LOG_LEVELS
+from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
 from .logging_utils import CURRENT_LOG_PATH, ORIGINAL_PRINT, logger
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Autonomous PRD→PR loop with Codex (YOLO), CodeRabbit & Copilot"
+        description="Autonomous PRD→PR loop with Codex (YOLO), CodeRabbit & Copilot",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+
+    def non_negative(value: str) -> int:
+        intval = int(value)
+        if intval < 0:
+            raise argparse.ArgumentTypeError("must be >= 0")
+        return intval
     parser.add_argument("--prd", required=True, help="Path to PRD/task .md file")
     parser.add_argument("--repo", default=None, help="Path to repo root (default: current git root)")
     parser.add_argument("--repo-slug", default=None, help="owner/repo; default parsed from git remote")
@@ -29,25 +36,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--base", default=None, help="Base branch (default: repository default branch)")
     parser.add_argument("--branch", default=None, help="Feature branch (default: from PRD filename)")
-    parser.add_argument("--codex-model", default="gpt-5-codex", help="Codex model to use (default: gpt-5-codex)")
-    parser.add_argument("--wait-minutes", type=int, default=0, help="Initial wait for PR bot reviews (default: 0)")
+    parser.add_argument("--codex-model", default="gpt-5-codex", help="Codex model to use")
+    parser.add_argument("--wait-minutes", type=non_negative, default=0, help="Initial wait for PR bot reviews")
     parser.add_argument(
         "--review-poll-seconds",
-        type=int,
+        type=non_negative,
         default=120,
-        help="Polling interval when watching for reviews (default: 120)",
+        help="Polling interval when watching for reviews",
     )
     parser.add_argument(
         "--idle-grace-minutes",
-        type=int,
+        type=non_negative,
         default=10,
-        help="Stop after this many minutes with no unresolved feedback (default: 10)",
+        help="Stop after this many minutes with no unresolved feedback",
     )
     parser.add_argument(
         "--max-local-iters",
-        type=int,
+        type=non_negative,
         default=50,
-        help="Safety cap for local Codex<->CodeRabbit passes (default: 50)",
+        help="Safety cap for local Codex<->CodeRabbit passes",
     )
     parser.add_argument(
         "--infinite-reviews",

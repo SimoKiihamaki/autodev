@@ -5,15 +5,12 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Set
 
 from .command import run_cmd
 from .constants import REVIEW_BOT_LOGINS
 from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
-
-
-PROCESSED_REVIEW_COMMENT_IDS: set[int] = set()
 
 
 def gh_graphql(query: str, variables: dict) -> dict:
@@ -42,7 +39,13 @@ def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
         cwd=repo_root,
     )
     stripped = out.strip()
-    return int(stripped) if stripped else None
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except ValueError:
+        logger.warning("Unexpected PR number format from gh pr list: %r", stripped)
+        return None
 
 
 def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
@@ -50,14 +53,20 @@ def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
     try:
         return int(out.strip() or "0") > 0
     except ValueError:
+        logger.warning("Could not parse commit count for %s..HEAD: %r", base_branch, out.strip())
         return False
 
 
 def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path) -> None:
     try:
         run_cmd(["gh", "save-me-copilot", owner_repo, str(pr_number)], cwd=repo_root)
-    except subprocess.CalledProcessError:
-        pass
+    except subprocess.CalledProcessError as exc:
+        logger.debug(
+            "Failed to trigger Copilot for %s PR #%s: %s",
+            owner_repo,
+            pr_number,
+            extract_called_process_error_details(exc),
+        )
 
 
 def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> list[dict]:
@@ -81,7 +90,12 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
 
 
 def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optional[str] = None) -> list[dict]:
+    owner_repo = owner_repo.strip()
+    if "/" not in owner_repo:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
     owner, name = owner_repo.split("/", 1)
+    if not owner or not name:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
     threads: list[dict] = []
     cursor: Optional[str] = None
     query = """
@@ -188,17 +202,19 @@ def resolve_review_thread(thread_id: str) -> None:
     call_with_backoff(action)
 
 
-def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict]) -> None:
+def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> None:
     owner, name = owner_repo.split("/", 1)
     for item in items:
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
-        if isinstance(comment_id, int) and comment_id not in PROCESSED_REVIEW_COMMENT_IDS:
-            reply_body = "Fix applied in the latest push—thanks for the review! @CodeRabbitAI @coderabbit @copilot"
+        if isinstance(comment_id, int) and comment_id not in processed_ids:
+            author = (item.get("author") or "").strip().lower()
+            mention = f"@{author}" if author else "@CodeRabbitAI"
+            reply_body = f"Fix applied in the latest push—thanks for the review! {mention}"
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
-                PROCESSED_REVIEW_COMMENT_IDS.add(comment_id)
-            except subprocess.CalledProcessError as exc:
+                processed_ids.add(comment_id)
+            except Exception as exc:  # pragma: no cover - best effort
                 logger.warning("Failed to reply to review comment %s: %s", comment_id, exc)
         if thread_id and not item.get("is_resolved"):
             try:
@@ -223,17 +239,24 @@ def post_final_comment(pr_number: Optional[int], owner_repo: str, prd_path: Path
         "Thanks for the review, @CodeRabbitAI and @copilot-pull-request-reviewer[bot]! 🙏"
     )
     payload = json.dumps({"body": final_msg})
-    run_cmd(
-        [
-            "gh",
-            "api",
-            "-X",
-            "POST",
-            f"/repos/{owner_repo}/issues/{pr_number}/comments",
-            "--input",
-            "-",
-        ],
-        cwd=repo_root,
-        stdin=payload,
-    )
-    print(f"Posted final comment on PR #{pr_number}. Done.")
+    try:
+        run_cmd(
+            [
+                "gh",
+                "api",
+                "-X",
+                "POST",
+                f"/repos/{owner_repo}/issues/{pr_number}/comments",
+                "--input",
+                "-",
+            ],
+            cwd=repo_root,
+            stdin=payload,
+        )
+        print(f"Posted final comment on PR #{pr_number}. Done.")
+    except subprocess.CalledProcessError as exc:
+        logger.warning(
+            "Failed to post final PR comment for #%s: %s",
+            pr_number,
+            extract_called_process_error_details(exc),
+        )

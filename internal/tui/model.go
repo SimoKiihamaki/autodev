@@ -31,14 +31,13 @@ const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f t
 var tabNames = []string{"Run", "PRD", "Settings", "Env", "Prompt", "Logs", "Help"}
 
 type item struct {
-	title string
-	desc  string
-	path  string
+	title, desc string
+	path        string
 }
 
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string { return i.title + " " + i.path }
+func (i item) FilterValue() string { return i.title + " " + i.desc }
 
 type model struct {
 	tab    tab

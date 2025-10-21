@@ -41,7 +41,7 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         log_path.parent.chmod(0o700)
-    except Exception:
+    except OSError:
         logger.debug("Unable to enforce permissions on %s", log_path.parent)
 
     root_logger = logging.getLogger()
@@ -54,7 +54,7 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     root_logger.addHandler(file_handler)
     try:
         log_path.chmod(0o600)
-    except Exception:
+    except OSError:
         logger.debug("Unable to enforce permissions on %s", log_path)
 
     logger.setLevel(numeric_level)
@@ -95,9 +95,8 @@ def install_print_logger() -> None:
 def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
     if len(text) <= limit:
         return text
-    head = limit // 2
-    tail = limit - head
-    return f"{text[:head]}\n…(truncated {len(text) - limit} chars)…\n{text[-tail:]}"
+    omitted = len(text) - limit
+    return f"{text[:limit]}…(truncated {omitted} chars)…"
 
 
 def decode_output(data: bytes) -> str:

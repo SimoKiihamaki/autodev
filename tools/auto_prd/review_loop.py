@@ -6,12 +6,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .gh_ops import (
-    PROCESSED_REVIEW_COMMENT_IDS,
-    acknowledge_review_items,
-    get_unresolved_feedback,
-    trigger_copilot,
-)
+from .gh_ops import acknowledge_review_items, get_unresolved_feedback, trigger_copilot
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import EXECUTOR_POLICY, policy_runner
@@ -48,13 +43,15 @@ def review_fix_loop(
     last_activity = time.time()
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
+    processed_comment_ids: set[int] = set()
+
     while True:
         current_head = git_head_sha(repo_root)
         unresolved_raw = get_unresolved_feedback(owner_repo, pr_number, current_head)
         unresolved = []
         for item in unresolved_raw:
             comment_id = item.get("comment_id")
-            if isinstance(comment_id, int) and comment_id in PROCESSED_REVIEW_COMMENT_IDS:
+            if isinstance(comment_id, int) and comment_id in processed_comment_ids:
                 continue
             unresolved.append(item)
         if unresolved:
@@ -81,7 +78,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 allow_unsafe_execution=allow_unsafe_execution,
             )
             trigger_copilot(owner_repo, pr_number, repo_root)
-            acknowledge_review_items(owner_repo, pr_number, unresolved)
+            acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
             last_activity = time.time()
             time.sleep(poll)
             continue

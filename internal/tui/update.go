@@ -8,6 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const maxLogLines = 2000
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -46,8 +48,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		display, plain := m.formatLogLine(typed.line)
 		m.persistLogLine(typed.line)
 		m.logBuf = append(m.logBuf, display)
-		if len(m.logBuf) > 2000 {
-			m.logBuf = m.logBuf[len(m.logBuf)-2000:]
+		if len(m.logBuf) > maxLogLines {
+			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
 		}
 		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
 		m.handleRunFeedLine(display, plain)
@@ -70,10 +72,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) handleResize(msg tea.WindowSizeMsg) model {
 	w, h := msg.Width, msg.Height
-	m.prdList.SetSize(w-2, h-10)
-	m.logs.Width, m.logs.Height = w-2, h-8
-	m.runFeed.Width, m.runFeed.Height = w-2, h-12
-	m.prompt.SetWidth(w - 2)
+	if w < 0 {
+		w = 0
+	}
+	if h < 0 {
+		h = 0
+	}
+	prdW, prdH := w-2, h-10
+	if prdW < 0 {
+		prdW = 0
+	}
+	if prdH < 0 {
+		prdH = 0
+	}
+	m.prdList.SetSize(prdW, prdH)
+	logW, logH := w-2, h-8
+	if logW < 0 {
+		logW = 0
+	}
+	if logH < 0 {
+		logH = 0
+	}
+	m.logs.Width, m.logs.Height = logW, logH
+	feedW, feedH := w-2, h-12
+	if feedW < 0 {
+		feedW = 0
+	}
+	if feedH < 0 {
+		feedH = 0
+	}
+	m.runFeed.Width, m.runFeed.Height = feedW, feedH
+	promptW := w - 2
+	if promptW < 0 {
+		promptW = 0
+	}
+	m.prompt.SetWidth(promptW)
 	return m
 }
 

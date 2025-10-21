@@ -44,7 +44,7 @@ Prepare and push a PR for this branch:
         return None
 
     if not skip_runner:
-        pr_runner, pr_runner_name = policy_runner(EXECUTOR_POLICY, phase="pr")
+        pr_runner, _ = policy_runner(EXECUTOR_POLICY, phase="pr")
 
         pr_runner(
             push_prompt,
@@ -61,7 +61,7 @@ Prepare and push a PR for this branch:
                 git_push_branch(repo_root, new_branch)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to push branch '{new_branch}': {details}")
+                raise SystemExit(f"Failed to push branch '{new_branch}': {details}") from exc
 
     pr_number = get_pr_number_for_head(new_branch, repo_root)
     if pr_number is None:
@@ -70,7 +70,7 @@ Prepare and push a PR for this branch:
             return None
         run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
         try:
-            run_cmd(
+            out, _, _ = run_cmd(
                 [
                     "gh",
                     "pr",
@@ -83,9 +83,20 @@ Prepare and push a PR for this branch:
                     pr_title,
                     "--body",
                     pr_body,
+                    "--json",
+                    "number",
+                    "--jq",
+                    ".number",
                 ],
                 cwd=repo_root,
             )
+            num_text = out.strip()
+            if num_text:
+                try:
+                    pr_number = int(num_text)
+                except ValueError:
+                    logger.warning("Unexpected PR number format: %r", num_text)
+                    pr_number = None
         except subprocess.CalledProcessError as exc:
             stderr = (exc.stderr or "").strip()
             if "No commits between" in stderr:
@@ -101,7 +112,8 @@ Prepare and push a PR for this branch:
             )
             print(f"gh pr create error details:\n{stderr}\n")
             return None
-        pr_number = get_pr_number_for_head(new_branch, repo_root)
+        if pr_number is None:
+            pr_number = get_pr_number_for_head(new_branch, repo_root)
     print(f"Opened PR #{pr_number}")
 
     return pr_number

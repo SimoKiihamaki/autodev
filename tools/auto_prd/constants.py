@@ -24,7 +24,9 @@ CODEX_READONLY_ERROR_MSG = (
     "Check `codex config show --effective` and adjust sandbox/approval settings so the agent has write access."
 )
 
-ZSH_PATH = shutil.which("zsh") or "/bin/zsh"
+ZSH_PATH = shutil.which("zsh")
+if not ZSH_PATH:
+    raise RuntimeError("'zsh' binary not found on PATH; install zsh or update PATH to continue.")
 COMMAND_ALLOWLIST = {
     "codex",
     "coderabbit",
@@ -54,4 +56,13 @@ VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 ACCEPTED_LOG_LEVELS = (*VALID_LOG_LEVELS, "WARN")
 
 RATE_LIMIT_STATUS = {"403", "429"}
-REVIEW_BOT_LOGINS = {"coderabbitai", "coderabbit", "copilot"}
+REVIEW_BOT_LOGINS = {
+    "coderabbitai",
+    "coderabbit",
+    "coderabbit-ai",
+    "copilot",
+    "copilot-pull-request-reviewer",
+    "copilot-pull-request-reviewer[bot]",
+    "github-copilot",
+    "github-copilot[bot]",
+}

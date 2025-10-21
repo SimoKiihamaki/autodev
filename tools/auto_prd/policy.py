@@ -40,12 +40,13 @@ def get_fallback_policy(policy: str) -> Optional[str]:
 
 
 def build_required_list(policy: str) -> list[str]:
+    core_deps = ["coderabbit", "git", "gh"]
     if policy == "codex-first":
-        return ["codex", "claude"]
+        return core_deps + ["codex", "claude"]
     if policy == "codex-only":
-        return ["codex"]
+        return core_deps + ["codex"]
     if policy == "claude-only":
-        return ["claude"]
+        return core_deps + ["claude"]
     raise ValueError(f"Unknown executor policy: {policy}")
 
 
@@ -67,7 +68,7 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
         if override in ("codex", "claude"):
             return (codex_exec, "Codex") if override == "codex" else (claude_exec, "Claude")
 
-    selected = (policy or EXECUTOR_POLICY_DEFAULT).strip().lower()
+    selected = (policy or EXECUTOR_POLICY).strip().lower()
     if selected not in EXECUTOR_CHOICES:
         logger.warning("Unknown executor policy %s; defaulting to %s", selected, EXECUTOR_POLICY_DEFAULT)
         selected = EXECUTOR_POLICY_DEFAULT
@@ -87,7 +88,7 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
 def policy_fallback_runner(
     command_name: str,
     policy: str,
-    executor: Callable[[str], str],
+    executor_factory: Callable[[str], Callable[[], str]],
     *,
     verify: Callable[[str], bool] | None = None,
 ) -> str:
@@ -96,7 +97,9 @@ def policy_fallback_runner(
     while attempts < MAX_FALLBACK_ATTEMPTS and current_policy:
         attempts += 1
         try:
-            result = executor(current_policy)
+            set_executor_policy(current_policy)
+            executor = executor_factory(current_policy)
+            result = executor()
             if verify is None or verify(result):
                 return result
         except Exception as exc:  # pragma: no cover - fallback best effort

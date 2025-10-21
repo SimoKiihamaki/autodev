@@ -61,6 +61,10 @@ func (m *model) focusInput(inputName string) {
 		m.inMaxIters.Focus()
 	case "prompt":
 		m.prompt.Focus()
+	default:
+		// Unknown input: clear state so tab navigation can recover gracefully.
+		m.focusedInput = ""
+		return
 	}
 }
 
@@ -102,6 +106,10 @@ func (m *model) navigateSettings(direction string) {
 	}
 
 	row, col := currentPos[0], currentPos[1]
+	if row < 0 || row >= settingsGridRows || col < 0 || col >= settingsGridCols {
+		m.focusInput("repo")
+		return
+	}
 
 	switch direction {
 	case "up":
@@ -172,6 +180,10 @@ func (m *model) focusFlag(flagName string) {
 func (m *model) navigateFlags(direction string) {
 	flags := envFlagNames
 
+	if len(flags) == 0 {
+		return
+	}
+
 	if m.focusedFlag == "" {
 		m.focusFlag(flags[0])
 		return
@@ -222,5 +234,8 @@ func (m *model) toggleFocusedFlag() {
 }
 
 func (m *model) getInputField(inputName string) *textinput.Model {
-	return m.settingsInputMap()[inputName]
+	if field, ok := m.settingsInputMap()[inputName]; ok {
+		return field
+	}
+	return nil
 }

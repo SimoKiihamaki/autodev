@@ -257,6 +257,6 @@ func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle · s save\n")
 	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom · files saved in ~/.config/aprd/logs\n")
 	b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
-	b.WriteString("\nGlobal: 1-6 tabs · ? help · q quit · Ctrl+C force quit\n")
+	b.WriteString(fmt.Sprintf("\nGlobal: 1-%d tabs · ? help · q quit · Ctrl+C force quit\n", len(tabNames)))
 	b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
 }

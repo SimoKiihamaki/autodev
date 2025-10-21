@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -10,7 +10,9 @@ func atoiSafe(s string) int {
 	if s == "" {
 		return 0
 	}
-	var n int
-	fmt.Sscanf(s, "%d", &n)
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
 	return n
 }

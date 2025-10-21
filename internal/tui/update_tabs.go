@@ -13,7 +13,11 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		m.blurAllInputs()
 		return *m, nil
 	case "tab":
-		m.navigateSettings("down")
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+		} else {
+			m.navigateSettings("down")
+		}
 		return *m, nil
 	case "shift+tab":
 		m.navigateSettings("up")
@@ -81,36 +85,23 @@ func (m *model) handleEnvTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			m.toggleFocusedFlag()
 		}
 		return *m, nil
-	case "l":
-		m.focusFlag("local")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "p":
-		m.focusFlag("pr")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "r":
-		m.focusFlag("review")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "a":
-		m.focusFlag("unsafe")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "d":
-		m.focusFlag("dryrun")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "g":
-		m.focusFlag("syncgit")
-		m.toggleFocusedFlag()
-		return *m, nil
-	case "i":
-		m.focusFlag("infinite")
-		m.toggleFocusedFlag()
-		return *m, nil
 	case "s":
 		return *m, m.saveConfig()
+	default:
+		flagMap := map[string]string{
+			"l": "local",
+			"p": "pr",
+			"r": "review",
+			"a": "unsafe",
+			"d": "dryrun",
+			"g": "syncgit",
+			"i": "infinite",
+		}
+		if name, ok := flagMap[msg.String()]; ok {
+			m.focusFlag(name)
+			m.toggleFocusedFlag()
+			return *m, nil
+		}
 	}
 	return *m, nil
 }

@@ -37,7 +37,6 @@ from .executor import resolve_executor_policy
 from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop
 from .utils import extract_called_process_error_details, now_stamp, slugify
-from .agents import codex_exec
 
 
 def run(args) -> None:
@@ -62,7 +61,7 @@ def run(args) -> None:
             if not os.access(preferred_dir, os.W_OK | os.X_OK):
                 raise PermissionError("log directory not writable")
             log_dir = preferred_dir
-        except Exception:
+        except (OSError, PermissionError):
             log_dir = repo_root / DEFAULT_LOG_DIR_NAME
             log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"auto_prd_{now_stamp()}.log"
@@ -86,9 +85,7 @@ def run(args) -> None:
     def include(phase: str) -> bool:
         return phase in selected_phases
 
-    executor_policy, initial_executor_policy, _ = resolve_executor_policy(
-        args.executor_policy, selected_phases
-    )
+    _, _, _ = resolve_executor_policy(args.executor_policy, selected_phases)
 
     ensure_gh_alias()
 
@@ -193,7 +190,7 @@ def run(args) -> None:
             new_branch = git_current_branch(repo_root)
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
-            raise SystemExit(f"Failed to prepare working branch {new_branch}: {details}")
+            raise SystemExit(f"Failed to prepare working branch {new_branch}: {details}") from exc
     else:
         print(f"Continuing on current branch: {new_branch}")
 
@@ -206,21 +203,21 @@ def run(args) -> None:
             raise SystemExit(
                 "Failed to reapply stashed changes after creating the PR branch. "
                 f"Details: {details}"
-            )
+            ) from exc
 
     if perform_auto_pr_commit:
         try:
             git_stage_all(repo_root)
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
-            raise SystemExit(f"Failed to stage changes before PR commit: {details}")
+            raise SystemExit(f"Failed to stage changes before PR commit: {details}") from exc
         if git_has_staged_changes(repo_root):
             commit_message = f"chore: autodev snapshot {slugify(prd_path.stem)} {now_stamp()}"
             try:
                 git_commit(repo_root, commit_message)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to commit staged changes: {details}")
+                raise SystemExit(f"Failed to commit staged changes: {details}") from exc
             print(f"Committed changes with message: {commit_message}")
         else:
             print("No staged changes detected before PR; skipping commit.")
@@ -230,9 +227,10 @@ def run(args) -> None:
             print(f"Pushed branch '{new_branch}' to origin.")
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
-            raise SystemExit(f"Failed to push branch '{new_branch}': {details}")
+            raise SystemExit(f"Failed to push branch '{new_branch}': {details}") from exc
 
-    print_codex_diagnostics(repo_root, codex_exec)
+    if args.allow_unsafe_execution:
+        print_codex_diagnostics(repo_root)
     tasks_left = -1
     appears_complete = False
     if include("local"):

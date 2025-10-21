@@ -32,19 +32,21 @@ def _verify_required_commands(
             trigger_policies = COMMAND_FALLBACK_CONFIG.get(cmd_name, set())
             if executor_policy in trigger_policies:
                 policy_changed = True
-                print(
-                    f"Warning: {cmd_name} CLI check failed; falling back to alternative executor policy."
+                logger.warning(
+                    "%s CLI check failed under policy %s; attempting fallback. Details: %s",
+                    cmd_name,
+                    executor_policy,
+                    err,
                 )
-                print(f"Details:\n{err}")
                 fallback_policy = get_fallback_policy(executor_policy)
                 if fallback_policy is None:
                     raise SystemExit(
                         f"ERROR: {cmd_name} CLI check failed and no fallback policy available for '{executor_policy}'"
-                    )
+                    ) from err
                 executor_policy = fallback_policy
                 break
             else:
-                raise SystemExit(f"ERROR: {err}")
+                raise SystemExit(f"ERROR: {err}") from err
     return policy_changed, executor_policy, verified_commands
 
 
@@ -95,12 +97,9 @@ def resolve_executor_policy(policy_arg: str | None, _phases: Set[str]) -> Tuple[
                 f"Commands that failed to verify: {failed_commands}"
             )
 
-    print(
-        f"Using executor policy: {executor_policy}"
-        + (
-            f" (fallback from {initial_executor_policy})"
-            if executor_policy != initial_executor_policy
-            else ""
-        )
+    logger.info(
+        "Using executor policy: %s%s",
+        executor_policy,
+        f" (fallback from {initial_executor_policy})" if executor_policy != initial_executor_policy else "",
     )
     return executor_policy, initial_executor_policy, verified_commands

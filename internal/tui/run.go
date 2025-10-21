@@ -58,16 +58,17 @@ func (m *model) startRunCmd() tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	go func(logCh chan runner.Line, resultCh chan error) {
-		o := runner.Options{
-			Config:        m.cfg,
-			PRDPath:       m.selectedPRD,
-			InitialPrompt: m.prompt.Value(),
-			Logs:          logCh,
-			LogFilePath:   m.logFilePath,
-			LogLevel:      m.cfg.LogLevel,
-		}
-		err := o.Run(ctx)
+	options := runner.Options{
+		Config:        m.cfg,
+		PRDPath:       m.selectedPRD,
+		InitialPrompt: m.prompt.Value(),
+		Logs:          ch,
+		LogFilePath:   m.logFilePath,
+		LogLevel:      m.cfg.LogLevel,
+	}
+
+	go func(opts runner.Options, logCh chan runner.Line, resultCh chan error) {
+		err := opts.Run(ctx)
 		if err != nil && err != context.Canceled {
 			select {
 			case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
@@ -79,7 +80,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		default:
 		}
 		close(resultCh)
-	}(ch, m.runResult)
+	}(options, ch, m.runResult)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
 }

@@ -9,9 +9,11 @@ import (
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 )
 
+const feedBufCap = 800
+
 var (
 	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
-	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?:\s*(.+?)\s*=+$`)
+	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?(?::\s*(.+?))?\s*=+$`)
 )
 
 func (m *model) resetRunDashboard() {
@@ -45,8 +47,8 @@ func (m *model) setRunCurrent(action string) {
 
 func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 	m.runFeedBuf = append(m.runFeedBuf, displayLine)
-	if len(m.runFeedBuf) > 800 {
-		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-800:]
+	if len(m.runFeedBuf) > feedBufCap {
+		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 	}
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
 	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
@@ -96,8 +98,11 @@ func (m *model) consumeRunSummary(rawLine string) {
 	}
 
 	if match := reIterationHeader.FindStringSubmatch(text); match != nil {
-		cur, _ := strconv.Atoi(match[1])
-		m.runIterCurrent = cur
+		if cur, err := strconv.Atoi(match[1]); err == nil {
+			m.runIterCurrent = cur
+		} else {
+			m.runIterCurrent = 0
+		}
 		if match[2] != "" {
 			if total, err := strconv.Atoi(match[2]); err == nil {
 				m.runIterTotal = total
@@ -109,9 +114,12 @@ func (m *model) consumeRunSummary(rawLine string) {
 		}
 		label := strings.TrimSpace(match[3])
 		m.runIterLabel = label
-		countLabel := fmt.Sprintf("Iteration %d", cur)
-		if m.runIterTotal > 0 {
-			countLabel = fmt.Sprintf("Iteration %d/%d", cur, m.runIterTotal)
+		countLabel := "Iteration"
+		if m.runIterCurrent > 0 {
+			countLabel = fmt.Sprintf("Iteration %d", m.runIterCurrent)
+			if m.runIterTotal > 0 {
+				countLabel = fmt.Sprintf("Iteration %d/%d", m.runIterCurrent, m.runIterTotal)
+			}
 		}
 		m.runPhase = countLabel
 		if label != "" {

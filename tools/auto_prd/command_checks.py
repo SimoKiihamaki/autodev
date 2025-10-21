@@ -7,12 +7,13 @@ import subprocess
 
 from .command import run_cmd
 from .constants import COMMAND_VERIFICATION_TIMEOUT_SECONDS
+from .logging_utils import logger
 
 
 def require_cmd(name: str) -> None:
     cmd_path = shutil.which(name)
     if cmd_path is None:
-        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.")
+        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.") from None
 
     version_checks = [[name, "--version"], [name, "version"], [name, "--help"]]
 
@@ -28,21 +29,21 @@ def require_cmd(name: str) -> None:
             continue
 
     try:
-        stdout, stderr, returncode = run_cmd(
+        _, _, returncode = run_cmd(
             [name],
             check=False,
             capture=True,
             timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS,
         )
         if returncode > 2:
-            print(
-                f"Warning: command '{name}' returned unusual exit code {returncode}, "
-                "continuing anyway."
-            )
+            logger.warning("Command '%s' returned unusual exit code %s; continuing.", name, returncode)
         return
-    except FileNotFoundError:
-        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.")
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.") from exc
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        print(
-            f"Command '{name}' exists but failed execution (this may be expected if it requires arguments): {exc}"
+        logger.warning(
+            "Command '%s' exists but failed execution (may require arguments): %s",
+            name,
+            exc,
         )
+        return

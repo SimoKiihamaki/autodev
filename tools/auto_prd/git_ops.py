@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -27,10 +26,12 @@ def parse_owner_repo_from_git() -> str:
         remainder = parsed.path.lstrip("/")
     if remainder.endswith(".git"):
         remainder = remainder[:-4]
-    parts = remainder.split("/")
+    parts = [segment for segment in remainder.split("/") if segment]
     if len(parts) < 2:
         raise RuntimeError(f"Cannot parse owner/repo from: {url}")
-    owner, repo = parts[0], parts[1]
+    if len(parts) > 2:
+        logger.warning("Remote URL %s contains extra path segments; using %s/%s", url, parts[-2], parts[-1])
+    owner, repo = parts[-2], parts[-1]
     if not owner or not repo:
         raise RuntimeError(f"Cannot parse owner/repo from: {url}")
     return f"{owner}/{repo}"
@@ -56,8 +57,8 @@ def workspace_has_changes(repo_root: Path) -> bool:
 
 
 def git_status_snapshot(repo_root: Path) -> tuple[str, ...]:
-    out, _, _ = run_cmd(["git", "status", "--short"], cwd=repo_root)
-    return tuple(out.splitlines())
+    out, _, _ = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
+    return tuple(sorted(out.splitlines()))
 
 
 def git_current_branch(repo_root: Path) -> str:
@@ -127,7 +128,9 @@ def git_push_branch(repo_root: Path, branch: str) -> None:
     run_cmd(["git", "push", "-u", "origin", branch], cwd=repo_root)
 
 
-def print_codex_diagnostics(repo_root: Path, codex_exec) -> None:
+def print_codex_diagnostics(repo_root: Path) -> None:
+    from .agents import codex_exec
+
     print("\n=== Codex diagnostics ===")
     try:
         cfg_out, cfg_err, cfg_rc = run_cmd(["codex", "config", "show", "--effective"], cwd=repo_root, check=False)
