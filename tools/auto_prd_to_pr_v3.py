@@ -1466,7 +1466,12 @@ Prepare and push a PR for this branch:
                     "GitHub refused to create a PR because the branch matches the base branch."
                 )
                 return None
-            raise
+            print(
+                "Failed to create PR automatically via gh CLI. "
+                "Please check authentication and rerun `gh auth login` if needed."
+            )
+            print(f"gh pr create stderr:\n{stderr}\n")
+            return None
         pr_number = get_pr_number_for_head(new_branch, repo_root)
     print(f"Opened PR #{pr_number}")
 
