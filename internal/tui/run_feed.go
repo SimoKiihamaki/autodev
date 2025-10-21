@@ -1,0 +1,174 @@
+package tui
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/SimoKiihamaki/autodev/internal/runner"
+)
+
+var (
+	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
+	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?:\s*(.+?)\s*=+$`)
+)
+
+func (m *model) resetRunDashboard() {
+	m.runFeedBuf = nil
+	m.runFeed.SetContent("")
+	m.runPhase = ""
+	m.runCurrent = ""
+	m.runPrevious = ""
+	m.runLastComplete = ""
+	m.runIterCurrent = 0
+	m.runIterTotal = 0
+	m.runIterLabel = ""
+	m.runFeedAutoFollow = true
+}
+
+func (m *model) setRunCurrent(action string) {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return
+	}
+	if m.runCurrent != action {
+		if m.runCurrent != "" {
+			m.runPrevious = m.runCurrent
+		}
+		m.runCurrent = action
+	}
+	if m.runPhase == "" {
+		m.runPhase = "Running"
+	}
+}
+
+func (m *model) handleRunFeedLine(displayLine, rawLine string) {
+	m.runFeedBuf = append(m.runFeedBuf, displayLine)
+	if len(m.runFeedBuf) > 800 {
+		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-800:]
+	}
+	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
+	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+	if shouldFollow {
+		m.runFeed.GotoBottom()
+		m.runFeedAutoFollow = true
+	}
+
+	m.consumeRunSummary(rawLine)
+}
+
+func (m *model) updateRunFeedFollowFromViewport() {
+	if m.runFeed.AtBottom() {
+		m.runFeedAutoFollow = true
+	} else {
+		m.runFeedAutoFollow = false
+	}
+}
+
+func (m *model) formatLogLine(line runner.Line) (string, string) {
+	plain := strings.TrimRight(line.Text, "\r\n")
+	displayText := plain
+	style := logInfoStyle
+	lower := strings.ToLower(plain)
+	switch {
+	case line.Err:
+		displayText = "[ERR] " + plain
+		style = logErrorStyle
+	case strings.HasPrefix(plain, "⚠️"):
+		style = logWarnStyle
+	case strings.HasPrefix(plain, "✓"):
+		style = logSuccessStyle
+	case strings.HasPrefix(plain, "→"):
+		style = logActionStyle
+	case strings.Contains(lower, "process finished"):
+		style = logSystemStyle
+	case strings.Contains(lower, "review loop"):
+		style = logSystemStyle
+	}
+	return style.Render(displayText), plain
+}
+
+func (m *model) consumeRunSummary(rawLine string) {
+	text := strings.TrimSpace(rawLine)
+	if text == "" {
+		return
+	}
+
+	if match := reIterationHeader.FindStringSubmatch(text); match != nil {
+		cur, _ := strconv.Atoi(match[1])
+		m.runIterCurrent = cur
+		if match[2] != "" {
+			if total, err := strconv.Atoi(match[2]); err == nil {
+				m.runIterTotal = total
+			} else {
+				m.runIterTotal = 0
+			}
+		} else {
+			m.runIterTotal = 0
+		}
+		label := strings.TrimSpace(match[3])
+		m.runIterLabel = label
+		countLabel := fmt.Sprintf("Iteration %d", cur)
+		if m.runIterTotal > 0 {
+			countLabel = fmt.Sprintf("Iteration %d/%d", cur, m.runIterTotal)
+		}
+		m.runPhase = countLabel
+		if label != "" {
+			m.setRunCurrent(label)
+		} else {
+			m.setRunCurrent(countLabel)
+		}
+		return
+	}
+
+	if match := reSectionHeader.FindStringSubmatch(text); match != nil {
+		section := strings.TrimSpace(match[1])
+		if section != "" {
+			m.runPhase = section
+			m.setRunCurrent(section)
+		}
+		return
+	}
+
+	if strings.HasPrefix(text, "→") {
+		action := strings.TrimSpace(strings.TrimPrefix(text, "→"))
+		if action != "" {
+			m.setRunCurrent(action)
+		}
+		return
+	}
+
+	if strings.HasPrefix(text, "✓") {
+		done := strings.TrimSpace(strings.TrimPrefix(text, "✓"))
+		if done == "" {
+			done = strings.TrimSpace(text)
+		}
+		m.runLastComplete = done
+		m.setRunCurrent(done)
+		return
+	}
+
+	if strings.HasPrefix(text, "⚠️") {
+		m.setRunCurrent(text)
+		return
+	}
+
+	lower := strings.ToLower(text)
+	switch {
+	case strings.HasPrefix(lower, "no "):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "stopping"):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "opened pr"):
+		m.setRunCurrent(text)
+	case strings.HasSuffix(lower, "done.") || strings.Contains(lower, "done."):
+		m.setRunCurrent(text)
+	case strings.Contains(lower, "review loop"):
+		m.setRunCurrent(text)
+	case strings.Contains(lower, "process finished"):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "final tasks_left"):
+		m.setRunCurrent(text)
+	}
+}

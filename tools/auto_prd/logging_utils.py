@@ -1,0 +1,106 @@
+"""Logging helpers shared across modules."""
+
+from __future__ import annotations
+
+import builtins
+import logging
+import sys
+from pathlib import Path
+
+from .constants import (
+    ACCEPTED_LOG_LEVELS,
+    COMMAND_OUTPUT_LOG_LIMIT,
+    LOG_FORMAT,
+    PRINT_LOGGER_NAME,
+)
+
+
+logger = logging.getLogger("auto_prd")
+
+CURRENT_LOG_PATH: Path | None = None
+USER_LOG_LEVEL = logging.INFO
+ORIGINAL_PRINT = builtins.print
+PRINT_HOOK_INSTALLED = False
+
+
+def resolve_log_level(level_name: str) -> int:
+    name = level_name.upper()
+    if name == "WARN":
+        name = "WARNING"
+    level_value = getattr(logging, name, None)
+    if isinstance(level_value, int):
+        return level_value
+    valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
+    raise SystemExit(f"Invalid log level: {level_name}. Valid levels are: {valid_levels}")
+
+
+def setup_file_logging(log_path: Path, level_name: str) -> None:
+    global CURRENT_LOG_PATH, USER_LOG_LEVEL
+    numeric_level = resolve_log_level(level_name)
+    USER_LOG_LEVEL = numeric_level
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path.parent.chmod(0o700)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path.parent)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(logging.DEBUG)
+
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    root_logger.addHandler(file_handler)
+    try:
+        log_path.chmod(0o600)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path)
+
+    logger.setLevel(numeric_level)
+    CURRENT_LOG_PATH = log_path
+    install_print_logger()
+
+
+def format_print_message(*args, **kwargs) -> str:
+    if not args and not kwargs:
+        return ""
+    sep = kwargs.get("sep", " ")
+    end = kwargs.get("end", "\n")
+    message = sep.join(str(arg) for arg in args)
+    if end and end != "\n":
+        message = f"{message}{end}"
+    return message
+
+
+def install_print_logger() -> None:
+    global PRINT_HOOK_INSTALLED
+    if PRINT_HOOK_INSTALLED:
+        return
+
+    print_logger = logging.getLogger(PRINT_LOGGER_NAME)
+    print_logger.setLevel(logging.INFO)
+
+    def tee_print(*args, **kwargs):
+        message = format_print_message(*args, **kwargs)
+        if message:
+            target_level = logging.WARNING if kwargs.get("file") == sys.stderr else logging.INFO
+            print_logger.log(target_level, message)
+        ORIGINAL_PRINT(*args, **kwargs)
+
+    builtins.print = tee_print
+    PRINT_HOOK_INSTALLED = True
+
+
+def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
+    if len(text) <= limit:
+        return text
+    head = limit // 2
+    tail = limit - head
+    return f"{text[:head]}\n…(truncated {len(text) - limit} chars)…\n{text[-tail:]}"
+
+
+def decode_output(data: bytes) -> str:
+    if not data:
+        return ""
+    return data.decode("utf-8", errors="replace")

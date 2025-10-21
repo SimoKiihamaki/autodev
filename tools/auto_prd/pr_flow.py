@@ -1,0 +1,107 @@
+"""PR creation flow utilities."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from .gh_ops import branch_has_commits_since, get_pr_number_for_head
+from .git_ops import git_push_branch
+from .logging_utils import logger
+from .policy import EXECUTOR_POLICY, policy_runner
+from .utils import extract_called_process_error_details
+from .command import run_cmd
+
+
+def open_or_get_pr(
+    new_branch: str,
+    base_branch: str,
+    repo_root: Path,
+    prd_path: Path,
+    codex_model: str,
+    allow_unsafe_execution: bool,
+    dry_run: bool,
+    *,
+    skip_runner: bool = False,
+    already_pushed: bool = False,
+) -> Optional[int]:
+    pr_title = f"Implement: {prd_path.name}"
+    pr_body = f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
+
+    print(f"\n=== Bot pushes branch and opens PR: {new_branch} -> {base_branch} ===")
+    push_prompt = f"""
+Prepare and push a PR for this branch:
+- Ensure local QA passes (`make ci`).
+- Commit any pending changes.
+- Push '{new_branch}' to origin.
+- Open a PR targeting '{base_branch}' with title {json.dumps(pr_title)} and body {json.dumps(pr_body)}.
+- After success, print: PR_OPENED=YES
+"""
+    if dry_run:
+        logger.info("Dry run enabled; skipping Codex PR creation routine for branch %s.", new_branch)
+        return None
+
+    if not skip_runner:
+        pr_runner, pr_runner_name = policy_runner(EXECUTOR_POLICY, phase="pr")
+
+        pr_runner(
+            push_prompt,
+            repo_root,
+            model=codex_model,
+            enable_search=True,
+            yolo=allow_unsafe_execution,
+            allow_unsafe_execution=allow_unsafe_execution,
+        )
+    else:
+        print("Skipping executor-driven PR routine; using direct git commands.")
+        if not already_pushed:
+            try:
+                git_push_branch(repo_root, new_branch)
+            except subprocess.CalledProcessError as exc:
+                details = extract_called_process_error_details(exc)
+                raise SystemExit(f"Failed to push branch '{new_branch}': {details}")
+
+    pr_number = get_pr_number_for_head(new_branch, repo_root)
+    if pr_number is None:
+        if not branch_has_commits_since(base_branch, repo_root):
+            print("Branch has no commits relative to base; skipping PR creation.")
+            return None
+        run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
+        try:
+            run_cmd(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--base",
+                    base_branch,
+                    "--head",
+                    new_branch,
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                ],
+                cwd=repo_root,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            if "No commits between" in stderr:
+                print("GitHub refused to create a PR because the branch matches the base branch.")
+                return None
+            print(
+                "Failed to create PR automatically via gh CLI.\n"
+                "Troubleshooting guidance (common causes include authentication, network hiccups, branch protection rules, required status checks, or permissions):\n"
+                "  1. Review the error details below for specifics.\n"
+                "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
+                "  3. Confirm branch protection and required status checks permit PR creation.\n"
+                f"  4. Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
+            )
+            print(f"gh pr create error details:\n{stderr}\n")
+            return None
+        pr_number = get_pr_number_for_head(new_branch, repo_root)
+    print(f"Opened PR #{pr_number}")
+
+    return pr_number
