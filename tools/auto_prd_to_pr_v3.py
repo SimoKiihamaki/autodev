@@ -1823,7 +1823,7 @@ def main() -> None:
 
     base_branch_exists = git_branch_exists(repo_root, base_branch)
     if not base_branch_exists:
-        fallback_branch = git_default_branch(repo_root)
+        fallback_branch = repo_default_branch
         if fallback_branch and fallback_branch != base_branch:
             print(
                 f"Base branch '{base_branch}' not found; using '{fallback_branch}' instead."
@@ -1896,7 +1896,7 @@ def main() -> None:
                         print("Synchronizing base branch from origin…")
                         run_cmd(["git", "fetch", "origin"], cwd=repo_root)
                     else:
-                        print("Skipping git fetch/pull (pass --sync-git to enable).")
+                        print("Skipping git fetch (pass --sync-git to enable).")
                     if current_branch != base_branch:
                         run_cmd(["git", "checkout", base_branch], cwd=repo_root)
                         current_branch = base_branch
@@ -1907,8 +1907,6 @@ def main() -> None:
                         print(
                             f"Cannot synchronize; base branch '{base_branch}' is unavailable."
                         )
-                    else:
-                        print("Skipping git fetch/pull (pass --sync-git to enable).")
                     print(
                         f"Base branch '{base_branch}' unavailable; staying on '{current_branch}'."
                     )
