@@ -171,16 +171,12 @@ func New() model {
 		cfg = config.Defaults()
 		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
 	}
-	if lvl := strings.TrimSpace(cfg.LogLevel); lvl == "" {
-		cfg.LogLevel = "INFO"
-	} else {
-		cfg.LogLevel = strings.ToUpper(lvl)
-	}
 
 	m := model{
 		tab: tabRun,
 		cfg: cfg,
 	}
+	m.normalizeLogLevel()
 
 	// PRD list
 	delegate := list.NewDefaultDelegate()
@@ -428,7 +424,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			key := msg.String()
 			switch key {
 			case "enter":
-				if m.running || m.cancelling {
+				if m.isActiveOrCancelling() {
 					return m, nil
 				}
 				return m, m.startRunCmd()
@@ -1047,16 +1043,25 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 	return m.settingsInputMap()[inputName]
 }
 
+func (m *model) normalizeLogLevel() {
+	lvl := strings.TrimSpace(m.cfg.LogLevel)
+	if lvl == "" {
+		m.cfg.LogLevel = "INFO"
+		return
+	}
+	m.cfg.LogLevel = strings.ToUpper(lvl)
+}
+
+func (m model) isActiveOrCancelling() bool {
+	return m.running || m.cancelling
+}
+
 // ------- Run command -------
 func (m *model) startRunCmd() tea.Cmd {
 	// hydrate cfg from inputs
 	m.hydrateConfigFromInputs()
 	m.resolvePythonScript(false)
-	if lvl := strings.TrimSpace(m.cfg.LogLevel); lvl == "" {
-		m.cfg.LogLevel = "INFO"
-	} else {
-		m.cfg.LogLevel = strings.ToUpper(lvl)
-	}
+	m.normalizeLogLevel()
 	m.cancelling = false
 
 	if m.selectedPRD == "" {

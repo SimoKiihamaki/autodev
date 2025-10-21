@@ -66,7 +66,7 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	tmpDir := os.TempDir()
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
 	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
-	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o644); err != nil {
+	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o600); err != nil {
 		return "", nil, err
 	}
 	cleanup := func() { _ = os.Remove(tmpPath) }
@@ -74,7 +74,16 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 }
 
 func buildArgs(c config.Config, prd string, logFile string, logLevel string) []string {
-	args := []string{c.PythonScript, "--prd", prd}
+	script := c.PythonScript
+	if !filepath.IsAbs(script) && strings.TrimSpace(c.RepoPath) != "" {
+		candidate := filepath.Join(c.RepoPath, script)
+		if abs, err := filepath.Abs(candidate); err == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				script = abs
+			}
+		}
+	}
+	args := []string{script, "--prd", prd}
 	if c.RepoPath != "" {
 		args = append(args, "--repo", c.RepoPath)
 	}
@@ -247,6 +256,10 @@ func (o Options) Run(ctx context.Context) error {
 }
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
+	if logs == nil {
+		_, _ = io.Copy(io.Discard, r)
+		return
+	}
 	sc := bufio.NewScanner(r)
 	// Get buffer from pool and allow large log lines (up to 1MB)
 	buf := bufferPool.Get().([]byte)
@@ -265,7 +278,8 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			sendLine(logs, Line{Time: time.Now(), Text: "log backlog full; dropping output. Consider increasing the buffer or slowing downstream consumers.", Err: true})
+			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
+			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}
 	}
 	if err := sc.Err(); err != nil {

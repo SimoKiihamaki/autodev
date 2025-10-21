@@ -108,7 +108,10 @@ func EnsureDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -130,8 +133,11 @@ func Load() (Config, error) {
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return Config{}, err
 	}
-	if strings.TrimSpace(c.LogLevel) == "" {
+	trim := strings.TrimSpace(c.LogLevel)
+	if trim == "" {
 		c.LogLevel = "INFO"
+	} else {
+		c.LogLevel = strings.ToUpper(trim)
 	}
 	return c, nil
 }
@@ -148,5 +154,5 @@ func Save(c Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0o644)
+	return os.WriteFile(p, b, 0o600)
 }

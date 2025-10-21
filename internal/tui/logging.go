@@ -35,6 +35,8 @@ func (m *model) prepareRunLogFile() {
 	if err := os.Chmod(logDir, 0o700); err != nil {
 		m.status = "Failed to secure log directory: " + err.Error()
 		m.logStatus = "unavailable: " + err.Error()
+		m.logFile = nil
+		m.logFilePath = ""
 		return
 	}
 	name := fmt.Sprintf("run_%s.log", time.Now().Format("20060102_150405"))
@@ -51,6 +53,7 @@ func (m *model) prepareRunLogFile() {
 		m.status = "Failed to secure log file: " + err.Error()
 		m.logStatus = "unavailable: " + err.Error()
 		_ = f.Close()
+		_ = os.Remove(path)
 		m.logFile = nil
 		m.logFilePath = ""
 		return
@@ -106,6 +109,7 @@ func (m *model) closeLogFile(reason string) {
 	if reason != "" {
 		_, _ = m.logFile.WriteString(fmt.Sprintf("# run %s at %s\n", reason, time.Now().Format(time.RFC3339)))
 	}
+	_ = m.logFile.Sync()
 	_ = m.logFile.Close()
 	m.logFile = nil
 	if m.logFilePath != "" {

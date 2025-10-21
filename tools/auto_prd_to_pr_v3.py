@@ -15,6 +15,7 @@ invocation to keep automation unblocked. See docs.
 from __future__ import annotations
 
 import argparse
+# Import builtins to allow monkey-patching of the built-in print function.
 import builtins
 import json
 import logging
@@ -83,13 +84,17 @@ PRINT_HOOK_INSTALLED = False
 
 
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+ACCEPTED_LOG_LEVELS = VALID_LOG_LEVELS + ("WARN",)
 
 
 def resolve_log_level(level_name: str) -> int:
-    level_value = getattr(logging, level_name.upper(), None)
+    name = level_name.upper()
+    if name == "WARN":
+        name = "WARNING"
+    level_value = getattr(logging, name, None)
     if isinstance(level_value, int):
         return level_value
-    valid_levels = ", ".join(VALID_LOG_LEVELS)
+    valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
     raise SystemExit(
         f"Invalid log level: {level_name}. Valid levels are: {valid_levels}"
     )
@@ -160,6 +165,56 @@ def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
     truncated = text[:limit]
     omitted = len(text) - limit
     return f"{truncated}... [truncated {omitted} chars]"
+
+
+def decode_output(data: bytes) -> str:
+    if not data:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+SENSITIVE_KEYS = {
+    "token",
+    "password",
+    "secret",
+    "apikey",
+    "api_key",
+    "key",
+    "access_token",
+}
+REDACT_EQ_PATTERN = re.compile(
+    r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$"
+)
+
+
+def sanitize_args(args: list[str]) -> list[str]:
+    sanitized: list[str] = []
+    skip_next = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+
+        match = REDACT_EQ_PATTERN.match(arg)
+        if match:
+            key_lower = match.group("key").lower()
+            if key_lower in SENSITIVE_KEYS:
+                prefix = match.group("prefix") or ""
+                sanitized.append(f"{prefix}{match.group('key')}=<REDACTED>")
+                continue
+
+        stripped = arg.lstrip("-")
+        normalized = stripped.lower().replace("-", "_")
+        if normalized in SENSITIVE_KEYS:
+            sanitized.append(arg)
+            if idx + 1 < len(args):
+                sanitized.append("<REDACTED>")
+                skip_next = True
+            continue
+
+        sanitized.append(arg)
+
+    return sanitized
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -358,7 +413,7 @@ def run_cmd(
     if not exe:
         raise FileNotFoundError(f"Command not found: {cmd[0]}")
     env = env_with_zsh(extra_env)
-    cmd_display = shlex.join(cmd)
+    cmd_display = shlex.join(sanitize_args(cmd))
     logger.info("Running command: %s", cmd_display)
     if cwd:
         logger.debug("Command cwd: %s", cwd)
@@ -389,8 +444,8 @@ def run_cmd(
     duration = time.monotonic() - start_time
     stdout_bytes = proc.stdout or b""
     stderr_bytes = proc.stderr or b""
-    stdout_text = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-    stderr_text = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+    stdout_text = decode_output(stdout_bytes)
+    stderr_text = decode_output(stderr_bytes)
     if capture:
         if stdout_text:
             logger.debug("Command stdout: %s", truncate_for_log(stdout_text))
@@ -1768,7 +1823,7 @@ def main() -> None:
     ap.add_argument(
         "--log-level",
         default="INFO",
-        choices=VALID_LOG_LEVELS,
+        choices=ACCEPTED_LOG_LEVELS,
         help="Log level for command diagnostics (default: INFO)",
     )
     ap.add_argument(
@@ -1853,7 +1908,7 @@ def main() -> None:
             log_path = (repo_root / log_path).resolve()
     else:
         xdg_config = os.getenv("XDG_CONFIG_HOME", None)
-        if xdg_config:
+        if xdg_config and xdg_config.strip():
             base_config = Path(xdg_config).expanduser()
         else:
             base_config = Path.home() / ".config"
@@ -2234,7 +2289,7 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception as exc:  # pragma: no cover - defensive logging for crashes
+    except Exception as exc:  # pragma: no cover - capture unexpected failures for operators
         logger.exception("Fatal error during automation run")
         if CURRENT_LOG_PATH:
             ORIGINAL_PRINT(
