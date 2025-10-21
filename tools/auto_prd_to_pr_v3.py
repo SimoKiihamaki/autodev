@@ -522,6 +522,43 @@ def git_head_sha(repo_root: Path) -> str:
     return out.strip()
 
 
+def git_branch_exists(repo_root: Path, branch: str) -> bool:
+    if not branch or not branch.strip():
+        return False
+    refs = [f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"]
+    for ref in refs:
+        _, _, rc = run_cmd(
+            ["git", "show-ref", "--verify", "--quiet", ref],
+            cwd=repo_root,
+            check=False,
+        )
+        if rc == 0:
+            return True
+    return False
+
+
+def git_default_branch(repo_root: Path) -> Optional[str]:
+    out, _, rc = run_cmd(
+        ["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+        cwd=repo_root,
+        check=False,
+    )
+    if rc == 0:
+        ref = out.strip()
+        if ref:
+            return ref.rsplit("/", 1)[-1]
+    out, _, rc = run_cmd(
+        ["git", "config", "--get", "init.defaultBranch"],
+        cwd=repo_root,
+        check=False,
+    )
+    if rc == 0:
+        name = out.strip()
+        if name:
+            return name
+    return None
+
+
 def git_stash_worktree(repo_root: Path, message: str) -> Optional[str]:
     """Stash current working tree, including untracked files, and return the stash reference."""
     run_cmd(
@@ -1762,13 +1799,31 @@ def main() -> None:
     os.chdir(repo_root)
 
     owner_repo = args.repo_slug or parse_owner_repo_from_git()
-    base_branch = args.base
+    base_branch = args.base or "main"
     needs_branch_setup = include("local") or include("pr")
+    should_checkout_base = include("local") or args.sync_git
     if needs_branch_setup:
         new_branch = args.branch or f"codex/{slugify(prd_path.stem)}-{now_stamp()}"
     else:
         # When only running review_fix, stay on the current branch unless explicitly provided.
         new_branch = args.branch or git_current_branch(repo_root)
+
+    base_branch_exists = git_branch_exists(repo_root, base_branch)
+    if not base_branch_exists:
+        fallback_branch = git_default_branch(repo_root)
+        if fallback_branch and fallback_branch != base_branch:
+            print(
+                f"Base branch '{base_branch}' not found; using '{fallback_branch}' instead."
+            )
+            base_branch = fallback_branch
+            base_branch_exists = git_branch_exists(repo_root, base_branch)
+    if not base_branch_exists:
+        current_branch = git_current_branch(repo_root)
+        print(
+            f"Base branch '{base_branch}' still not found; falling back to current branch '{current_branch}'."
+        )
+        base_branch = current_branch
+        base_branch_exists = True
 
     # Make the warning phase-aware with different severity for different phases
     active_phases_with_commit_risk = selected_phases.intersection(
@@ -1806,7 +1861,7 @@ def main() -> None:
                     "Workspace has uncommitted changes; continuing with relaxed behavior:\n%s",
                     "\n".join(f"  {entry}" for entry in dirty_entries),
                 )
-            if perform_auto_pr_commit:
+            if perform_auto_pr_commit and should_checkout_base:
                 print("Stashing working tree before preparing PR branch…")
                 stash_message = f"autodev-pr-stash-{now_stamp()}"
                 stash_selector = git_stash_worktree(repo_root, stash_message)
@@ -1814,17 +1869,32 @@ def main() -> None:
                     raise SystemExit(
                         "Failed to stash working tree prior to PR preparation."
                     )
+            elif perform_auto_pr_commit:
+                print(
+                    "Proceeding with dirty working tree (no stash needed when branching from current HEAD)."
+                )
 
     if needs_branch_setup:
         try:
-            if args.sync_git:
-                print("Synchronizing base branch from origin…")
-                run_cmd(["git", "fetch", "origin"], cwd=repo_root)
-                run_cmd(["git", "checkout", base_branch], cwd=repo_root)
-                run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
+            if should_checkout_base:
+                if args.sync_git and base_branch_exists:
+                    print("Synchronizing base branch from origin…")
+                    run_cmd(["git", "fetch", "origin"], cwd=repo_root)
+                    if git_current_branch(repo_root) != base_branch:
+                        run_cmd(["git", "checkout", base_branch], cwd=repo_root)
+                    run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
+                else:
+                    print("Skipping git fetch/pull (pass --sync-git to enable).")
+                    if base_branch_exists and git_current_branch(repo_root) != base_branch:
+                        run_cmd(["git", "checkout", base_branch], cwd=repo_root)
+                    elif not base_branch_exists:
+                        print(
+                            f"Base branch '{base_branch}' unavailable; staying on '{git_current_branch(repo_root)}'."
+                        )
             else:
-                print("Skipping git fetch/pull (pass --sync-git to enable).")
-                run_cmd(["git", "checkout", base_branch], cwd=repo_root)
+                print(
+                    "PR-only mode: branching directly from current HEAD without checking out base branch."
+                )
             _, _, rc = run_cmd(
                 ["git", "checkout", "-b", new_branch], cwd=repo_root, check=False
             )
