@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,6 +97,17 @@ type model struct {
 	logs   viewport.Model
 	logBuf []string
 
+	// Live run dashboard
+	runFeed         viewport.Model
+	runFeedBuf      []string
+	runPhase        string
+	runCurrent      string
+	runPrevious     string
+	runLastComplete string
+	runIterCurrent  int
+	runIterTotal    int
+	runIterLabel    string
+
 	// Runner
 	running   bool
 	cancel    context.CancelFunc
@@ -117,6 +130,11 @@ var settingsInputNames = []string{
 
 // Centralized flag names for env tab
 var envFlagNames = []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
+
+var (
+	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
+	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?:\s*(.+?)\s*=+$`)
+)
 
 // Returns a map of input name to pointer to textinput.Model for the given model instance
 func (m *model) settingsInputMap() map[string]*textinput.Model {
@@ -200,6 +218,10 @@ func New() model {
 	m.logs = viewport.New(100, 20)
 	m.logs.SetContent("")
 
+	// Live run feed
+	m.runFeed = viewport.New(100, 18)
+	m.runFeed.SetContent("")
+
 	// Tags
 	m.tagInput = mkInput("Add tag", "", 24)
 
@@ -213,6 +235,8 @@ func New() model {
 	if loadStatus != "" {
 		m.status = loadStatus
 	}
+
+	m.resetRunDashboard()
 
 	return m
 }
@@ -339,6 +363,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		w, h := msg.Width, msg.Height
 		m.prdList.SetSize(w-2, h-10)
 		m.logs.Width, m.logs.Height = w-2, h-8
+		m.runFeed.Width, m.runFeed.Height = w-2, h-12
 		m.prompt.SetWidth(w - 2)
 		return m, nil
 	case tea.KeyMsg:
@@ -386,11 +411,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.tab {
 		case tabRun:
-			if msg.String() == "enter" {
+			key := msg.String()
+			switch key {
+			case "enter":
 				if m.running {
 					return m, nil
 				}
 				return m, m.startRunCmd()
+			case "up", "down":
+				if len(m.runFeedBuf) > 0 || m.running {
+					var cmd tea.Cmd
+					m.runFeed, cmd = m.runFeed.Update(msg)
+					return m, cmd
+				}
+			case "pgup":
+				if len(m.runFeedBuf) > 0 || m.running {
+					m.runFeed.LineUp(10)
+					return m, nil
+				}
+			case "pgdown":
+				if len(m.runFeedBuf) > 0 || m.running {
+					m.runFeed.LineDown(10)
+					return m, nil
+				}
+			case "home":
+				if len(m.runFeedBuf) > 0 || m.running {
+					m.runFeed.GotoTop()
+					return m, nil
+				}
+			case "end":
+				if len(m.runFeedBuf) > 0 || m.running {
+					m.runFeed.GotoBottom()
+					return m, nil
+				}
 			}
 
 		case tabPRD:
@@ -647,6 +700,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = true
 		m.errMsg = ""
 		m.status = "Running…"
+		m.tab = tabRun
 		return m, nil
 
 	case runStopMsg:
@@ -677,11 +731,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if line.Err {
 			prefix = "[ERR] "
 		}
-		m.logBuf = append(m.logBuf, prefix+line.Text)
+		display := prefix + line.Text
+		m.logBuf = append(m.logBuf, display)
 		if len(m.logBuf) > 2000 {
 			m.logBuf = m.logBuf[len(m.logBuf)-2000:]
 		}
 		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+		m.handleRunFeedLine(display, line.Text)
 		// keep reading
 		return m, m.readLogs()
 
@@ -982,7 +1038,9 @@ func (m *model) startRunCmd() tea.Cmd {
 	ch := m.logCh // capture immutable handle for this run
 	m.logBuf = nil
 	m.logs.SetContent("")
+	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)
+	m.tab = tabRun
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
@@ -1072,6 +1130,128 @@ func (m *model) saveConfig() tea.Cmd {
 	return func() tea.Msg { return statusMsg{note: "Config saved"} }
 }
 
+func (m *model) resetRunDashboard() {
+	m.runFeedBuf = nil
+	m.runFeed.SetContent("")
+	m.runPhase = ""
+	m.runCurrent = ""
+	m.runPrevious = ""
+	m.runLastComplete = ""
+	m.runIterCurrent = 0
+	m.runIterTotal = 0
+	m.runIterLabel = ""
+}
+
+func (m *model) setRunCurrent(action string) {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return
+	}
+	if m.runCurrent != action {
+		if m.runCurrent != "" {
+			m.runPrevious = m.runCurrent
+		}
+		m.runCurrent = action
+	}
+	if m.runPhase == "" {
+		m.runPhase = "Running"
+	}
+}
+
+func (m *model) handleRunFeedLine(displayLine, rawLine string) {
+	m.runFeedBuf = append(m.runFeedBuf, displayLine)
+	if len(m.runFeedBuf) > 800 {
+		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-800:]
+	}
+	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+	m.runFeed.GotoBottom()
+	m.consumeRunSummary(rawLine)
+}
+
+func (m *model) consumeRunSummary(rawLine string) {
+	text := strings.TrimSpace(rawLine)
+	if text == "" {
+		return
+	}
+
+	if match := reIterationHeader.FindStringSubmatch(text); match != nil {
+		cur, _ := strconv.Atoi(match[1])
+		m.runIterCurrent = cur
+		if match[2] != "" {
+			if total, err := strconv.Atoi(match[2]); err == nil {
+				m.runIterTotal = total
+			} else {
+				m.runIterTotal = 0
+			}
+		} else {
+			m.runIterTotal = 0
+		}
+		label := strings.TrimSpace(match[3])
+		m.runIterLabel = label
+		countLabel := fmt.Sprintf("Iteration %d", cur)
+		if m.runIterTotal > 0 {
+			countLabel = fmt.Sprintf("Iteration %d/%d", cur, m.runIterTotal)
+		}
+		m.runPhase = countLabel
+		if label != "" {
+			m.setRunCurrent(label)
+		} else {
+			m.setRunCurrent(countLabel)
+		}
+		return
+	}
+
+	if match := reSectionHeader.FindStringSubmatch(text); match != nil {
+		section := strings.TrimSpace(match[1])
+		if section != "" {
+			m.runPhase = section
+			m.setRunCurrent(section)
+		}
+		return
+	}
+
+	if strings.HasPrefix(text, "→") {
+		action := strings.TrimSpace(strings.TrimPrefix(text, "→"))
+		if action != "" {
+			m.setRunCurrent(action)
+		}
+		return
+	}
+
+	if strings.HasPrefix(text, "✓") {
+		done := strings.TrimSpace(strings.TrimPrefix(text, "✓"))
+		if done == "" {
+			done = strings.TrimSpace(text)
+		}
+		m.runLastComplete = done
+		m.setRunCurrent(done)
+		return
+	}
+
+	if strings.HasPrefix(text, "⚠️") {
+		m.setRunCurrent(text)
+		return
+	}
+
+	lower := strings.ToLower(text)
+	switch {
+	case strings.HasPrefix(lower, "no "):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "stopping"):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "opened pr"):
+		m.setRunCurrent(text)
+	case strings.HasSuffix(lower, "done.") || strings.Contains(lower, "done."):
+		m.setRunCurrent(text)
+	case strings.Contains(lower, "review loop"):
+		m.setRunCurrent(text)
+	case strings.Contains(lower, "process finished"):
+		m.setRunCurrent(text)
+	case strings.HasPrefix(lower, "final tasks_left"):
+		m.setRunCurrent(text)
+	}
+}
+
 func (m model) readLogs() tea.Cmd {
 	if m.logCh == nil {
 		return nil
@@ -1116,22 +1296,105 @@ func (m model) View() string {
 
 	switch m.tab {
 	case tabRun:
-		b.WriteString(sectionTitle.Render("Run") + "\n")
-		if m.selectedPRD == "" {
-			b.WriteString("PRD: (none selected)\n")
+		if m.running || len(m.runFeedBuf) > 0 {
+			b.WriteString(sectionTitle.Render("Run Dashboard") + "\n")
+			if m.selectedPRD == "" {
+				b.WriteString("PRD: (none selected)\n")
+			} else {
+				b.WriteString("PRD: " + m.selectedPRD + "\n")
+			}
+
+			b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
+			b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
+
+			switch {
+			case m.running:
+				b.WriteString(okStyle.Render("Status: Running (Ctrl+C to stop)") + "\n")
+			case m.errMsg != "":
+				b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
+			case m.status != "":
+				b.WriteString("Status: " + m.status + "\n")
+			default:
+				b.WriteString("Status: Idle\n")
+			}
+
+			phase := m.runPhase
+			if phase == "" {
+				if m.running {
+					phase = "Preparing..."
+				} else {
+					phase = "Idle"
+				}
+			}
+			current := m.runCurrent
+			if current == "" {
+				if m.running {
+					current = "Awaiting updates..."
+				} else {
+					current = "Idle"
+				}
+			}
+			previous := m.runPrevious
+			if previous == "" {
+				previous = "(none)"
+			}
+			lastComplete := m.runLastComplete
+			if lastComplete == "" {
+				lastComplete = "(none)"
+			}
+
+			iteration := "(none)"
+			if m.runIterCurrent > 0 || m.runIterLabel != "" {
+				if m.runIterCurrent > 0 {
+					if m.runIterTotal > 0 {
+						iteration = fmt.Sprintf("%d/%d", m.runIterCurrent, m.runIterTotal)
+					} else {
+						iteration = fmt.Sprintf("%d", m.runIterCurrent)
+					}
+				} else {
+					iteration = ""
+				}
+				if m.runIterLabel != "" {
+					if iteration != "" {
+						iteration = fmt.Sprintf("%s - %s", iteration, m.runIterLabel)
+					} else {
+						iteration = m.runIterLabel
+					}
+				}
+			}
+
+			b.WriteString(fmt.Sprintf("Phase: %s\n", phase))
+			b.WriteString(fmt.Sprintf("Current: %s\n", current))
+			b.WriteString(fmt.Sprintf("Previous: %s\n", previous))
+			b.WriteString(fmt.Sprintf("Last Complete: %s\n", lastComplete))
+			b.WriteString(fmt.Sprintf("Iteration: %s\n\n", iteration))
+
+			b.WriteString(sectionTitle.Render("Live Feed") + "\n")
+			b.WriteString(m.runFeed.View() + "\n")
+
+			if m.running {
+				b.WriteString(helpStyle.Render("Ctrl+C to cancel · ↑/↓ scroll feed · PgUp/PgDn jump · Home/End align\n"))
+			} else {
+				b.WriteString(helpStyle.Render("Press Enter to start a new run · ↑/↓ scroll feed · PgUp/PgDn jump · Home/End align\n"))
+			}
 		} else {
-			b.WriteString("PRD: " + m.selectedPRD + "\n")
+			b.WriteString(sectionTitle.Render("Run") + "\n")
+			if m.selectedPRD == "" {
+				b.WriteString("PRD: (none selected)\n")
+			} else {
+				b.WriteString("PRD: " + m.selectedPRD + "\n")
+			}
+			b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
+			b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
+			if m.errMsg != "" {
+				b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
+			} else if m.status != "" {
+				b.WriteString("Status: " + m.status + "\n")
+			} else {
+				b.WriteString("Status: Idle\n")
+			}
+			b.WriteString("\nPress Enter to start a run. This view switches into a live dashboard once the automation begins.\n")
 		}
-		b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
-		b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
-		if m.running {
-			b.WriteString(okStyle.Render("Status: Running (Ctrl+C to stop)") + "\n")
-		} else if m.errMsg != "" {
-			b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
-		} else if m.status != "" {
-			b.WriteString("Status: " + m.status + "\n")
-		}
-		b.WriteString("\nPress Enter to start.\n")
 
 	case tabPRD:
 		b.WriteString(sectionTitle.Render("PRD selection") + "\n")
