@@ -18,12 +18,10 @@ from typing import Optional
 
 from .constants import (
     COMMAND_ALLOWLIST,
-    COMMAND_VERIFICATION_TIMEOUT_SECONDS,
     SAFE_CWD_ROOTS,
     SAFE_ENV_VAR,
     SAFE_STDIN_ALLOWED_CTRL,
     STDIN_MAX_BYTES,
-    UNSAFE_ARG_CHARS,
     ZSH_PATH,
 )
 from .logging_utils import decode_output, logger, truncate_for_log
@@ -94,7 +92,7 @@ def is_within(path: Path, root: Path) -> bool:
 
 def validate_command_args(cmd: Sequence[str]) -> None:
     if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
-        raise ValueError("cmd must be a non-empty list of strings")
+        raise ValueError("cmd must be a non-empty sequence of strings")
     for arg in cmd:
         if not isinstance(arg, str):
             raise ValueError("command arguments must be strings")

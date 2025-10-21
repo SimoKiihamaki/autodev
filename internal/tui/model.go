@@ -67,6 +67,8 @@ type model struct {
 	inIdleMin    textinput.Model
 	inMaxIters   textinput.Model
 
+	settingsInputs map[string]*textinput.Model
+
 	focusedInput string
 	focusedFlag  string
 
@@ -104,11 +106,6 @@ type model struct {
 	runResult  chan error
 	cancelling bool
 }
-
-const (
-	settingsGridRows = 9
-	settingsGridCols = 4
-)
 
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
@@ -151,6 +148,24 @@ func New() model {
 	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
 	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
 	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
+
+	m.settingsInputs = map[string]*textinput.Model{
+		"repo":     &m.inRepo,
+		"base":     &m.inBase,
+		"branch":   &m.inBranch,
+		"codex":    &m.inCodexModel,
+		"pycmd":    &m.inPyCmd,
+		"pyscript": &m.inPyScript,
+		"policy":   &m.inPolicy,
+		"execimpl": &m.inExecImpl,
+		"execfix":  &m.inExecFix,
+		"execpr":   &m.inExecPR,
+		"execrev":  &m.inExecRev,
+		"waitmin":  &m.inWaitMin,
+		"pollsec":  &m.inPollSec,
+		"idlemin":  &m.inIdleMin,
+		"maxiters": &m.inMaxIters,
+	}
 
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
@@ -201,21 +216,5 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m *model) settingsInputMap() map[string]*textinput.Model {
-	return map[string]*textinput.Model{
-		"repo":     &m.inRepo,
-		"base":     &m.inBase,
-		"branch":   &m.inBranch,
-		"codex":    &m.inCodexModel,
-		"pycmd":    &m.inPyCmd,
-		"pyscript": &m.inPyScript,
-		"policy":   &m.inPolicy,
-		"execimpl": &m.inExecImpl,
-		"execfix":  &m.inExecFix,
-		"execpr":   &m.inExecPR,
-		"execrev":  &m.inExecRev,
-		"waitmin":  &m.inWaitMin,
-		"pollsec":  &m.inPollSec,
-		"idlemin":  &m.inIdleMin,
-		"maxiters": &m.inMaxIters,
-	}
+	return m.settingsInputs
 }

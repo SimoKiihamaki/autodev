@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -28,6 +29,11 @@ func (m model) isActiveOrCancelling() bool {
 }
 
 func (m *model) startRunCmd() tea.Cmd {
+	if m.isActiveOrCancelling() {
+		note := "Run already in progress; wait or cancel before starting a new one"
+		m.errMsg = note
+		return func() tea.Msg { return statusMsg{note: note} }
+	}
 	m.hydrateConfigFromInputs()
 	m.resolvePythonScript(false)
 	m.normalizeLogLevel()
@@ -67,7 +73,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		LogLevel:      m.cfg.LogLevel,
 	}
 
-	go func(opts runner.Options, logCh chan runner.Line, resultCh chan error) {
+	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
 		err := opts.Run(ctx)
 		if err != nil && err != context.Canceled {
 			select {
@@ -80,7 +86,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		default:
 		}
 		close(resultCh)
-	}(options, ch, m.runResult)
+	}(ctx, options, ch, m.runResult)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
 }
@@ -112,8 +118,15 @@ func (m *model) preflightChecks() error {
 			abbreviatePath(scriptPath),
 		)
 	}
-	if _, err := os.Stat(m.selectedPRD); err != nil {
+	info, err := os.Stat(m.selectedPRD)
+	if err != nil {
 		return fmt.Errorf("Selected PRD missing: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("Selected PRD points to a directory: %s", abbreviatePath(m.selectedPRD))
+	}
+	if !strings.HasSuffix(strings.ToLower(m.selectedPRD), ".md") {
+		log.Printf("tui: selected PRD without .md extension: %s", abbreviatePath(m.selectedPRD))
 	}
 	return nil
 }

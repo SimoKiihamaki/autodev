@@ -67,7 +67,7 @@ Unresolved review items:
 
 After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
-            review_runner, review_runner_name = policy_runner(EXECUTOR_POLICY, phase="review_fix")
+            review_runner, _ = policy_runner(EXECUTOR_POLICY, phase="review_fix")
 
             review_runner(
                 fix_prompt,

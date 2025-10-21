@@ -62,11 +62,7 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 }
 
 func (m *model) updateRunFeedFollowFromViewport() {
-	if m.runFeed.AtBottom() {
-		m.runFeedAutoFollow = true
-	} else {
-		m.runFeedAutoFollow = false
-	}
+	m.runFeedAutoFollow = m.runFeed.AtBottom()
 }
 
 func (m *model) formatLogLine(line runner.Line) (string, string) {

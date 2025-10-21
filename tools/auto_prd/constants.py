@@ -60,12 +60,15 @@ ACCEPTED_LOG_LEVELS = (*VALID_LOG_LEVELS, "WARN")
 
 RATE_LIMIT_STATUS = {"403", "429"}
 REVIEW_BOT_LOGINS = {
-    "coderabbitai",
-    "coderabbit",
-    "coderabbit-ai",
-    "copilot",
-    "copilot-pull-request-reviewer",
-    "copilot-pull-request-reviewer[bot]",
-    "github-copilot",
-    "github-copilot[bot]",
+    login.lower()
+    for login in {
+        "coderabbitai",
+        "coderabbit",
+        "coderabbit-ai",
+        "copilot",
+        "copilot-pull-request-reviewer",
+        "copilot-pull-request-reviewer[bot]",
+        "github-copilot",
+        "github-copilot[bot]",
+    }
 }

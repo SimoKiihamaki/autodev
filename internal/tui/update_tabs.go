@@ -2,6 +2,16 @@ package tui
 
 import tea "github.com/charmbracelet/bubbletea"
 
+var envFlagKeyMap = map[string]string{
+	"l": "local",
+	"p": "pr",
+	"r": "review",
+	"a": "unsafe",
+	"d": "dryrun",
+	"g": "syncgit",
+	"i": "infinite",
+}
+
 func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	if msg.Type == tea.KeyEnter && m.focusedInput == "" {
 		m.focusInput("repo")
@@ -101,16 +111,7 @@ func (m *model) handleEnvTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "ctrl+s":
 		return *m, m.saveConfig()
 	default:
-		flagMap := map[string]string{
-			"l": "local",
-			"p": "pr",
-			"r": "review",
-			"a": "unsafe",
-			"d": "dryrun",
-			"g": "syncgit",
-			"i": "infinite",
-		}
-		if name, ok := flagMap[msg.String()]; ok {
+		if name, ok := envFlagKeyMap[msg.String()]; ok {
 			m.focusFlag(name)
 			m.toggleFocusedFlag()
 			return *m, nil

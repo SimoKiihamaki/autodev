@@ -92,6 +92,13 @@ def install_print_logger() -> None:
     PRINT_HOOK_INSTALLED = True
 
 
+def uninstall_print_logger() -> None:
+    global PRINT_HOOK_INSTALLED
+    if PRINT_HOOK_INSTALLED:
+        builtins.print = ORIGINAL_PRINT
+        PRINT_HOOK_INSTALLED = False
+
+
 def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
     if len(text) <= limit:
         return text

@@ -97,10 +97,24 @@ func (m *model) navigateSettings(direction string) {
 		"maxiters": {8, 3},
 	}
 
-	var reverseGrid [settingsGridRows][settingsGridCols]string
+	maxRow, maxCol := 0, 0
+	for _, pos := range grid {
+		if pos[0] > maxRow {
+			maxRow = pos[0]
+		}
+		if pos[1] > maxCol {
+			maxCol = pos[1]
+		}
+	}
+
+	reverseGrid := make([][]string, maxRow+1)
+	for r := range reverseGrid {
+		reverseGrid[r] = make([]string, maxCol+1)
+	}
 	for input, pos := range grid {
-		if pos[0] < settingsGridRows && pos[1] < settingsGridCols {
-			reverseGrid[pos[0]][pos[1]] = input
+		row, col := pos[0], pos[1]
+		if row >= 0 && row < len(reverseGrid) && col >= 0 && col < len(reverseGrid[row]) {
+			reverseGrid[row][col] = input
 		}
 	}
 
@@ -111,8 +125,13 @@ func (m *model) navigateSettings(direction string) {
 	}
 
 	row, col := currentPos[0], currentPos[1]
-	if row < 0 || row >= settingsGridRows || col < 0 || col >= settingsGridCols {
-		log.Printf("tui: detected out-of-bounds settings grid position row=%d col=%d", row, col)
+	if row < 0 || row >= len(reverseGrid) {
+		log.Printf("tui: detected out-of-bounds settings grid row=%d", row)
+		m.focusInput("repo")
+		return
+	}
+	if col < 0 || col >= len(reverseGrid[row]) {
+		log.Printf("tui: detected out-of-bounds settings grid column=%d", col)
 		m.focusInput("repo")
 		return
 	}
@@ -121,7 +140,7 @@ func (m *model) navigateSettings(direction string) {
 	case "up":
 		if row > 0 {
 			for r := row - 1; r >= 0; r-- {
-				if reverseGrid[r][col] != "" {
+				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
 					m.focusInput(reverseGrid[r][col])
 					return
 				}
@@ -129,9 +148,9 @@ func (m *model) navigateSettings(direction string) {
 			m.searchHorizontalInRow(reverseGrid, row-1, col)
 		}
 	case "down":
-		if row < settingsGridRows-1 {
-			for r := row + 1; r < settingsGridRows; r++ {
-				if reverseGrid[r][col] != "" {
+		if row < len(reverseGrid)-1 {
+			for r := row + 1; r < len(reverseGrid); r++ {
+				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
 					m.focusInput(reverseGrid[r][col])
 					return
 				}
@@ -150,11 +169,12 @@ func (m *model) navigateSettings(direction string) {
 			}
 		}
 	case "right":
-		if col < settingsGridCols-1 && reverseGrid[row][col+1] != "" {
+		rowLen := len(reverseGrid[row])
+		if col < rowLen-1 && reverseGrid[row][col+1] != "" {
 			m.focusInput(reverseGrid[row][col+1])
 			return
 		}
-		for c := col + 1; c < settingsGridCols; c++ {
+		for c := col + 1; c < rowLen; c++ {
 			if reverseGrid[row][c] != "" {
 				m.focusInput(reverseGrid[row][c])
 				return
@@ -163,17 +183,23 @@ func (m *model) navigateSettings(direction string) {
 	}
 }
 
-func (m *model) searchHorizontalInRow(reverseGrid [settingsGridRows][settingsGridCols]string, targetRow, startCol int) {
-	if targetRow < 0 || targetRow >= settingsGridRows {
+func (m *model) searchHorizontalInRow(reverseGrid [][]string, targetRow, startCol int) {
+	if targetRow < 0 || targetRow >= len(reverseGrid) {
 		return
 	}
-	for offset := 1; offset < settingsGridCols; offset++ {
-		if startCol-offset >= 0 && reverseGrid[targetRow][startCol-offset] != "" {
-			m.focusInput(reverseGrid[targetRow][startCol-offset])
+	row := reverseGrid[targetRow]
+	if len(row) == 0 {
+		return
+	}
+	for offset := 1; offset < len(row); offset++ {
+		left := startCol - offset
+		if left >= 0 && left < len(row) && row[left] != "" {
+			m.focusInput(row[left])
 			return
 		}
-		if startCol+offset < settingsGridCols && reverseGrid[targetRow][startCol+offset] != "" {
-			m.focusInput(reverseGrid[targetRow][startCol+offset])
+		right := startCol + offset
+		if right >= 0 && right < len(row) && row[right] != "" {
+			m.focusInput(row[right])
 			return
 		}
 	}
@@ -241,8 +267,5 @@ func (m *model) toggleFocusedFlag() {
 }
 
 func (m *model) getInputField(inputName string) *textinput.Model {
-	if field, ok := m.settingsInputMap()[inputName]; ok {
-		return field
-	}
-	return nil
+	return m.settingsInputs[inputName]
 }

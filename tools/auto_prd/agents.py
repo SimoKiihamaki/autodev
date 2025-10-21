@@ -109,6 +109,10 @@ def claude_exec(
     os.environ.setdefault("CI", "1")
     verify_unsafe_execution_ready()
     args: list[str] = ["claude", "--dangerously-skip-permissions"]
+    if model:
+        args.extend(["--model", model])
+    if not enable_search:
+        logger.info("Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False")
     if extra:
         args.extend(extra)
     args.extend(["-p", "-"])

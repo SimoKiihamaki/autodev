@@ -120,8 +120,8 @@ Prepare and push a PR for this branch:
                     logger.warning("Unexpected PR number format: %r", num_text)
                     pr_number = None
         except subprocess.CalledProcessError as exc:
-            stderr = (exc.stderr or "").strip()
-            if "No commits between" in stderr:
+            details = extract_called_process_error_details(exc)
+            if "No commits between" in details:
                 print("GitHub refused to create a PR because the branch matches the base branch.")
                 return None
             print(
@@ -132,7 +132,7 @@ Prepare and push a PR for this branch:
                 "  3. Confirm branch protection and required status checks permit PR creation.\n"
                 f"  4. Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
             )
-            print(f"gh pr create error details:\n{stderr}\n")
+            print(f"gh pr create error details:\n{details}\n")
             return None
         if pr_number is None:
             pr_number = get_pr_number_for_head(new_branch, repo_root)

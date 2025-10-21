@@ -224,7 +224,12 @@ def resolve_review_thread(thread_id: str) -> None:
 
 def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> Set[int]:
     """Reply to review items and return the updated set of processed IDs."""
+    owner_repo = owner_repo.strip()
+    if "/" not in owner_repo:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
     owner, name = owner_repo.split("/", 1)
+    if not owner or not name:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
     for item in items:
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
@@ -235,13 +240,23 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
                 processed_ids.add(comment_id)
-            except Exception as exc:  # pragma: no cover - best effort
-                logger.warning("Failed to reply to review comment %s: %s", comment_id, exc)
+            except (subprocess.CalledProcessError, OSError, ValueError) as exc:  # pragma: no cover - best effort
+                detail = (
+                    extract_called_process_error_details(exc)
+                    if isinstance(exc, subprocess.CalledProcessError)
+                    else str(exc)
+                )
+                logger.warning("Failed to reply to review comment %s: %s", comment_id, detail)
         if thread_id and not item.get("is_resolved"):
             try:
                 resolve_review_thread(thread_id)
-            except subprocess.CalledProcessError as exc:
-                logger.warning("Failed to resolve review thread %s: %s", thread_id, exc)
+            except (subprocess.CalledProcessError, OSError, ValueError) as exc:
+                detail = (
+                    extract_called_process_error_details(exc)
+                    if isinstance(exc, subprocess.CalledProcessError)
+                    else str(exc)
+                )
+                logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
     return processed_ids
 
 
