@@ -15,7 +15,7 @@ invocation to keep automation unblocked. See docs.
 from __future__ import annotations
 
 import argparse
-# Import builtins to allow monkey-patching of the built-in print function.
+# Import builtins to allow wrapping the built-in print function.
 import builtins
 import json
 import logging
@@ -84,7 +84,7 @@ PRINT_HOOK_INSTALLED = False
 
 
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-ACCEPTED_LOG_LEVELS = VALID_LOG_LEVELS + ("WARN",)
+ACCEPTED_LOG_LEVELS = (*VALID_LOG_LEVELS, "WARN")
 
 
 def resolve_log_level(level_name: str) -> int:
@@ -413,6 +413,9 @@ def run_cmd(
     if not exe:
         raise FileNotFoundError(f"Command not found: {cmd[0]}")
     env = env_with_zsh(extra_env)
+    # The redaction token from sanitize_args ("<REDACTED>") contains no spaces or
+    # shell metacharacters, so shlex.join produces a safe, readable log entry. If
+    # the placeholder ever changes, ensure it remains shell-safe.
     cmd_display = shlex.join(sanitize_args(cmd))
     logger.info("Running command: %s", cmd_display)
     if cwd:

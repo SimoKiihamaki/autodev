@@ -257,6 +257,8 @@ func (o Options) Run(ctx context.Context) error {
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	if logs == nil {
+		// No consumer is interested in stream output (e.g. during tests); discard to
+		// keep the subprocess draining without emitting spurious log noise.
 		_, _ = io.Copy(io.Discard, r)
 		return
 	}

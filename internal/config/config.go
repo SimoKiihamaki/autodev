@@ -137,7 +137,12 @@ func Load() (Config, error) {
 	if trim == "" {
 		c.LogLevel = "INFO"
 	} else {
-		c.LogLevel = strings.ToUpper(trim)
+		upper := strings.ToUpper(trim)
+		if upper == "WARN" {
+			c.LogLevel = "WARNING"
+		} else {
+			c.LogLevel = upper
+		}
 	}
 	return c, nil
 }

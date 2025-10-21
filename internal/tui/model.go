@@ -379,7 +379,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			if m.running && m.cancel != nil {
 				m.cancelling = true
-				m.status = "Canceling run…"
+				m.status = "Cancelling run…"
 				m.cancel()
 				return m, nil
 			}
