@@ -15,13 +15,17 @@ invocation to keep automation unblocked. See docs.
 from __future__ import annotations
 
 import argparse
+# Import builtins to allow wrapping the built-in print function.
+import builtins
 import json
 import logging
 import os
-import re
 import random
+import re
+import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -68,6 +72,149 @@ PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 
 # Timeout for command execution verification in resource-constrained environments
 COMMAND_VERIFICATION_TIMEOUT_SECONDS = 8
+
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+DEFAULT_LOG_DIR_NAME = "logs"
+COMMAND_OUTPUT_LOG_LIMIT = 4000
+CURRENT_LOG_PATH: Optional[Path] = None
+USER_LOG_LEVEL = logging.INFO
+PRINT_LOGGER_NAME = "auto_prd.print"
+ORIGINAL_PRINT = builtins.print
+PRINT_HOOK_INSTALLED = False
+
+
+VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+ACCEPTED_LOG_LEVELS = (*VALID_LOG_LEVELS, "WARN")
+
+
+def resolve_log_level(level_name: str) -> int:
+    name = level_name.upper()
+    if name == "WARN":
+        name = "WARNING"
+    level_value = getattr(logging, name, None)
+    if isinstance(level_value, int):
+        return level_value
+    valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
+    raise SystemExit(
+        f"Invalid log level: {level_name}. Valid levels are: {valid_levels}"
+    )
+
+
+def setup_file_logging(log_path: Path, level_name: str) -> None:
+    global CURRENT_LOG_PATH, USER_LOG_LEVEL
+    numeric_level = resolve_log_level(level_name)
+    USER_LOG_LEVEL = numeric_level
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path.parent.chmod(0o700)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path.parent)
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    root_logger.addHandler(file_handler)
+    try:
+        log_path.chmod(0o600)
+    except Exception:
+        logger.debug("Unable to enforce permissions on %s", log_path)
+    logger.setLevel(numeric_level)
+    CURRENT_LOG_PATH = log_path
+    install_print_logger()
+
+
+def format_print_message(*args, **kwargs) -> str:
+    if not args and not kwargs:
+        return ""
+    sep = kwargs.get("sep", " ")
+    end = kwargs.get("end", "\n")
+    message = sep.join(str(arg) for arg in args)
+    if end and end != "\n":
+        message = f"{message}{end}"
+    return message
+
+
+def install_print_logger() -> None:
+    global PRINT_HOOK_INSTALLED
+    if PRINT_HOOK_INSTALLED:
+        return
+
+    print_logger = logging.getLogger(PRINT_LOGGER_NAME)
+    print_logger.setLevel(logging.INFO)
+
+    def tee_print(*args, **kwargs):
+        message = format_print_message(*args, **kwargs)
+        if message:
+            target_level = (
+                logging.WARNING
+                if kwargs.get("file") == sys.stderr
+                else logging.INFO
+            )
+            print_logger.log(target_level, message)
+        ORIGINAL_PRINT(*args, **kwargs)
+
+    builtins.print = tee_print
+    PRINT_HOOK_INSTALLED = True
+
+
+def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit]
+    omitted = len(text) - limit
+    return f"{truncated}... [truncated {omitted} chars]"
+
+
+def decode_output(data: bytes) -> str:
+    if not data:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+SENSITIVE_KEYS = {
+    "token",
+    "password",
+    "secret",
+    "apikey",
+    "api_key",
+    "key",
+    "access_token",
+}
+REDACT_EQ_PATTERN = re.compile(
+    r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$"
+)
+
+
+def sanitize_args(args: list[str]) -> list[str]:
+    sanitized: list[str] = []
+    skip_next = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+
+        match = REDACT_EQ_PATTERN.match(arg)
+        if match:
+            key_lower = match.group("key").lower()
+            if key_lower in SENSITIVE_KEYS:
+                prefix = match.group("prefix") or ""
+                sanitized.append(f"{prefix}{match.group('key')}=<REDACTED>")
+                continue
+
+        stripped = arg.lstrip("-")
+        normalized = stripped.lower().replace("-", "_")
+        if normalized in SENSITIVE_KEYS:
+            sanitized.append(arg)
+            if idx + 1 < len(args):
+                sanitized.append("<REDACTED>")
+                skip_next = True
+            continue
+
+        sanitized.append(arg)
+
+    return sanitized
 
 
 def register_safe_cwd(path: Path) -> None:
@@ -266,21 +413,66 @@ def run_cmd(
     if not exe:
         raise FileNotFoundError(f"Command not found: {cmd[0]}")
     env = env_with_zsh(extra_env)
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        check=False,
-        capture_output=capture,
-        text=True,
-        timeout=timeout,
-        env=env,
-        input=stdin,
-    )
+    # The redaction token from sanitize_args ("<REDACTED>") contains no spaces or
+    # shell metacharacters, so shlex.join produces a safe, readable log entry. If
+    # the placeholder ever changes, ensure it remains shell-safe.
+    cmd_display = shlex.join(sanitize_args(cmd))
+    logger.info("Running command: %s", cmd_display)
+    if cwd:
+        logger.debug("Command cwd: %s", cwd)
+    if timeout is not None:
+        logger.debug("Command timeout: %ss", timeout)
+    stdin_bytes: Optional[bytes] = None
+    if stdin is not None:
+        stdin_bytes = stdin.encode("utf-8")
+        logger.debug("Command stdin bytes: %s", len(stdin_bytes))
+    start_time = time.monotonic()
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            check=False,
+            capture_output=capture,
+            text=False,
+            timeout=timeout,
+            env=env,
+            input=stdin_bytes,
+        )
+    except Exception:
+        duration = time.monotonic() - start_time
+        logger.exception(
+            "Command execution error after %.2fs: %s", duration, cmd_display
+        )
+        raise
+    duration = time.monotonic() - start_time
+    stdout_bytes = proc.stdout or b""
+    stderr_bytes = proc.stderr or b""
+    stdout_text = decode_output(stdout_bytes)
+    stderr_text = decode_output(stderr_bytes)
+    if capture:
+        if stdout_text:
+            logger.debug("Command stdout: %s", truncate_for_log(stdout_text))
+        if stderr_text:
+            level = logging.ERROR if proc.returncode != 0 else logging.DEBUG
+            logger.log(level, "Command stderr: %s", truncate_for_log(stderr_text))
+    else:
+        logger.debug("Command output not captured (capture=False)")
+    if proc.returncode == 0:
+        logger.info("Command succeeded in %.2fs: %s", duration, cmd_display)
+    else:
+        level = logging.ERROR if check else logging.WARNING
+        logger.log(
+            level,
+            "Command exited with code %s after %.2fs: %s",
+            proc.returncode,
+            duration,
+            cmd_display,
+        )
     if check and proc.returncode != 0:
         raise subprocess.CalledProcessError(
-            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+            proc.returncode, cmd, output=stdout_text, stderr=stderr_text
         )
-    return proc.stdout or "", proc.stderr or "", proc.returncode
+    return stdout_text, stderr_text, proc.returncode
 
 
 def run_sh(
@@ -1613,10 +1805,6 @@ def post_final_comment(
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
-    )
-
     ap = argparse.ArgumentParser(
         description="Autonomous PRD→PR loop with Codex (YOLO), CodeRabbit & Copilot"
     )
@@ -1626,6 +1814,20 @@ def main() -> None:
     )
     ap.add_argument(
         "--repo-slug", default=None, help="owner/repo; default parsed from git remote"
+    )
+    ap.add_argument(
+        "--log-file",
+        default=None,
+        help=(
+            "Write detailed run output to this file "
+            "(default: repo logs/auto_prd_<timestamp>.log)"
+        ),
+    )
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=ACCEPTED_LOG_LEVELS,
+        help="Log level for command diagnostics (default: INFO)",
     )
     ap.add_argument(
         "--base",
@@ -1697,6 +1899,37 @@ def main() -> None:
         help="Comma-separated list of phases to run (local,pr,review_fix). Default: all phases.",
     )
     args = ap.parse_args()
+
+    original_cwd = Path.cwd()
+    repo_root = Path(args.repo).resolve() if args.repo else git_root()
+    register_safe_cwd(repo_root)
+    os.chdir(repo_root)
+
+    if args.log_file:
+        log_path = Path(args.log_file).expanduser()
+        if not log_path.is_absolute():
+            log_path = (repo_root / log_path).resolve()
+    else:
+        xdg_config = os.getenv("XDG_CONFIG_HOME", None)
+        if xdg_config and xdg_config.strip():
+            base_config = Path(xdg_config).expanduser()
+        else:
+            base_config = Path.home() / ".config"
+        preferred_dir = base_config / "aprd" / DEFAULT_LOG_DIR_NAME
+        try:
+            preferred_dir.mkdir(parents=True, exist_ok=True)
+            if not os.access(preferred_dir, os.W_OK | os.X_OK):
+                raise PermissionError("log directory not writable")
+            log_dir = preferred_dir
+        except Exception:
+            log_dir = repo_root / DEFAULT_LOG_DIR_NAME
+            log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"auto_prd_{now_stamp()}.log"
+
+    setup_file_logging(log_path, args.log_level)
+    print(f"Detailed logs: {log_path}")
+    logger.info("Log file initialized at %s", log_path)
+
     ensure_claude_debug_dir()
 
     if args.phases is None:
@@ -1806,10 +2039,16 @@ def main() -> None:
 
     ensure_gh_alias()
 
-    prd_path = Path(args.prd).resolve()
-    repo_root = Path(args.repo).resolve() if args.repo else git_root()
-    register_safe_cwd(repo_root)
-    os.chdir(repo_root)
+    prd_candidate = Path(args.prd)
+    if prd_candidate.is_absolute():
+        prd_path = prd_candidate.resolve()
+    else:
+        prd_path = (original_cwd / prd_candidate).resolve()
+
+    print(f"Repository root: {repo_root}")
+    print(f"Using PRD: {prd_path}")
+    logger.info("Resolved repository root to %s", repo_root)
+    logger.info("Resolved PRD path to %s", prd_path)
 
     owner_repo = args.repo_slug or parse_owner_repo_from_git()
     repo_default_branch = git_default_branch(repo_root)
@@ -2049,4 +2288,16 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as exc:  # pragma: no cover - capture unexpected failures for operators
+        logger.exception("Fatal error during automation run")
+        if CURRENT_LOG_PATH:
+            ORIGINAL_PRINT(
+                f"Fatal error: {exc}. See detailed logs at {CURRENT_LOG_PATH}"
+            )
+        else:
+            ORIGINAL_PRINT(f"Fatal error: {exc}")
+        raise

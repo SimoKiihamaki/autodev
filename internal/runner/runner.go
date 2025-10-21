@@ -34,6 +34,24 @@ type Options struct {
 	InitialPrompt string
 	ExtraEnv      []string
 	Logs          chan Line
+	LogFilePath   string
+	LogLevel      string
+}
+
+func trySend(logs chan Line, line Line) bool {
+	if logs == nil {
+		return false
+	}
+	select {
+	case logs <- line:
+		return true
+	default:
+		return false
+	}
+}
+
+func sendLine(logs chan Line, line Line) {
+	_ = trySend(logs, line)
 }
 
 // makeTempPRD optionally prepends an initial prompt into a temp PRD file.
@@ -48,15 +66,24 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	tmpDir := os.TempDir()
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
 	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
-	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o644); err != nil {
+	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o600); err != nil {
 		return "", nil, err
 	}
 	cleanup := func() { _ = os.Remove(tmpPath) }
 	return tmpPath, cleanup, nil
 }
 
-func buildArgs(c config.Config, prd string) []string {
-	args := []string{c.PythonScript, "--prd", prd}
+func buildArgs(c config.Config, prd string, logFile string, logLevel string) []string {
+	script := c.PythonScript
+	if !filepath.IsAbs(script) && strings.TrimSpace(c.RepoPath) != "" {
+		candidate := filepath.Join(c.RepoPath, script)
+		if abs, err := filepath.Abs(candidate); err == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				script = abs
+			}
+		}
+	}
+	args := []string{script, "--prd", prd}
 	if c.RepoPath != "" {
 		args = append(args, "--repo", c.RepoPath)
 	}
@@ -118,6 +145,20 @@ func buildArgs(c config.Config, prd string) []string {
 		args = append(args, "--allow-unsafe-execution")
 	}
 
+	if logFile != "" {
+		args = append(args, "--log-file", logFile)
+	}
+
+	level := strings.TrimSpace(logLevel)
+	if level == "" {
+		level = strings.TrimSpace(c.LogLevel)
+	}
+	if level == "" {
+		level = "INFO"
+	}
+	level = strings.ToUpper(level)
+	args = append(args, "--log-level", level)
+
 	return args
 }
 
@@ -129,7 +170,7 @@ func (o Options) Run(ctx context.Context) error {
 	}
 	defer cleanup()
 
-	args := buildArgs(o.Config, tmpPath)
+	args := buildArgs(o.Config, tmpPath, o.LogFilePath, o.LogLevel)
 
 	// Build env
 	env := os.Environ()
@@ -160,6 +201,7 @@ func (o Options) Run(ctx context.Context) error {
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
 	cmd := exec.Command(o.Config.PythonCommand, args...)
 	cmd.Env = env
+	setupProcessGroup(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -185,37 +227,41 @@ func (o Options) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
-		if sigErr := cmd.Process.Signal(os.Interrupt); sigErr != nil {
-			o.Logs <- Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true}
+		if sigErr := interruptProcess(cmd); sigErr != nil {
+			sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true})
 		}
 		select {
 		case <-waitCh:
 			// Process exited; streams will drain/finish.
 		case <-time.After(2 * time.Second):
-			if killErr := cmd.Process.Kill(); killErr != nil {
-				o.Logs <- Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true}
+			if killErr := forceKillProcess(cmd); killErr != nil {
+				sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true})
 			}
 			<-waitCh
 		}
 		wg.Wait()
-		select {
-		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
-		default:
+		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
+		if o.Logs != nil {
+			close(o.Logs)
 		}
-		close(o.Logs)
 		return ctx.Err()
 	case err := <-waitCh:
 		wg.Wait()
-		select {
-		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
-		default:
+		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
+		if o.Logs != nil {
+			close(o.Logs)
 		}
-		close(o.Logs)
 		return err
 	}
 }
 
 func stream(r io.Reader, isErr bool, logs chan Line) {
+	if logs == nil {
+		// No consumer is interested in stream output (e.g. during tests); discard to
+		// keep the subprocess draining without emitting spurious log noise.
+		_, _ = io.Copy(io.Discard, r)
+		return
+	}
 	sc := bufio.NewScanner(r)
 	// Get buffer from pool and allow large log lines (up to 1MB)
 	buf := bufferPool.Get().([]byte)
@@ -225,10 +271,20 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		bufferPool.Put(buf[:0])
 	}()
 
+	var dropping bool
 	for sc.Scan() {
-		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
+		line := Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
+		if trySend(logs, line) {
+			dropping = false
+			continue
+		}
+		if !dropping {
+			dropping = true
+			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
+			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
+		}
 	}
 	if err := sc.Err(); err != nil {
-		logs <- Line{Time: time.Now(), Text: "stream error: " + err.Error(), Err: true}
+		sendLine(logs, Line{Time: time.Now(), Text: "stream error: " + err.Error(), Err: true})
 	}
 }

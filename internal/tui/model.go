@@ -35,6 +35,8 @@ const (
 	tabHelp
 )
 
+const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
+
 var tabNames = []string{"Run", "PRD", "Settings", "Env", "Prompt", "Logs", "Help"}
 
 type item struct {
@@ -94,25 +96,30 @@ type model struct {
 	prompt textarea.Model
 
 	// Logs
-	logs   viewport.Model
-	logBuf []string
+	logs        viewport.Model
+	logBuf      []string
+	logFile     *os.File
+	logFilePath string
+	logStatus   string
 
 	// Live run dashboard
-	runFeed         viewport.Model
-	runFeedBuf      []string
-	runPhase        string
-	runCurrent      string
-	runPrevious     string
-	runLastComplete string
-	runIterCurrent  int
-	runIterTotal    int
-	runIterLabel    string
+	runFeed           viewport.Model
+	runFeedBuf        []string
+	runFeedAutoFollow bool
+	runPhase          string
+	runCurrent        string
+	runPrevious       string
+	runLastComplete   string
+	runIterCurrent    int
+	runIterTotal      int
+	runIterLabel      string
 
 	// Runner
-	running   bool
-	cancel    context.CancelFunc
-	logCh     chan runner.Line
-	runResult chan error
+	running    bool
+	cancel     context.CancelFunc
+	logCh      chan runner.Line
+	runResult  chan error
+	cancelling bool
 }
 
 const (
@@ -169,6 +176,7 @@ func New() model {
 		tab: tabRun,
 		cfg: cfg,
 	}
+	m.normalizeLogLevel()
 
 	// PRD list
 	delegate := list.NewDefaultDelegate()
@@ -237,6 +245,7 @@ func New() model {
 	}
 
 	m.resetRunDashboard()
+	m.resolvePythonScript(true)
 
 	return m
 }
@@ -349,7 +358,6 @@ func (m *model) clearPRDSelection(statusMsg string) {
 
 // ------- Runner/logs messages -------
 type runStartMsg struct{}
-type runStopMsg struct{}
 type logLineMsg struct{ line runner.Line }
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
@@ -370,8 +378,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			if m.running && m.cancel != nil {
+				m.cancelling = true
+				m.status = "Cancelling run…"
 				m.cancel()
-				return m, func() tea.Msg { return runStopMsg{} }
+				return m, nil
 			}
 			return m, tea.Quit
 		case "q":
@@ -414,7 +424,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			key := msg.String()
 			switch key {
 			case "enter":
-				if m.running {
+				if m.isActiveOrCancelling() {
 					return m, nil
 				}
 				return m, m.startRunCmd()
@@ -422,28 +432,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.runFeedBuf) > 0 || m.running {
 					var cmd tea.Cmd
 					m.runFeed, cmd = m.runFeed.Update(msg)
+					m.updateRunFeedFollowFromViewport()
 					return m, cmd
 				}
 			case "pgup":
 				if len(m.runFeedBuf) > 0 || m.running {
 					m.runFeed.LineUp(10)
+					m.updateRunFeedFollowFromViewport()
 					return m, nil
 				}
 			case "pgdown":
 				if len(m.runFeedBuf) > 0 || m.running {
 					m.runFeed.LineDown(10)
+					m.updateRunFeedFollowFromViewport()
 					return m, nil
 				}
 			case "home":
 				if len(m.runFeedBuf) > 0 || m.running {
 					m.runFeed.GotoTop()
+					m.updateRunFeedFollowFromViewport()
 					return m, nil
 				}
 			case "end":
 				if len(m.runFeedBuf) > 0 || m.running {
 					m.runFeed.GotoBottom()
+					m.updateRunFeedFollowFromViewport()
 					return m, nil
 				}
+			case "f":
+				if len(m.runFeedBuf) > 0 || m.running {
+					m.runFeedAutoFollow = !m.runFeedAutoFollow
+					if m.runFeedAutoFollow {
+						m.runFeed.GotoBottom()
+					}
+				}
+				return m, nil
 			}
 
 		case tabPRD:
@@ -698,20 +721,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runStartMsg:
 		m.running = true
+		m.cancelling = false
 		m.errMsg = ""
 		m.status = "Running…"
 		m.tab = tabRun
+		m.runFeedAutoFollow = true
 		return m, nil
 
-	case runStopMsg:
-		m.running = false
-		m.cancel = nil
-		m.status = "Stopped."
-		return m, nil
 	case runFinishMsg:
 		m.running = false
 		m.cancel = nil
 		m.runResult = nil
+		m.logCh = nil
+		m.cancelling = false
+		logReason := "completed"
 		switch {
 		case msg.err == nil:
 			m.errMsg = ""
@@ -719,25 +742,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case errors.Is(msg.err, context.Canceled):
 			m.errMsg = ""
 			m.status = "Run canceled."
+			logReason = "canceled"
 		default:
 			m.errMsg = msg.err.Error()
 			m.status = "Run failed."
+			logReason = "failed"
 		}
+		m.closeLogFile(logReason)
 		return m, nil
 
 	case logLineMsg:
 		line := msg.line
-		prefix := ""
-		if line.Err {
-			prefix = "[ERR] "
-		}
-		display := prefix + line.Text
+		display, plain := m.formatLogLine(line)
+		m.persistLogLine(line)
 		m.logBuf = append(m.logBuf, display)
 		if len(m.logBuf) > 2000 {
 			m.logBuf = m.logBuf[len(m.logBuf)-2000:]
 		}
 		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
-		m.handleRunFeedLine(display, line.Text)
+		m.handleRunFeedLine(display, plain)
 		// keep reading
 		return m, m.readLogs()
 
@@ -745,6 +768,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.errMsg = msg.err.Error()
 		m.status = "Error."
+		m.closeLogFile("failed")
+		m.cancel = nil
+		m.runResult = nil
+		m.logCh = nil
+		m.cancelling = false
 		return m, nil
 	}
 	return m, nil
@@ -1015,10 +1043,26 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 	return m.settingsInputMap()[inputName]
 }
 
+func (m *model) normalizeLogLevel() {
+	lvl := strings.TrimSpace(m.cfg.LogLevel)
+	if lvl == "" {
+		m.cfg.LogLevel = "INFO"
+		return
+	}
+	m.cfg.LogLevel = strings.ToUpper(lvl)
+}
+
+func (m model) isActiveOrCancelling() bool {
+	return m.running || m.cancelling
+}
+
 // ------- Run command -------
 func (m *model) startRunCmd() tea.Cmd {
 	// hydrate cfg from inputs
 	m.hydrateConfigFromInputs()
+	m.resolvePythonScript(false)
+	m.normalizeLogLevel()
+	m.cancelling = false
 
 	if m.selectedPRD == "" {
 		m.errMsg = "Select a PRD first (PRD tab)"
@@ -1032,6 +1076,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		m.errMsg = "Failed to save config: " + err.Error()
 		return func() tea.Msg { return statusMsg{note: "Config save failed"} }
 	}
+	m.prepareRunLogFile()
 
 	// fresh log channel per run (owned/closed by the run goroutine)
 	m.logCh = make(chan runner.Line, 2048)
@@ -1051,6 +1096,8 @@ func (m *model) startRunCmd() tea.Cmd {
 			PRDPath:       m.selectedPRD,
 			InitialPrompt: m.prompt.Value(),
 			Logs:          logCh,
+			LogFilePath:   m.logFilePath,
+			LogLevel:      m.cfg.LogLevel,
 		}
 		err := o.Run(ctx)
 		if err != nil && err != context.Canceled {
@@ -1080,21 +1127,41 @@ func (m *model) preflightChecks() error {
 		return errors.New("Set Python script path in Settings")
 	}
 	scriptPath := m.cfg.PythonScript
-	if !filepath.IsAbs(scriptPath) {
-		if abs, err := filepath.Abs(scriptPath); err == nil {
-			scriptPath = abs
-		}
-	}
 	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
 		if err != nil {
-			return fmt.Errorf("Python script not found: %w", err)
+			return fmt.Errorf(
+				"Python script not found: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+				abbreviatePath(scriptPath),
+			)
 		}
-		return fmt.Errorf("Python script path points to directory: %s", scriptPath)
+		return fmt.Errorf(
+			"Python script path points to directory: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+			abbreviatePath(scriptPath),
+		)
 	}
 	if _, err := os.Stat(m.selectedPRD); err != nil {
 		return fmt.Errorf("Selected PRD missing: %w", err)
 	}
 	return nil
+}
+
+func (m *model) resolvePythonScript(initial bool) bool {
+	resolved, reason, changed, found := detectPythonScript(m.cfg.PythonScript, m.cfg.RepoPath)
+	if resolved != "" && !pathsEqual(resolved, m.cfg.PythonScript) {
+		m.cfg.PythonScript = resolved
+		m.inPyScript.SetValue(resolved)
+	}
+	if changed && reason != "" {
+		note := fmt.Sprintf("Resolved Python script (%s): %s", reason, abbreviatePath(resolved))
+		if initial {
+			if m.status == "" {
+				m.status = note
+			}
+		} else {
+			m.status = note
+		}
+	}
+	return found
 }
 
 func (m *model) hydrateConfigFromInputs() {
@@ -1140,6 +1207,7 @@ func (m *model) resetRunDashboard() {
 	m.runIterCurrent = 0
 	m.runIterTotal = 0
 	m.runIterLabel = ""
+	m.runFeedAutoFollow = true
 }
 
 func (m *model) setRunCurrent(action string) {
@@ -1163,9 +1231,44 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 	if len(m.runFeedBuf) > 800 {
 		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-800:]
 	}
+	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
 	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
-	m.runFeed.GotoBottom()
+	if shouldFollow {
+		m.runFeed.GotoBottom()
+		m.runFeedAutoFollow = true
+	}
 	m.consumeRunSummary(rawLine)
+}
+
+func (m *model) updateRunFeedFollowFromViewport() {
+	if m.runFeed.AtBottom() {
+		m.runFeedAutoFollow = true
+	} else {
+		m.runFeedAutoFollow = false
+	}
+}
+
+func (m *model) formatLogLine(line runner.Line) (string, string) {
+	plain := strings.TrimRight(line.Text, "\r\n")
+	displayText := plain
+	style := logInfoStyle
+	lower := strings.ToLower(plain)
+	switch {
+	case line.Err:
+		displayText = "[ERR] " + plain
+		style = logErrorStyle
+	case strings.HasPrefix(plain, "⚠️"):
+		style = logWarnStyle
+	case strings.HasPrefix(plain, "✓"):
+		style = logSuccessStyle
+	case strings.HasPrefix(plain, "→"):
+		style = logActionStyle
+	case strings.Contains(lower, "process finished"):
+		style = logSystemStyle
+	case strings.Contains(lower, "review loop"):
+		style = logSystemStyle
+	}
+	return style.Render(displayText), plain
 }
 
 func (m *model) consumeRunSummary(rawLine string) {
@@ -1298,11 +1401,7 @@ func (m model) View() string {
 	case tabRun:
 		if m.running || len(m.runFeedBuf) > 0 {
 			b.WriteString(sectionTitle.Render("Run Dashboard") + "\n")
-			if m.selectedPRD == "" {
-				b.WriteString("PRD: (none selected)\n")
-			} else {
-				b.WriteString("PRD: " + m.selectedPRD + "\n")
-			}
+			b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 
 			b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 			b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
@@ -1369,21 +1468,28 @@ func (m model) View() string {
 			b.WriteString(fmt.Sprintf("Last Complete: %s\n", lastComplete))
 			b.WriteString(fmt.Sprintf("Iteration: %s\n\n", iteration))
 
-			b.WriteString(sectionTitle.Render("Live Feed") + "\n")
+			feedMode := "paused"
+			if m.runFeedAutoFollow {
+				feedMode = "auto"
+			}
+			b.WriteString(sectionTitle.Render(fmt.Sprintf("Live Feed — follow %s", feedMode)) + "\n")
 			b.WriteString(m.runFeed.View() + "\n")
 
+			if m.logFilePath != "" {
+				b.WriteString(helpStyle.Render("Log file: "+abbreviatePath(m.logFilePath)) + "\n")
+			} else if m.logStatus != "" {
+				b.WriteString(helpStyle.Render("Log file: "+m.logStatus) + "\n")
+			}
+
 			if m.running {
-				b.WriteString(helpStyle.Render("Ctrl+C to cancel · ↑/↓ scroll feed · PgUp/PgDn jump · Home/End align\n"))
+				b.WriteString(helpStyle.Render(fmt.Sprintf("Ctrl+C cancel · %s\n", runScrollHelp)))
 			} else {
-				b.WriteString(helpStyle.Render("Press Enter to start a new run · ↑/↓ scroll feed · PgUp/PgDn jump · Home/End align\n"))
+				b.WriteString(helpStyle.Render("Press Enter to start a new run\n"))
+				b.WriteString(helpStyle.Render(fmt.Sprintf("Enter start · %s\n", runScrollHelp)))
 			}
 		} else {
 			b.WriteString(sectionTitle.Render("Run") + "\n")
-			if m.selectedPRD == "" {
-				b.WriteString("PRD: (none selected)\n")
-			} else {
-				b.WriteString("PRD: " + m.selectedPRD + "\n")
-			}
+			b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 			b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 			b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
 			if m.errMsg != "" {
@@ -1392,6 +1498,11 @@ func (m model) View() string {
 				b.WriteString("Status: " + m.status + "\n")
 			} else {
 				b.WriteString("Status: Idle\n")
+			}
+			if m.logFilePath != "" {
+				b.WriteString(helpStyle.Render("Last log: "+abbreviatePath(m.logFilePath)) + "\n")
+			} else if m.logStatus != "" {
+				b.WriteString(helpStyle.Render("Log file: "+m.logStatus) + "\n")
 			}
 			b.WriteString("\nPress Enter to start a run. This view switches into a live dashboard once the automation begins.\n")
 		}
@@ -1490,6 +1601,11 @@ func (m model) View() string {
 
 	case tabLogs:
 		b.WriteString(sectionTitle.Render("Logs") + "\n")
+		if m.logFilePath != "" {
+			b.WriteString(helpStyle.Render("Persisted at: "+abbreviatePath(m.logFilePath)) + "\n")
+		} else if m.logStatus != "" {
+			b.WriteString(helpStyle.Render("Log file: "+m.logStatus) + "\n")
+		}
 		b.WriteString(m.logs.View() + "\n")
 
 	case tabHelp:
@@ -1498,8 +1614,8 @@ func (m model) View() string {
 		b.WriteString("• Settings: ↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · s save\n")
 		b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish\n")
 		b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle · s save\n")
-		b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom\n")
-		b.WriteString("• Run: Enter to start · Ctrl+C to stop\n")
+		b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom · files saved in ~/.config/aprd/logs\n")
+		b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
 		b.WriteString("\nGlobal: 1-6 tabs · ? help · q quit · Ctrl+C force quit\n")
 		b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
 	}
@@ -1514,4 +1630,21 @@ func atoiSafe(s string) int {
 	var n int
 	fmt.Sscanf(s, "%d", &n)
 	return n
+}
+
+func formatPRDDisplay(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "(none selected)"
+	}
+	base := filepath.Base(path)
+	dir := filepath.Dir(path)
+	if dir == "." || dir == string(filepath.Separator) || dir == "" {
+		return base
+	}
+	prettyDir := abbreviatePath(dir)
+	if prettyDir == "" || prettyDir == "." || prettyDir == string(filepath.Separator) {
+		return base
+	}
+	return fmt.Sprintf("%s · %s", base, prettyDir)
 }

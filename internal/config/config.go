@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -43,6 +44,7 @@ type Phases struct {
 
 type Config struct {
 	ExecutorPolicy string             `yaml:"executor_policy"`
+	LogLevel       string             `yaml:"log_level"`
 	PythonCommand  string             `yaml:"python_command"`
 	PythonScript   string             `yaml:"python_script"`
 	RepoPath       string             `yaml:"repo_path"`
@@ -60,6 +62,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		ExecutorPolicy: "codex-first",
+		LogLevel:       "INFO",
 		PythonCommand:  "python3",
 		PythonScript:   "tools/auto_prd_to_pr_v3.py",
 		RepoPath:       "",
@@ -105,7 +108,10 @@ func EnsureDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -127,6 +133,17 @@ func Load() (Config, error) {
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return Config{}, err
 	}
+	trim := strings.TrimSpace(c.LogLevel)
+	if trim == "" {
+		c.LogLevel = "INFO"
+	} else {
+		upper := strings.ToUpper(trim)
+		if upper == "WARN" {
+			c.LogLevel = "WARNING"
+		} else {
+			c.LogLevel = upper
+		}
+	}
 	return c, nil
 }
 
@@ -142,5 +159,5 @@ func Save(c Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0o644)
+	return os.WriteFile(p, b, 0o600)
 }
