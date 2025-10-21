@@ -1823,12 +1823,11 @@ def main() -> None:
 
     base_branch_exists = git_branch_exists(repo_root, base_branch)
     if not base_branch_exists:
-        fallback_branch = repo_default_branch
-        if fallback_branch and fallback_branch != base_branch:
+        if repo_default_branch and repo_default_branch != base_branch:
             print(
-                f"Base branch '{base_branch}' not found; using '{fallback_branch}' instead."
+                f"Base branch '{base_branch}' not found; using '{repo_default_branch}' instead."
             )
-            base_branch = fallback_branch
+            base_branch = repo_default_branch
             base_branch_exists = git_branch_exists(repo_root, base_branch)
     if not base_branch_exists:
         current_branch = git_current_branch(repo_root)
@@ -1836,7 +1835,7 @@ def main() -> None:
             f"Base branch '{base_branch}' still not found; falling back to current branch '{current_branch}'."
         )
         base_branch = current_branch
-        base_branch_exists = True
+        base_branch_exists = git_branch_exists(repo_root, base_branch)
 
     # Make the warning phase-aware with different severity for different phases
     active_phases_with_commit_risk = selected_phases.intersection(
