@@ -8,8 +8,9 @@
 
 ### Run Tab (1)
 - **Enter**: Start the automation process
-- **Ctrl+C**: Stop running process
-- **q**: Quit application
+- **Ctrl+C**: Cancel the current run (graceful shutdown)
+- **f**: Toggle auto-follow for the live feed
+- **q**: Quit application (only when idle)
 
 ### PRD Tab (2)
 - **↑/↓ Arrow Keys**: Navigate through PRD files
@@ -52,14 +53,15 @@
 - **Page Up/Page Down**: Scroll by pages (10 lines at a time)
 - **Home/End**: Jump to top/bottom of logs
 - **Arrow keys**: Work for navigation when focused on logs
+- **Log files**: Every run is persisted under `~/.config/aprd/logs/`
 
 ### Help Tab (?)
 - **q**: Quit application
 - **Number keys**: Switch to other tabs
 
 ## Global Controls
-- **q**: Quit application (when not running)
-- **Ctrl+C**: Stop process or quit
+- **q**: Quit application (when not running or canceling)
+- **Ctrl+C**: Cancel active process or quit when idle
 - **1-6**: Direct tab switching
 - **?**: Show help
 

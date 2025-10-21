@@ -36,6 +36,22 @@ type Options struct {
 	Logs          chan Line
 }
 
+func trySend(logs chan Line, line Line) bool {
+	if logs == nil {
+		return false
+	}
+	select {
+	case logs <- line:
+		return true
+	default:
+		return false
+	}
+}
+
+func sendLine(logs chan Line, line Line) {
+	_ = trySend(logs, line)
+}
+
 // makeTempPRD optionally prepends an initial prompt into a temp PRD file.
 func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if strings.TrimSpace(prompt) == "" {
@@ -160,6 +176,7 @@ func (o Options) Run(ctx context.Context) error {
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
 	cmd := exec.Command(o.Config.PythonCommand, args...)
 	cmd.Env = env
+	setupProcessGroup(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -185,32 +202,30 @@ func (o Options) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
-		if sigErr := cmd.Process.Signal(os.Interrupt); sigErr != nil {
-			o.Logs <- Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true}
+		if sigErr := interruptProcess(cmd); sigErr != nil {
+			sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true})
 		}
 		select {
 		case <-waitCh:
 			// Process exited; streams will drain/finish.
 		case <-time.After(2 * time.Second):
-			if killErr := cmd.Process.Kill(); killErr != nil {
-				o.Logs <- Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true}
+			if killErr := forceKillProcess(cmd); killErr != nil {
+				sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true})
 			}
 			<-waitCh
 		}
 		wg.Wait()
-		select {
-		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
-		default:
+		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
+		if o.Logs != nil {
+			close(o.Logs)
 		}
-		close(o.Logs)
 		return ctx.Err()
 	case err := <-waitCh:
 		wg.Wait()
-		select {
-		case o.Logs <- Line{Time: time.Now(), Text: "process finished", Err: false}:
-		default:
+		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
+		if o.Logs != nil {
+			close(o.Logs)
 		}
-		close(o.Logs)
 		return err
 	}
 }
@@ -225,10 +240,19 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		bufferPool.Put(buf[:0])
 	}()
 
+	var dropping bool
 	for sc.Scan() {
-		logs <- Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
+		line := Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
+		if trySend(logs, line) {
+			dropping = false
+			continue
+		}
+		if !dropping {
+			dropping = true
+			sendLine(logs, Line{Time: time.Now(), Text: "log backlog full; dropping output", Err: true})
+		}
 	}
 	if err := sc.Err(); err != nil {
-		logs <- Line{Time: time.Now(), Text: "stream error: " + err.Error(), Err: true}
+		sendLine(logs, Line{Time: time.Now(), Text: "stream error: " + err.Error(), Err: true})
 	}
 }

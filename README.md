@@ -12,6 +12,8 @@ Shows live logs from the underlying Python process.
 - **Initial prompt** field (optional); injected as a temp overlay above your PRD for the first pass.
 - **Per-phase executors** (implement, fix, PR, review_fix) via env overrides or policy fallback.
 - **Start from any step** by toggling phases: local, pr, review_fix.
+- Finds the Python automation script relative to the binary when the default path is missing.
+- Persists each run’s logs to `~/.config/aprd/logs/` for post-run debugging.
 
 ## Requirements
 
