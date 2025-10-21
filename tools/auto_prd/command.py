@@ -53,6 +53,7 @@ def sanitize_args(args: Sequence[str]) -> list[str]:
         if arg in ("-c", "-lc") and idx + 1 < len(args):
             sanitized.append(arg)
             sanitized.append("<REDACTED_SCRIPT>")
+            logger.debug("Sanitizing inline shell script from logs to avoid leaking sensitive input")
             skip_next = True
             continue
 

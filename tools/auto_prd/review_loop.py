@@ -78,7 +78,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 allow_unsafe_execution=allow_unsafe_execution,
             )
             trigger_copilot(owner_repo, pr_number, repo_root)
-            acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
+            processed_comment_ids = acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
             last_activity = time.time()
             time.sleep(poll)
             continue

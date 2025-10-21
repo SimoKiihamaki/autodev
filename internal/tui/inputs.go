@@ -180,6 +180,7 @@ func (m *model) focusFlag(flagName string) {
 func (m *model) navigateFlags(direction string) {
 	flags := envFlagNames
 
+	// Guard helps if configuration trims available flags (tests or future changes).
 	if len(flags) == 0 {
 		return
 	}

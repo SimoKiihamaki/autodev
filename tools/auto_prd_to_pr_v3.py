@@ -3,7 +3,7 @@
 
 try:
     from tools.auto_prd import main  # type: ignore[import-not-found]
-except Exception:  # pragma: no cover - fallback for script invocation
+except ImportError:  # pragma: no cover - fallback for script invocation
     from auto_prd.cli import main
 
 

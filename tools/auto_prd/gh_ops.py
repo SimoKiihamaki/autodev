@@ -222,7 +222,8 @@ def resolve_review_thread(thread_id: str) -> None:
     call_with_backoff(action)
 
 
-def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> None:
+def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> Set[int]:
+    """Reply to review items and return the updated set of processed IDs."""
     owner, name = owner_repo.split("/", 1)
     for item in items:
         comment_id = item.get("comment_id")
@@ -241,6 +242,7 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
                 resolve_review_thread(thread_id)
             except subprocess.CalledProcessError as exc:
                 logger.warning("Failed to resolve review thread %s: %s", thread_id, exc)
+    return processed_ids
 
 
 def post_final_comment(pr_number: Optional[int], owner_repo: str, prd_path: Path, repo_root: Path, dry_run: bool = False) -> None:
