@@ -1,22 +1,21 @@
 package tui
 
 import (
-	"log"
+	"fmt"
 	"strconv"
 	"strings"
 )
 
 const atoiDefault = 0
 
-func atoiSafe(s string) int {
+func atoiSafe(s string) (int, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return atoiDefault
+		return atoiDefault, nil
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		log.Printf("tui: atoiSafe failed to parse %q: %v", s, err)
-		return atoiDefault
+		return atoiDefault, fmt.Errorf("invalid integer %q: %w", s, err)
 	}
-	return n
+	return n, nil
 }

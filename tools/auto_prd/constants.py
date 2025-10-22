@@ -72,3 +72,4 @@ REVIEW_BOT_LOGINS = {
         "github-copilot[bot]",
     }
 }
+REVIEW_FALLBACK_MENTION = "@reviewer"

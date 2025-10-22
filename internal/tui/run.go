@@ -34,7 +34,11 @@ func (m *model) startRunCmd() tea.Cmd {
 		m.errMsg = note
 		return func() tea.Msg { return statusMsg{note: note} }
 	}
-	m.hydrateConfigFromInputs()
+	invalidNumeric := m.hydrateConfigFromInputs()
+	if len(invalidNumeric) > 0 {
+		note := fmt.Sprintf("Reset invalid numeric settings: %s", strings.Join(invalidNumeric, ", "))
+		m.status = note
+	}
 	m.resolvePythonScript(false)
 	m.normalizeLogLevel()
 	m.cancelling = false
@@ -150,7 +154,7 @@ func (m *model) resolvePythonScript(initial bool) bool {
 	return found
 }
 
-func (m *model) hydrateConfigFromInputs() {
+func (m *model) hydrateConfigFromInputs() []string {
 	m.cfg.RepoPath = strings.TrimSpace(m.inRepo.Value())
 	m.cfg.BaseBranch = strings.TrimSpace(m.inBase.Value())
 	m.cfg.Branch = strings.TrimSpace(m.inBranch.Value())
@@ -158,10 +162,21 @@ func (m *model) hydrateConfigFromInputs() {
 	m.cfg.PythonCommand = strings.TrimSpace(m.inPyCmd.Value())
 	m.cfg.PythonScript = strings.TrimSpace(m.inPyScript.Value())
 	m.cfg.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
-	m.cfg.Timings.WaitMinutes = atoiSafe(m.inWaitMin.Value())
-	m.cfg.Timings.ReviewPollSeconds = atoiSafe(m.inPollSec.Value())
-	m.cfg.Timings.IdleGraceMinutes = atoiSafe(m.inIdleMin.Value())
-	m.cfg.Timings.MaxLocalIters = atoiSafe(m.inMaxIters.Value())
+
+	invalid := make([]string, 0, 4)
+	setNumeric := func(raw, label string, apply func(int)) {
+		val, err := atoiSafe(raw)
+		if err != nil {
+			invalid = append(invalid, label)
+			log.Printf("tui: invalid %s value %q: %v", strings.ToLower(label), raw, err)
+		}
+		apply(val)
+	}
+
+	setNumeric(m.inWaitMin.Value(), "Wait minutes", func(v int) { m.cfg.Timings.WaitMinutes = v })
+	setNumeric(m.inPollSec.Value(), "Review poll seconds", func(v int) { m.cfg.Timings.ReviewPollSeconds = v })
+	setNumeric(m.inIdleMin.Value(), "Idle grace minutes", func(v int) { m.cfg.Timings.IdleGraceMinutes = v })
+	setNumeric(m.inMaxIters.Value(), "Max local iters", func(v int) { m.cfg.Timings.MaxLocalIters = v })
 	m.cfg.Flags.AllowUnsafe = m.flagAllowUnsafe
 	m.cfg.Flags.DryRun = m.flagDryRun
 	m.cfg.Flags.SyncGit = m.flagSyncGit
@@ -169,15 +184,21 @@ func (m *model) hydrateConfigFromInputs() {
 	m.cfg.RunPhases.Local = m.runLocal
 	m.cfg.RunPhases.PR = m.runPR
 	m.cfg.RunPhases.ReviewFix = m.runReview
+
+	return invalid
 }
 
 func (m *model) saveConfig() tea.Cmd {
-	m.hydrateConfigFromInputs()
+	invalidNumeric := m.hydrateConfigFromInputs()
 	m.normalizeLogLevel()
 	if err := config.Save(m.cfg); err != nil {
 		m.status = "Failed to save config: " + err.Error()
 	} else {
-		m.status = "Config saved"
+		if len(invalidNumeric) > 0 {
+			m.status = fmt.Sprintf("Config saved (defaults used for: %s)", strings.Join(invalidNumeric, ", "))
+		} else {
+			m.status = "Config saved"
+		}
 	}
 	return func() tea.Msg { return statusMsg{note: m.status} }
 }

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Set
 
 from .command import run_cmd
-from .constants import REVIEW_BOT_LOGINS
+from .constants import REVIEW_BOT_LOGINS, REVIEW_FALLBACK_MENTION
 from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
 
@@ -235,7 +235,7 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
         thread_id = item.get("thread_id")
         if isinstance(comment_id, int) and comment_id not in processed_ids:
             author = (item.get("author") or "").strip().lower()
-            mention = f"@{author}" if author else "@CodeRabbitAI"
+            mention = f"@{author}" if author else REVIEW_FALLBACK_MENTION
             reply_body = f"Fix applied in the latest push — thanks for the review! {mention}"
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
