@@ -182,7 +182,6 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
                         "comment_id": db_id,
                         "author": login or "unknown",
                         "url": url,
-                        "is_resolved": bool(thread.get("isResolved")),
                     }
                 )
     return unresolved
@@ -223,7 +222,11 @@ def resolve_review_thread(thread_id: str) -> None:
 
 
 def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> Set[int]:
-    """Reply to review items and return the updated set of processed IDs."""
+    """Reply to review items and return the updated set of processed IDs.
+
+    The caller owns the `processed_ids` set so tests can provide deterministic
+    state without relying on package-level globals.
+    """
     owner_repo = owner_repo.strip()
     if "/" not in owner_repo:
         raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")

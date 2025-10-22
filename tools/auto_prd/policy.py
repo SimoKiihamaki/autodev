@@ -52,7 +52,10 @@ def build_required_list(policy: str) -> list[str]:
 
 def set_executor_policy(value: str) -> None:
     global EXECUTOR_POLICY
-    EXECUTOR_POLICY = value
+    selected = (value or "").strip().lower()
+    if selected not in EXECUTOR_CHOICES:
+        raise ValueError(f"Unknown executor policy: {value}")
+    EXECUTOR_POLICY = selected
 
 
 def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement") -> Tuple[Callable[..., str], str]:

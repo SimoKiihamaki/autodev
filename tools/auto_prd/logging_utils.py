@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 import logging
 import sys
+import threading
 from pathlib import Path
 
 from .constants import (
@@ -21,6 +22,7 @@ CURRENT_LOG_PATH: Path | None = None
 USER_LOG_LEVEL = logging.INFO
 ORIGINAL_PRINT = builtins.print
 PRINT_HOOK_INSTALLED = False
+PRINT_HOOK_LOCK = threading.Lock()
 
 
 def resolve_log_level(level_name: str) -> int:
@@ -41,7 +43,7 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         log_path.parent.chmod(0o700)
-    except OSError:
+    except Exception:  # pragma: no cover - permissions vary by platform
         logger.debug("Unable to enforce permissions on %s", log_path.parent)
 
     root_logger = logging.getLogger()
@@ -54,7 +56,7 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
     root_logger.addHandler(file_handler)
     try:
         log_path.chmod(0o600)
-    except OSError:
+    except Exception:  # pragma: no cover - permissions vary by platform
         logger.debug("Unable to enforce permissions on %s", log_path)
 
     logger.setLevel(numeric_level)
@@ -78,25 +80,30 @@ def install_print_logger() -> None:
     if PRINT_HOOK_INSTALLED:
         return
 
-    print_logger = logging.getLogger(PRINT_LOGGER_NAME)
-    print_logger.setLevel(logging.INFO)
+    with PRINT_HOOK_LOCK:
+        if PRINT_HOOK_INSTALLED:
+            return
 
-    def tee_print(*args, **kwargs):
-        message = format_print_message(*args, **kwargs)
-        if message:
-            target_level = logging.WARNING if kwargs.get("file") == sys.stderr else logging.INFO
-            print_logger.log(target_level, message)
-        ORIGINAL_PRINT(*args, **kwargs)
+        print_logger = logging.getLogger(PRINT_LOGGER_NAME)
+        print_logger.setLevel(logging.INFO)
 
-    builtins.print = tee_print
-    PRINT_HOOK_INSTALLED = True
+        def tee_print(*args, **kwargs):
+            message = format_print_message(*args, **kwargs)
+            if message:
+                target_level = logging.WARNING if kwargs.get("file") == sys.stderr else logging.INFO
+                print_logger.log(target_level, message)
+            ORIGINAL_PRINT(*args, **kwargs)
+
+        builtins.print = tee_print
+        PRINT_HOOK_INSTALLED = True
 
 
 def uninstall_print_logger() -> None:
     global PRINT_HOOK_INSTALLED
-    if PRINT_HOOK_INSTALLED:
-        builtins.print = ORIGINAL_PRINT
-        PRINT_HOOK_INSTALLED = False
+    with PRINT_HOOK_LOCK:
+        if PRINT_HOOK_INSTALLED:
+            builtins.print = ORIGINAL_PRINT
+            PRINT_HOOK_INSTALLED = False
 
 
 def truncate_for_log(text: str, limit: int = COMMAND_OUTPUT_LOG_LIMIT) -> str:

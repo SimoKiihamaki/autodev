@@ -43,6 +43,8 @@ def review_fix_loop(
     last_activity = time.time()
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
+    # Track processed comment IDs locally so we can inject deterministic state during tests
+    # and avoid relying on hidden module globals.
     processed_comment_ids: set[int] = set()
 
     while True:
