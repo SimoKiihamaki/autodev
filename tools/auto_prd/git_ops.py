@@ -97,13 +97,20 @@ def git_default_branch(repo_root: Path) -> Optional[str]:
 
 
 def git_stash_worktree(repo_root: Path, message: str) -> Optional[str]:
-    run_cmd(["git", "stash", "push", "--include-untracked", "-m", message], cwd=repo_root)
-    out, _, _ = run_cmd(["git", "stash", "list"], cwd=repo_root)
-    for line in out.splitlines():
-        if message in line:
-            ref = line.split(":", 1)[0].strip()
-            if ref:
-                return ref
+    out, err, _ = run_cmd([
+        "git",
+        "stash",
+        "push",
+        "--include-untracked",
+        "-m",
+        message,
+    ], cwd=repo_root)
+    combined = (out + err).lower()
+    if "no local changes to save" in combined:
+        return None
+    _, _, rc = run_cmd(["git", "rev-parse", "--verify", "stash@{0}"], cwd=repo_root, check=False)
+    if rc == 0:
+        return "stash@{0}"
     return None
 
 

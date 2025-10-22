@@ -83,10 +83,13 @@ def register_safe_cwd(path: Path) -> None:
 
 def is_within(path: Path, root: Path) -> bool:
     try:
-        path_resolved = path.resolve()
+        path_resolved = path.resolve(strict=True)
     except FileNotFoundError:
-        path_resolved = path
-    root_resolved = root.resolve()
+        return False
+    try:
+        root_resolved = root.resolve(strict=True)
+    except FileNotFoundError:
+        root_resolved = root.resolve()
     return path_resolved == root_resolved or root_resolved in path_resolved.parents
 
 
@@ -95,7 +98,7 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         raise ValueError("cmd must be a non-empty sequence of strings")
     for arg in cmd:
         if not isinstance(arg, str):
-            raise ValueError("command arguments must be strings")
+            raise TypeError("command arguments must be strings")
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return

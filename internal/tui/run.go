@@ -13,6 +13,7 @@ import (
 	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/shlex"
 )
 
 func (m *model) normalizeLogLevel() {
@@ -82,14 +83,14 @@ func (m *model) startRunCmd() tea.Cmd {
 		if err != nil && err != context.Canceled {
 			select {
 			case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
-			default:
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
+		defer close(resultCh)
 		select {
 		case resultCh <- err:
-		default:
+		case <-ctx.Done():
 		}
-		close(resultCh)
 	}(ctx, options, ch, m.runResult)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
@@ -99,7 +100,10 @@ func (m *model) preflightChecks() error {
 	if strings.TrimSpace(m.cfg.PythonCommand) == "" {
 		return errors.New("Set Python command in Settings")
 	}
-	exeParts := strings.Fields(m.cfg.PythonCommand)
+	exeParts, err := shlex.Split(m.cfg.PythonCommand)
+	if err != nil {
+		return fmt.Errorf("Python command parse failed: %w", err)
+	}
 	if len(exeParts) == 0 {
 		return errors.New("Set Python command in Settings")
 	}

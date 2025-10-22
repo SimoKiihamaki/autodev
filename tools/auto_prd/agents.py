@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 import re
 import subprocess
 import time
@@ -46,8 +47,10 @@ def codex_exec(
 def parse_rate_limit_sleep(message: str) -> Optional[int]:
     if not message:
         return None
+
+    # e.g. "try after 10 minutes and 14 seconds"
     match = re.search(
-        r"try after (\d+)\s+(?:minute(?:s)?|min(?:s)?)\s+and\s+(\d+)\s+(?:second(?:s)?|sec(?:s)?)",
+        r"try (?:again )?after\s+(\d+)\s*(?:minute(?:s)?|min(?:s)?)\s+(?:and\s+)?(\d+)\s*(?:second(?:s)?|sec(?:s)?)",
         message,
         re.IGNORECASE,
     )
@@ -55,10 +58,22 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
         minutes = int(match.group(1))
         seconds = int(match.group(2))
         return minutes * 60 + seconds + 5
-    match = re.search(r"try after (\d+)\s+(?:second(?:s)?|sec(?:s)?)", message, re.IGNORECASE)
+
+    # e.g. "try again in 10m 14s" (gh output) or "2m 30s"
+    match = re.search(r"(\d+)\s*m\s*(\d+)\s*s", message, re.IGNORECASE)
     if match:
-        seconds = int(match.group(1))
-        return seconds + 5
+        return int(match.group(1)) * 60 + int(match.group(2)) + 5
+
+    # e.g. "try again in 75 seconds" or "try after 75 sec"
+    match = re.search(r"(?:try (?:again )?(?:after|in)|in)\s+(\d+)\s*(?:second(?:s)?|sec(?:s)?)\b", message, re.IGNORECASE)
+    if match:
+        return int(match.group(1)) + 5
+
+    # HTTP "Retry-After: 600"
+    match = re.search(r"retry-after[:=]\s*(\d+)", message, re.IGNORECASE)
+    if match:
+        return int(match.group(1)) + 5
+
     return None
 
 
@@ -76,8 +91,11 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             msg = extract_called_process_error_details(exc)
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
-                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", sleep_secs)
-                time.sleep(sleep_secs)
+                capped = max(5, min(900, sleep_secs))  # 5s..15m
+                jitter = random.randint(-3, 3)
+                wait = max(1, capped + jitter)
+                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", wait)
+                time.sleep(wait)
                 continue
             logger.warning("CodeRabbit prompt-only run failed: %s", msg or exc)
             return ""

@@ -42,11 +42,11 @@ def get_fallback_policy(policy: str) -> Optional[str]:
 def build_required_list(policy: str) -> list[str]:
     core_deps = ["coderabbit", "git", "gh"]
     if policy == "codex-first":
-        return core_deps + ["codex", "claude"]
+        return [*core_deps, "codex", "claude"]
     if policy == "codex-only":
-        return core_deps + ["codex"]
+        return [*core_deps, "codex"]
     if policy == "claude-only":
-        return core_deps + ["claude"]
+        return [*core_deps, "claude"]
     raise ValueError(f"Unknown executor policy: {policy}")
 
 

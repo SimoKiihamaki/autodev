@@ -52,10 +52,13 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 	}
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
-	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
-	if shouldFollow {
-		m.runFeed.GotoBottom()
-		m.runFeedAutoFollow = true
+	flush := shouldFollow || len(m.runFeedBuf)%16 == 0
+	if flush {
+		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+		if shouldFollow {
+			m.runFeed.GotoBottom()
+			m.runFeedAutoFollow = true
+		}
 	}
 
 	m.consumeRunSummary(rawLine)

@@ -32,6 +32,9 @@ from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop
 from .utils import extract_called_process_error_details, now_stamp, slugify
 
+PRD_NOT_FOUND_ERROR = "PRD path not found: {path}"
+PRD_NOT_FILE_ERROR = "PRD path must be a file: {path}"
+
 
 def run(args) -> None:
     original_cwd = Path.cwd()
@@ -90,10 +93,10 @@ def run(args) -> None:
             prd_path = (original_cwd / prd_candidate).resolve()
         if not prd_path.exists():
             logger.error("Resolved PRD path does not exist: %s", prd_path)
-            raise SystemExit(f"PRD path not found: {prd_path}")
+            raise SystemExit(PRD_NOT_FOUND_ERROR.format(path=prd_path))
         if not prd_path.is_file():
             logger.error("Resolved PRD path is not a file: %s", prd_path)
-            raise SystemExit(f"PRD path must be a file: {prd_path}")
+            raise SystemExit(PRD_NOT_FILE_ERROR.format(path=prd_path))
 
         print(f"Repository root: {repo_root}")
         print(f"Using PRD: {prd_path}")

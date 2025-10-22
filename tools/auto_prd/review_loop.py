@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import time
 from pathlib import Path
 from typing import Optional
@@ -44,8 +45,14 @@ def review_fix_loop(
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
     # Track processed comment IDs locally so we can inject deterministic state during tests
-    # and avoid relying on hidden module globals.
+    # and avoid relying on hidden module globals. TODO: consider persisting across runs to
+    # prevent duplicate acknowledgements after restarts.
     processed_comment_ids: set[int] = set()
+
+    def sleep_with_jitter(base: float) -> None:
+        jitter = random.uniform(-1.5, 1.5)
+        duration = max(1.0, base + jitter)
+        time.sleep(duration)
 
     while True:
         current_head = git_head_sha(repo_root)
@@ -82,7 +89,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             trigger_copilot(owner_repo, pr_number, repo_root)
             processed_comment_ids = acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
             last_activity = time.time()
-            time.sleep(poll)
+            sleep_with_jitter(float(poll))
             continue
 
         if idle_grace_seconds == 0:
@@ -94,6 +101,6 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             print(f"No unresolved feedback for {minutes} minutes; finishing.")
             break
         print("No unresolved feedback right now; waiting for potential new comments...")
-        time.sleep(poll)
+        sleep_with_jitter(float(poll))
 
     print("Review loop complete.")

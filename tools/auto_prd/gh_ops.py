@@ -182,6 +182,7 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
                         "comment_id": db_id,
                         "author": login or "unknown",
                         "url": url,
+                        "is_resolved": False,
                     }
                 )
     return unresolved

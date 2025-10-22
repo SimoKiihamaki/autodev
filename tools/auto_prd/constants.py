@@ -24,12 +24,11 @@ CODEX_READONLY_ERROR_MSG = (
     "Check `codex config show --effective` and adjust sandbox/approval settings so the agent has write access."
 )
 
+ZSH_REQUIRED_ERROR = "zsh binary not found on PATH; required for shell environment policy."
+
 ZSH_PATH = shutil.which("zsh")
 if not ZSH_PATH:
-    raise RuntimeError(
-        "'zsh' binary not found on PATH; zsh is required for the shell environment policy. "
-        "Install zsh or update your PATH to include it before continuing."
-    )
+    raise RuntimeError(ZSH_REQUIRED_ERROR)
 COMMAND_ALLOWLIST = {
     "codex",
     "coderabbit",

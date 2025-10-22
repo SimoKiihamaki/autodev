@@ -6,6 +6,24 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
+var settingsGrid = map[string][2]int{
+	"repo":     {0, 0},
+	"base":     {1, 0},
+	"branch":   {2, 0},
+	"codex":    {3, 0},
+	"pycmd":    {4, 0},
+	"pyscript": {5, 0},
+	"policy":   {6, 0},
+	"execimpl": {7, 0},
+	"execfix":  {7, 1},
+	"execpr":   {7, 2},
+	"execrev":  {7, 3},
+	"waitmin":  {8, 0},
+	"pollsec":  {8, 1},
+	"idlemin":  {8, 2},
+	"maxiters": {8, 3},
+}
+
 func (m *model) blurAllInputs() {
 	m.inRepo.Blur()
 	m.inBase.Blur()
@@ -79,26 +97,8 @@ func (m *model) navigateSettings(direction string) {
 		return
 	}
 
-	grid := map[string][2]int{
-		"repo":     {0, 0},
-		"base":     {1, 0},
-		"branch":   {2, 0},
-		"codex":    {3, 0},
-		"pycmd":    {4, 0},
-		"pyscript": {5, 0},
-		"policy":   {6, 0},
-		"execimpl": {7, 0},
-		"execfix":  {7, 1},
-		"execpr":   {7, 2},
-		"execrev":  {7, 3},
-		"waitmin":  {8, 0},
-		"pollsec":  {8, 1},
-		"idlemin":  {8, 2},
-		"maxiters": {8, 3},
-	}
-
 	maxRow, maxCol := 0, 0
-	for _, pos := range grid {
+	for _, pos := range settingsGrid {
 		if pos[0] > maxRow {
 			maxRow = pos[0]
 		}
@@ -111,14 +111,14 @@ func (m *model) navigateSettings(direction string) {
 	for r := range reverseGrid {
 		reverseGrid[r] = make([]string, maxCol+1)
 	}
-	for input, pos := range grid {
+	for input, pos := range settingsGrid {
 		row, col := pos[0], pos[1]
 		if row >= 0 && row < len(reverseGrid) && col >= 0 && col < len(reverseGrid[row]) {
 			reverseGrid[row][col] = input
 		}
 	}
 
-	currentPos, exists := grid[m.focusedInput]
+	currentPos, exists := settingsGrid[m.focusedInput]
 	if !exists {
 		m.focusInput("repo")
 		return

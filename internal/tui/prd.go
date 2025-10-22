@@ -20,7 +20,7 @@ func (m *model) rescanPRDs() {
 
 func (m model) scanPRDsCmd() tea.Cmd {
 	return func() tea.Msg {
-		var items []list.Item
+		var typed []item
 		cwd, err := os.Getwd()
 		if err != nil {
 			return prdScanMsg{items: nil}
@@ -30,21 +30,31 @@ func (m model) scanPRDsCmd() tea.Cmd {
 				return nil
 			}
 			if d.IsDir() {
-				rel, _ := filepath.Rel(cwd, path)
+				rel, relErr := filepath.Rel(cwd, path)
+				if relErr != nil {
+					return filepath.SkipDir
+				}
 				if strings.Count(rel, string(os.PathSeparator)) > 4 {
 					return filepath.SkipDir
 				}
 				return nil
 			}
 			if strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
-				rel, _ := filepath.Rel(cwd, path)
-				items = append(items, item{title: d.Name(), desc: rel, path: path})
+				rel, relErr := filepath.Rel(cwd, path)
+				if relErr != nil {
+					rel = d.Name()
+				}
+				typed = append(typed, item{title: d.Name(), desc: rel, path: path})
 			}
 			return nil
 		})
-		sort.Slice(items, func(i, j int) bool {
-			return items[i].(item).path < items[j].(item).path
+		sort.Slice(typed, func(i, j int) bool {
+			return typed[i].path < typed[j].path
 		})
+		items := make([]list.Item, len(typed))
+		for i := range typed {
+			items[i] = typed[i]
+		}
 		return prdScanMsg{items: items}
 	}
 }

@@ -7,12 +7,23 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from .command import run_cmd
 from .gh_ops import get_pr_number_for_head
 from .git_ops import git_push_branch
 from .logging_utils import logger
 from .policy import EXECUTOR_POLICY, policy_runner
 from .utils import extract_called_process_error_details
-from .command import run_cmd
+
+
+def _format_troubleshooting(location: str, manual_step: str) -> str:
+    return (
+        "Troubleshooting guidance (common causes include authentication, network hiccups, "
+        "branch protection rules, required status checks, or permissions):\n"
+        f"  1. Review the error details {location} for specifics.\n"
+        "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
+        "  3. Confirm branch protection and required status checks permit the operation.\n"
+        f"  4. {manual_step}"
+    )
 
 
 def open_or_get_pr(
@@ -61,14 +72,9 @@ Prepare and push a PR for this branch:
                 git_push_branch(repo_root, new_branch)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(
-                    f"Failed to push branch '{new_branch}': {details}\n"
-                    "Troubleshooting guidance (common causes include authentication, network hiccups, branch protection rules, required status checks, or permissions):\n"
-                    "  1. Review the error details above for specifics.\n"
-                    "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
-                    "  3. Confirm branch protection and required status checks permit pushing.\n"
-                    f"  4. Manually push the branch if necessary: `git push -u origin {new_branch}`"
-                ) from exc
+                manual = f"Manually push the branch if necessary: `git push -u origin {new_branch}`"
+                message = f"Failed to push branch '{new_branch}': {details}\n" + _format_troubleshooting("above", manual)
+                raise SystemExit(message) from exc
 
     pr_number = get_pr_number_for_head(new_branch, repo_root)
     if pr_number is None:
@@ -124,14 +130,9 @@ Prepare and push a PR for this branch:
             if "No commits between" in details:
                 print("GitHub refused to create a PR because the branch matches the base branch.")
                 return None
-            print(
-                "Failed to create PR automatically via gh CLI.\n"
-                "Troubleshooting guidance (common causes include authentication, network hiccups, branch protection rules, required status checks, or permissions):\n"
-                "  1. Review the error details below for specifics.\n"
-                "  2. Verify authentication: `gh auth status` (re-authenticate with `gh auth login` if needed).\n"
-                "  3. Confirm branch protection and required status checks permit PR creation.\n"
-                f"  4. Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
-            )
+            manual = f"Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
+            print("Failed to create PR automatically via gh CLI.")
+            print(_format_troubleshooting("below", manual))
             print(f"gh pr create error details:\n{details}\n")
             return None
         if pr_number is None:
