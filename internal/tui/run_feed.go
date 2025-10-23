@@ -107,14 +107,19 @@ func (m *model) consumeRunSummary(rawLine string) {
 			m.runIterCurrent = cur
 		} else {
 			m.runIterCurrent = 0
-			log.Printf("tui: unable to parse iteration index %q: %v", match[1], err)
+			log.Printf("tui: unable to parse iteration index %q: %v (defaulting to 0)", match[1], err)
 		}
 		if match[2] != "" {
 			if total, err := strconv.Atoi(match[2]); err == nil {
 				m.runIterTotal = total
 			} else {
 				m.runIterTotal = iterTotalUnknown
-				log.Printf("tui: unable to parse iteration total %q: %v", match[2], err)
+				log.Printf(
+					"tui: unable to parse iteration total %q: %v (using iterTotalUnknown=%d)",
+					match[2],
+					err,
+					iterTotalUnknown,
+				)
 			}
 		} else {
 			m.runIterTotal = iterTotalUnspecified

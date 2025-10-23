@@ -124,7 +124,7 @@ func (m *model) preflightChecks() error {
 	cmd := strings.TrimSpace(m.cfg.PythonCommand)
 	exeParts, err := shlex.Split(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to parse Python command %q: %w", m.cfg.PythonCommand, err)
+		return fmt.Errorf("failed to parse Python command %q (after trimming): %w", cmd, err)
 	}
 	if len(exeParts) == 0 || strings.TrimSpace(exeParts[0]) == "" {
 		return errors.New("Set Python command in Settings")

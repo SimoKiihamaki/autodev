@@ -12,8 +12,8 @@ from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
 
-JITTER_MIN_SECONDS = -1.5
-JITTER_MAX_SECONDS = 1.5
+JITTER_MIN_SECONDS = 0.0
+JITTER_MAX_SECONDS = 3.0
 
 
 def review_fix_loop(

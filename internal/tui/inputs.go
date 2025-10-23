@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -86,6 +87,7 @@ func (m *model) focusInput(inputName string) {
 	default:
 		// Unknown input: clear state so tab navigation can recover gracefully.
 		log.Printf("tui: unknown settings input focus request %q", inputName)
+		m.status = fmt.Sprintf("Unknown settings input: %s", inputName)
 		m.focusedInput = ""
 		return
 	}
