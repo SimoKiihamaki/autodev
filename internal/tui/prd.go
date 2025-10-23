@@ -44,7 +44,7 @@ func (m model) scanPRDsCmd() tea.Cmd {
 				if relErr != nil {
 					rel = d.Name()
 				}
-				typed = append(typed, item{title: d.Name(), desc: rel, path: path})
+				typed = append(typed, newItem(d.Name(), rel, path))
 			}
 			return nil
 		})

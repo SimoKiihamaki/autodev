@@ -103,78 +103,99 @@ func (m *model) consumeRunSummary(rawLine string) {
 		return
 	}
 
-	if match := reIterationHeader.FindStringSubmatch(text); match != nil {
-		if cur, err := strconv.Atoi(match[1]); err == nil {
-			m.runIterCurrent = cur
-		} else {
-			m.runIterCurrent = 0
-			log.Printf("tui: unable to parse iteration index %q: %v (defaulting to 0)", match[1], err)
-		}
-		if match[2] != "" {
-			if total, err := strconv.Atoi(match[2]); err == nil {
-				m.runIterTotal = total
-			} else {
-				m.runIterTotal = iterTotalUnknown
-				log.Printf(
-					"tui: unable to parse iteration total %q: %v (using iterTotalUnknown=%d)",
-					match[2],
-					err,
-					iterTotalUnknown,
-				)
-			}
-		} else {
-			m.runIterTotal = iterTotalUnspecified
-		}
-		label := strings.TrimSpace(match[3])
-		m.runIterLabel = label
-		countLabel := "Iteration"
-		if m.runIterCurrent > 0 {
-			countLabel = fmt.Sprintf("Iteration %d", m.runIterCurrent)
-			if m.runIterTotal > 0 {
-				countLabel = fmt.Sprintf("Iteration %d/%d", m.runIterCurrent, m.runIterTotal)
-			}
-		}
-		m.runPhase = countLabel
-		if label != "" {
-			m.setRunCurrent(label)
-		} else {
-			m.setRunCurrent(countLabel)
-		}
+	if m.handleIterationHeader(text) {
 		return
 	}
-
-	if match := reSectionHeader.FindStringSubmatch(text); match != nil {
-		section := strings.TrimSpace(match[1])
-		if section != "" {
-			m.runPhase = section
-			m.setRunCurrent(section)
-		}
+	if m.handleSectionHeader(text) {
 		return
 	}
+	if m.handleActionIndicators(text) {
+		return
+	}
+	m.handleStatusPhrases(text)
+}
 
-	if strings.HasPrefix(text, "→") {
+func (m *model) handleIterationHeader(text string) bool {
+	match := reIterationHeader.FindStringSubmatch(text)
+	if match == nil {
+		return false
+	}
+	if cur, err := strconv.Atoi(match[1]); err == nil {
+		m.runIterCurrent = cur
+	} else {
+		m.runIterCurrent = 0
+		log.Printf("tui: unable to parse iteration index %q: %v (defaulting to 0)", match[1], err)
+	}
+	if match[2] != "" {
+		if total, err := strconv.Atoi(match[2]); err == nil {
+			m.runIterTotal = total
+		} else {
+			m.runIterTotal = iterTotalUnknown
+			log.Printf(
+				"tui: unable to parse iteration total %q: %v (using iterTotalUnknown=%d)",
+				match[2],
+				err,
+				iterTotalUnknown,
+			)
+		}
+	} else {
+		m.runIterTotal = iterTotalUnspecified
+	}
+	label := strings.TrimSpace(match[3])
+	m.runIterLabel = label
+	countLabel := "Iteration"
+	if m.runIterCurrent > 0 {
+		countLabel = fmt.Sprintf("Iteration %d", m.runIterCurrent)
+		if m.runIterTotal > 0 {
+			countLabel = fmt.Sprintf("Iteration %d/%d", m.runIterCurrent, m.runIterTotal)
+		}
+	}
+	m.runPhase = countLabel
+	if label != "" {
+		m.setRunCurrent(label)
+	} else {
+		m.setRunCurrent(countLabel)
+	}
+	return true
+}
+
+func (m *model) handleSectionHeader(text string) bool {
+	match := reSectionHeader.FindStringSubmatch(text)
+	if match == nil {
+		return false
+	}
+	section := strings.TrimSpace(match[1])
+	if section != "" {
+		m.runPhase = section
+		m.setRunCurrent(section)
+	}
+	return true
+}
+
+func (m *model) handleActionIndicators(text string) bool {
+	switch {
+	case strings.HasPrefix(text, "→"):
 		action := strings.TrimSpace(strings.TrimPrefix(text, "→"))
 		if action != "" {
 			m.setRunCurrent(action)
 		}
-		return
-	}
-
-	if strings.HasPrefix(text, "✓") {
+		return true
+	case strings.HasPrefix(text, "✓"):
 		done := strings.TrimSpace(strings.TrimPrefix(text, "✓"))
 		if done == "" {
 			done = strings.TrimSpace(text)
 		}
 		m.runLastComplete = done
 		m.setRunCurrent(done)
-		return
-	}
-
-	if strings.HasPrefix(text, "⚠️") {
+		return true
+	case strings.HasPrefix(text, "⚠️"):
 		m.setRunCurrent(text)
-		return
+		return true
 	}
+	return false
+}
 
+func (m *model) handleStatusPhrases(text string) {
 	lower := strings.ToLower(text)
 	switch {
 	case strings.HasPrefix(lower, "no "):

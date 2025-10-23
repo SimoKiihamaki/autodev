@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
 from .gh_ops import acknowledge_review_items, get_unresolved_feedback, trigger_copilot
 from .git_ops import git_head_sha
 from .logging_utils import logger
@@ -67,7 +68,7 @@ def review_fix_loop(
                 continue
             unresolved.append(item)
         if unresolved:
-            bullets = "\n".join(f"* {u['summary']}" for u in unresolved)
+            bullets = format_unresolved_bullets(unresolved, CODERABBIT_FINDINGS_CHAR_LIMIT)
             print("\nUnresolved feedback detected, asking the bot to fix...")
             fix_prompt = f"""
 Resolve ALL items below, commit fixes, ensure QA passes, and push to the SAME PR (do not create a new one).
@@ -75,7 +76,7 @@ Before every push, run `make ci` locally and confirm it succeeds; only push afte
 Tag the relevant code areas and keep changes minimal.
 
 Unresolved review items:
-{bullets[:20000]}
+{bullets}
 
 After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
@@ -105,3 +106,23 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
         print("No unresolved feedback right now; waiting for potential new comments...")
         sleep_with_jitter(float(poll))
     print("Review loop complete.")
+
+
+def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
+    lines: list[str] = []
+    for entry in unresolved:
+        summary = entry.get("summary")
+        if not isinstance(summary, str):
+            continue
+        lines.append(f"* {summary.strip()}")
+    text = "\n".join(lines)
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit]
+    boundary = max(truncated.rfind("\n* "), truncated.rfind("\n- "))
+    if boundary <= 0:
+        boundary = truncated.rfind("\n")
+    if boundary <= 0:
+        return text[:limit] + "\n* (truncated; see remaining items in GitHub)"
+    trimmed = truncated[:boundary].rstrip()
+    return trimmed + "\n* (truncated; see remaining items in GitHub)"

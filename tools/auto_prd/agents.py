@@ -42,6 +42,8 @@ def codex_exec(
     args: list[str] = ["codex"]
     if enable_search:
         args.append("--search")
+    if not allow_flag and not dry_run:
+        raise PermissionError("Codex executor requires allow_unsafe_execution=True to bypass permissions.")
     if allow_flag:
         verify_unsafe_execution_ready()
         args.append("--dangerously-bypass-approvals-and-sandbox")
@@ -130,7 +132,7 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             if sleep_secs and attempts <= 3:
                 capped = max(5, min(900, sleep_secs))  # 5s..15m
                 jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - non-crypto jitter
-                wait = max(capped, capped + jitter)
+                wait = max(1, capped + jitter)
                 logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", wait)
                 time.sleep(wait)
                 continue
@@ -167,11 +169,14 @@ def claude_exec(
         else:
             allow_flag = allow_flag or yolo
     allow_flag = bool(allow_flag)
-    if not allow_flag:
+    if not allow_flag and not dry_run:
         raise PermissionError("Claude executor requires allow_unsafe_execution=True to bypass permissions.")
     os.environ.setdefault("CI", "1")
-    verify_unsafe_execution_ready()
-    args: list[str] = ["claude", "--dangerously-skip-permissions"]
+    if allow_flag:
+        verify_unsafe_execution_ready()
+    args: list[str] = ["claude"]
+    if allow_flag:
+        args.append("--dangerously-skip-permissions")
     if model:
         args.extend(["--model", model])
     if not enable_search:

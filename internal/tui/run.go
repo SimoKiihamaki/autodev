@@ -127,7 +127,7 @@ func (m *model) preflightChecks() error {
 		return fmt.Errorf("failed to parse Python command %q (after trimming): %w", cmd, err)
 	}
 	if len(exeParts) == 0 || strings.TrimSpace(exeParts[0]) == "" {
-		return errors.New("Set Python command in Settings")
+		return errors.New("Python command is required (configure in Settings)")
 	}
 	if _, err := exec.LookPath(exeParts[0]); err != nil {
 		return fmt.Errorf("python executable %q not found on PATH: %w", exeParts[0], err)

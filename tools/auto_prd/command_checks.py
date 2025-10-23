@@ -19,7 +19,7 @@ def require_cmd(name: str) -> None:
 
     for args in version_checks:
         try:
-            run_cmd(args, check=True, capture=True, timeout=10)
+            run_cmd(args, check=True, capture=True, timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS)
             return
         except (
             subprocess.CalledProcessError,

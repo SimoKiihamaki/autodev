@@ -42,17 +42,23 @@ def parse_owner_repo_from_git() -> str:
 
 
 def ensure_gh_alias() -> None:
-    out, _, _ = run_cmd(["gh", "alias", "list"])
+    try:
+        out, _, _ = run_cmd(["gh", "alias", "list"])
+    except FileNotFoundError:
+        logger.debug("gh CLI not available; skipping alias setup")
+        return
     if not any(line.split(":")[0].strip() == "save-me-copilot" for line in out.splitlines() if ":" in line):
-        run_cmd(
-            [
+        alias_command = 'api --method POST /repos/$1/pulls/$2/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"'
+        try:
+            run_cmd([
                 "gh",
                 "alias",
                 "set",
                 "save-me-copilot",
-                "api --method POST /repos/$1/pulls/$2/requested_reviewers -f reviewers[]=copilot-pull-request-reviewer[bot]",
-            ]
-        )
+                alias_command,
+            ])
+        except FileNotFoundError:
+            logger.debug("gh CLI not available during alias creation; skipping")
 
 
 def workspace_has_changes(repo_root: Path) -> bool:
@@ -112,13 +118,11 @@ def git_stash_worktree(repo_root: Path, message: str) -> Optional[str]:
         "-m",
         message,
     ], cwd=repo_root)
-    out_ref, _, rc = run_cmd(["git", "rev-parse", "--verify", "stash@{0}"], cwd=repo_root, check=False)
+    selector_out, _, rc = run_cmd(["git", "stash", "list", "-n1", "--format=%gd"], cwd=repo_root, check=False)
     if rc == 0:
-        ref = out_ref.strip()
-        if ref:
-            return ref
-        return "stash@{0}"
-    return None
+        selector = selector_out.strip() or "stash@{0}"
+        return selector
+    return "stash@{0}"
 
 
 def git_stash_pop(repo_root: Path, selector: str) -> None:
@@ -158,12 +162,12 @@ def print_codex_diagnostics(repo_root: Path) -> None:
                 print(cfg_err.strip())
     except FileNotFoundError:
         print("codex config show --effective unavailable (codex CLI may be outdated).")
-    except (subprocess.CalledProcessError, OSError, ValueError) as exc:
-        logger.exception("codex config show --effective failed", exc_info=exc)
+    except (subprocess.CalledProcessError, OSError, ValueError):
+        logger.exception("codex config show --effective failed")
 
     try:
         status_out = codex_exec("/status", repo_root)
         if status_out.strip():
             print(status_out.strip())
-    except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError) as exc:
-        logger.exception("codex /status failed", exc_info=exc)
+    except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError):
+        logger.exception("codex /status failed")

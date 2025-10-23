@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from .agents import coderabbit_has_findings, coderabbit_prompt_only
-from .constants import CODEX_READONLY_ERROR_MSG
+from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
 from .policy import policy_runner
 from .utils import checkbox_stats, detect_readonly_block, parse_tasks_left
@@ -33,7 +33,7 @@ def should_stop_for_completion(
     done_by_codex: bool,
     has_findings: bool,
     tasks_left: Optional[int],
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     if has_findings or not (done_by_checkboxes or done_by_codex):
         return False, ""
     if tasks_left is None and not done_by_checkboxes:
@@ -132,7 +132,7 @@ At the end, print: TASKS_LEFT=<N>
 You are fixing findings reported by CodeRabbit CLI:
 
 <CODE_RABBIT_FINDINGS>
-{cr[:20000]}
+{cr[:CODERABBIT_FINDINGS_CHAR_LIMIT]}
 </CODE_RABBIT_FINDINGS>
 
 Apply targeted changes, commit frequently, and re-run the QA gates until green.

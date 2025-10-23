@@ -8,7 +8,7 @@ import (
 
 const atoiDefault = 0
 
-// atoiSafe trims whitespace and converts to int, returning atoiDefault alongside an error when parsing fails.
+// atoiSafe trims whitespace and converts to int, returning (atoiDefault, error) when parsing fails.
 // Callers (e.g., hydrateConfigFromInputs) log the error and surface fallback messaging to the user.
 func atoiSafe(s string) (int, error) {
 	s = strings.TrimSpace(s)

@@ -34,14 +34,11 @@ var tabNames = []string{"Run", "PRD", "Settings", "Env", "Prompt", "Logs", "Help
 type item struct {
 	title, desc string
 	path        string
+	filter      string
 }
 
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string {
-	// FilterValue is used for fuzzy search; trim/skip empties so we do not
-	// introduce redundant whitespace that can confuse list filtering.
-	parts := []string{i.title, i.desc, i.path}
+func newItem(title, desc, path string) item {
+	parts := []string{title, desc, path}
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -49,7 +46,13 @@ func (i item) FilterValue() string {
 			filtered = append(filtered, part)
 		}
 	}
-	return strings.Join(filtered, " ")
+	return item{title: title, desc: desc, path: path, filter: strings.Join(filtered, " ")}
+}
+
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string {
+	return i.filter
 }
 
 type model struct {
@@ -232,7 +235,11 @@ func (m model) Init() tea.Cmd {
 	return m.scanPRDsCmd()
 }
 
-// settingsInputMap exposes the live settings input map (callers must not mutate).
+// settingsInputMap returns a shallow copy of the input map. Callers must not mutate values in-place.
 func (m *model) settingsInputMap() map[string]*textinput.Model {
-	return m.settingsInputs
+	out := make(map[string]*textinput.Model, len(m.settingsInputs))
+	for k, v := range m.settingsInputs {
+		out[k] = v
+	}
+	return out
 }
