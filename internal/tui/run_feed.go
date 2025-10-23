@@ -101,7 +101,7 @@ func (m *model) consumeRunSummary(rawLine string) {
 		if cur, err := strconv.Atoi(match[1]); err == nil {
 			m.runIterCurrent = cur
 		} else {
-			m.runIterCurrent = -1
+			m.runIterCurrent = 0
 			log.Printf("tui: unable to parse iteration index %q: %v", match[1], err)
 		}
 		if match[2] != "" {

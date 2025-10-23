@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -79,18 +80,35 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
-		err := opts.Run(ctx)
-		if err != nil && err != context.Canceled {
-			select {
-			case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
+		defer close(logCh)
 		defer close(resultCh)
-		select {
-		case resultCh <- err:
-		case <-ctx.Done():
-		}
+		var err error
+		defer func() {
+			if r := recover(); r != nil {
+				panicErr := fmt.Errorf("runner panic: %v", r)
+				stack := string(debug.Stack())
+				msg := panicErr.Error()
+				if stack != "" {
+					msg = msg + "\n" + stack
+				}
+				select {
+				case logCh <- runner.Line{Time: time.Now(), Text: msg, Err: true}:
+				case <-time.After(100 * time.Millisecond):
+				}
+				err = panicErr
+			}
+			if err != nil && err != context.Canceled {
+				select {
+				case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+			select {
+			case resultCh <- err:
+			case <-ctx.Done():
+			}
+		}()
+		err = opts.Run(ctx)
 	}(ctx, options, ch, m.runResult)
 
 	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
@@ -102,7 +120,7 @@ func (m *model) preflightChecks() error {
 	}
 	exeParts, err := shlex.Split(m.cfg.PythonCommand)
 	if err != nil {
-		return fmt.Errorf("Python command parse failed: %w", err)
+		return fmt.Errorf("failed to parse Python command %q: %w", m.cfg.PythonCommand, err)
 	}
 	if len(exeParts) == 0 {
 		return errors.New("Set Python command in Settings")

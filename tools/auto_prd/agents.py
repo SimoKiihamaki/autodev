@@ -60,7 +60,7 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
         return minutes * 60 + seconds + 5
 
     # e.g. "try again in 10m 14s" (gh output) or "2m 30s"
-    match = re.search(r"(\d+)\s*m\s*(\d+)\s*s", message, re.IGNORECASE)
+    match = re.search(r"\b(\d+)\s*m\s*(\d+)\s*s\b", message, re.IGNORECASE)
     if match:
         return int(match.group(1)) * 60 + int(match.group(2)) + 5
 

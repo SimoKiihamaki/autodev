@@ -21,6 +21,7 @@ def parse_owner_repo_from_git() -> str:
     url = out.strip()
     if url.startswith("git@"):
         _, remainder = url.split(":", 1)
+        remainder = remainder.rsplit(":", 1)[-1]
     else:
         parsed = urlparse(url)
         remainder = parsed.path.lstrip("/")

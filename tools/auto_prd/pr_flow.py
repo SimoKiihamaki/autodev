@@ -63,7 +63,6 @@ Prepare and push a PR for this branch:
             model=codex_model,
             enable_search=True,
             yolo=allow_unsafe_execution,
-            allow_unsafe_execution=allow_unsafe_execution,
         )
     else:
         print("Skipping executor-driven PR routine; using direct git commands.")
@@ -96,7 +95,13 @@ Prepare and push a PR for this branch:
         if not has_commits:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
-        run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
+        try:
+            run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
+        except subprocess.CalledProcessError as exc:
+            details = extract_called_process_error_details(exc)
+            manual = f"Manually push the branch if necessary: `git push -u origin {new_branch}`"
+            message = f"Failed to push branch '{new_branch}': {details}\n" + _format_troubleshooting("above", manual)
+            raise SystemExit(message) from exc
         try:
             out, _, _ = run_cmd(
                 [

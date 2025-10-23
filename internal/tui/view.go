@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const focusedBgColor = "240"
+
 func (m model) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("autodev — PRD→PR TUI") + "\n")
@@ -185,15 +187,15 @@ func renderEnvView(b *strings.Builder, m model) {
 
 	localStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "local" {
-		localStyle = localStyle.Background(lipgloss.Color("240"))
+		localStyle = localStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 	prStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "pr" {
-		prStyle = prStyle.Background(lipgloss.Color("240"))
+		prStyle = prStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 	reviewStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "review" {
-		reviewStyle = reviewStyle.Background(lipgloss.Color("240"))
+		reviewStyle = reviewStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 
 	b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
@@ -202,19 +204,19 @@ func renderEnvView(b *strings.Builder, m model) {
 
 	unsafeStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "unsafe" {
-		unsafeStyle = unsafeStyle.Background(lipgloss.Color("240"))
+		unsafeStyle = unsafeStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 	dryrunStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "dryrun" {
-		dryrunStyle = dryrunStyle.Background(lipgloss.Color("240"))
+		dryrunStyle = dryrunStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 	syncgitStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "syncgit" {
-		syncgitStyle = syncgitStyle.Background(lipgloss.Color("240"))
+		syncgitStyle = syncgitStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 	infiniteStyle := lipgloss.NewStyle()
 	if m.focusedFlag == "infinite" {
-		infiniteStyle = infiniteStyle.Background(lipgloss.Color("240"))
+		infiniteStyle = infiniteStyle.Background(lipgloss.Color(focusedBgColor))
 	}
 
 	b.WriteString(unsafeStyle.Render(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)", m.flagAllowUnsafe)) + "\n")

@@ -240,7 +240,7 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
         if isinstance(comment_id, int) and comment_id not in processed_ids:
             author = (item.get("author") or "").strip().lower()
             mention = f"@{author}" if author else REVIEW_FALLBACK_MENTION
-            reply_body = f"Fix applied in the latest push — thanks for the review! {mention}"
+            reply_body = f"Fix applied in the latest push -- thanks for the review! {mention}"
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
                 processed_ids.add(comment_id)
