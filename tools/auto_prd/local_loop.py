@@ -28,6 +28,19 @@ MAX_EMPTY_CHANGE_STREAK = 3
 NO_CHANGES_ERROR = "Codex iterations produced no file changes or commits after multiple passes."
 
 
+def should_stop_for_completion(
+    done_by_checkboxes: bool,
+    done_by_codex: bool,
+    has_findings: bool,
+    tasks_left: Optional[int],
+) -> tuple[bool, str]:
+    if has_findings or not (done_by_checkboxes or done_by_codex):
+        return False, ""
+    if tasks_left is None and not done_by_checkboxes:
+        return False, "Completion cannot be confirmed (no TASKS_LEFT and no checkboxes); continuing loop."
+    return True, "Local loop stopping: PRD appears complete and CodeRabbit has no findings."
+
+
 def orchestrate_local_loop(
     prd_path: Path,
     repo_root: Path,
@@ -42,6 +55,7 @@ def orchestrate_local_loop(
     tasks_left: Optional[int] = None
     appears_complete = False
     no_findings_streak = 0
+    skipped_review_streak = 0
     qa_context_shared = False
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
@@ -103,13 +117,14 @@ At the end, print: TASKS_LEFT=<N>
         head_after_iteration = head_after_impl
 
         if not repo_changed_before_review and not tasks_progress:
-            no_findings_streak += 1
+            skipped_review_streak += 1
             print("No new file changes detected; skipping CodeRabbit review this iteration.")
-            print(f"CodeRabbit no-findings streak: {no_findings_streak}")
+            print(f"CodeRabbit skip streak: {skipped_review_streak}")
         else:
             print("\n=== CodeRabbit CLI review (prompt-only) ===")
             cr = coderabbit_prompt_only(base_branch=base_branch, repo_root=repo_root)
             has_findings = coderabbit_has_findings(cr)
+            skipped_review_streak = 0
             if has_findings:
                 no_findings_streak = 0
                 print("\n=== Codex applies CodeRabbit findings ===")
@@ -158,32 +173,32 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         done_by_checkboxes = total_checkboxes > 0 and unchecked == 0
         done_by_codex = tasks_left == 0 if tasks_left is not None else False
 
+        should_stop, completion_msg = should_stop_for_completion(done_by_checkboxes, done_by_codex, has_findings, tasks_left)
+
         if not repo_changed_after_actions:
-            if (done_by_checkboxes or done_by_codex) and not has_findings:
-                if tasks_left is None and not done_by_checkboxes:
-                    print("Completion cannot be confirmed (no TASKS_LEFT and no checkboxes); continuing loop.")
-                else:
-                    print("Local loop stopping: PRD appears complete and CodeRabbit has no findings.")
-                    appears_complete = True
-                    break
+            if should_stop:
+                print(completion_msg)
+                appears_complete = True
+                break
+            if completion_msg != "":
+                print(completion_msg)
+            empty_change_streak += 1
             print("⚠️  Warning: no new workspace changes detected after this iteration.")
-            if not dry_run:
-                empty_change_streak += 1
-                print(f"Empty-change streak: {empty_change_streak}/{MAX_EMPTY_CHANGE_STREAK}")
-                if empty_change_streak >= MAX_EMPTY_CHANGE_STREAK:
-                    raise RuntimeError(NO_CHANGES_ERROR)
+            print(f"Empty-change streak: {empty_change_streak}/{MAX_EMPTY_CHANGE_STREAK}")
+            if not dry_run and empty_change_streak >= MAX_EMPTY_CHANGE_STREAK:
+                raise RuntimeError(NO_CHANGES_ERROR)
             continue
         else:
             empty_change_streak = 0
             previous_status = status_after_iteration
             previous_head = head_after_iteration
-        if (done_by_checkboxes or done_by_codex) and not has_findings:
-            if tasks_left is None and not done_by_checkboxes:
-                print("Completion cannot be confirmed (no TASKS_LEFT and no checkboxes); continuing loop.")
-                continue
-            print("Local loop stopping: PRD appears complete and CodeRabbit has no findings.")
+        if should_stop:
+            print(completion_msg)
             appears_complete = True
             break
+        if completion_msg != "":
+            print(completion_msg)
+            continue
 
         if no_findings_streak >= NO_FINDINGS_STREAK_LIMIT and not has_findings:
             print("Stopping after repeated no-finding reviews from CodeRabbit.")

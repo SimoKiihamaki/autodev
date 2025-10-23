@@ -54,7 +54,8 @@ func (m *model) setRunCurrent(action string) {
 func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 	m.runFeedBuf = append(m.runFeedBuf, displayLine)
 	if len(m.runFeedBuf) > feedBufCap {
-		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
+		tail := m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
+		m.runFeedBuf = append([]string(nil), tail...)
 	}
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
 	flush := shouldFollow || len(m.runFeedBuf)%feedFlushStep == 0

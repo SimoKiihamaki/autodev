@@ -147,7 +147,13 @@ func (m *model) navigateSettings(direction string) {
 					return
 				}
 			}
-			m.searchHorizontalInRow(reverseGrid, row-1, col)
+			for r := row - 1; r >= 0; r-- {
+				if hasAnyCell(reverseGrid[r]) {
+					if m.searchHorizontalInRow(reverseGrid, r, col) {
+						return
+					}
+				}
+			}
 		}
 	case "down":
 		if row < len(reverseGrid)-1 {
@@ -157,7 +163,13 @@ func (m *model) navigateSettings(direction string) {
 					return
 				}
 			}
-			m.searchHorizontalInRow(reverseGrid, row+1, col)
+			for r := row + 1; r < len(reverseGrid); r++ {
+				if hasAnyCell(reverseGrid[r]) {
+					if m.searchHorizontalInRow(reverseGrid, r, col) {
+						return
+					}
+				}
+			}
 		}
 	case "left":
 		if col > 0 && reverseGrid[row][col-1] != "" {
@@ -185,26 +197,40 @@ func (m *model) navigateSettings(direction string) {
 	}
 }
 
-func (m *model) searchHorizontalInRow(reverseGrid [][]string, targetRow, startCol int) {
+func (m *model) searchHorizontalInRow(reverseGrid [][]string, targetRow, startCol int) bool {
 	if targetRow < 0 || targetRow >= len(reverseGrid) {
-		return
+		return false
 	}
 	row := reverseGrid[targetRow]
 	if len(row) == 0 {
-		return
+		return false
+	}
+	if startCol >= 0 && startCol < len(row) && row[startCol] != "" {
+		m.focusInput(row[startCol])
+		return true
 	}
 	for offset := 1; offset < len(row); offset++ {
 		left := startCol - offset
 		if left >= 0 && left < len(row) && row[left] != "" {
 			m.focusInput(row[left])
-			return
+			return true
 		}
 		right := startCol + offset
 		if right >= 0 && right < len(row) && row[right] != "" {
 			m.focusInput(row[right])
-			return
+			return true
 		}
 	}
+	return false
+}
+
+func hasAnyCell(row []string) bool {
+	for _, v := range row {
+		if v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *model) focusFlag(flagName string) {

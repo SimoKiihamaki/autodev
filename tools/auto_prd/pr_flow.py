@@ -26,6 +26,13 @@ def _format_troubleshooting(location: str, manual_step: str) -> str:
     )
 
 
+def _raise_push_error(exc: subprocess.CalledProcessError, branch: str, manual_location: str = "above") -> None:
+    details = extract_called_process_error_details(exc)
+    manual = f"Manually push the branch if necessary: `git push -u origin {branch}`"
+    message = f"Failed to push branch '{branch}': {details}\n" + _format_troubleshooting(manual_location, manual)
+    raise SystemExit(message) from exc
+
+
 def open_or_get_pr(
     new_branch: str,
     base_branch: str,
@@ -62,7 +69,7 @@ Prepare and push a PR for this branch:
             repo_root,
             model=codex_model,
             enable_search=True,
-            yolo=allow_unsafe_execution,
+            allow_unsafe_execution=allow_unsafe_execution,
         )
     else:
         print("Skipping executor-driven PR routine; using direct git commands.")
@@ -70,10 +77,7 @@ Prepare and push a PR for this branch:
             try:
                 git_push_branch(repo_root, new_branch)
             except subprocess.CalledProcessError as exc:
-                details = extract_called_process_error_details(exc)
-                manual = f"Manually push the branch if necessary: `git push -u origin {new_branch}`"
-                message = f"Failed to push branch '{new_branch}': {details}\n" + _format_troubleshooting("above", manual)
-                raise SystemExit(message) from exc
+                _raise_push_error(exc, new_branch)
 
     pr_number = get_pr_number_for_head(new_branch, repo_root)
     if pr_number is None:
@@ -98,10 +102,7 @@ Prepare and push a PR for this branch:
         try:
             git_push_branch(repo_root, new_branch)
         except subprocess.CalledProcessError as exc:
-            details = extract_called_process_error_details(exc)
-            manual = f"Manually push the branch if necessary: `git push -u origin {new_branch}`"
-            message = f"Failed to push branch '{new_branch}': {details}\n" + _format_troubleshooting("above", manual)
-            raise SystemExit(message) from exc
+            _raise_push_error(exc, new_branch)
         try:
             out, _, _ = run_cmd(
                 [

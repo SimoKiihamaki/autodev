@@ -39,6 +39,8 @@ type item struct {
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string {
+	// FilterValue is used for fuzzy search; trim/skip empties so we do not
+	// introduce redundant whitespace that can confuse list filtering.
 	parts := []string{i.title, i.desc, i.path}
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -160,10 +162,13 @@ func New() model {
 	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
 
 	m.settingsInputs = map[string]*textinput.Model{
-		"repo":     &m.inRepo,
-		"base":     &m.inBase,
-		"branch":   &m.inBranch,
-		"codex":    &m.inCodexModel,
+		// repo + git wiring
+		"repo":   &m.inRepo,
+		"base":   &m.inBase,
+		"branch": &m.inBranch,
+		"codex":  &m.inCodexModel,
+
+		// executor configuration
 		"pycmd":    &m.inPyCmd,
 		"pyscript": &m.inPyScript,
 		"policy":   &m.inPolicy,
@@ -171,6 +176,8 @@ func New() model {
 		"execfix":  &m.inExecFix,
 		"execpr":   &m.inExecPR,
 		"execrev":  &m.inExecRev,
+
+		// timings + iteration caps
 		"waitmin":  &m.inWaitMin,
 		"pollsec":  &m.inPollSec,
 		"idlemin":  &m.inIdleMin,
@@ -225,6 +232,7 @@ func (m model) Init() tea.Cmd {
 	return m.scanPRDsCmd()
 }
 
+// settingsInputMap exposes the live settings input map (callers must not mutate).
 func (m *model) settingsInputMap() map[string]*textinput.Model {
 	return m.settingsInputs
 }

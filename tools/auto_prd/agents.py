@@ -25,16 +25,24 @@ def codex_exec(
     repo_root: Path,
     model: str = "gpt-5-codex",
     enable_search: bool = True,
-    yolo: bool = False,
-    allow_unsafe_execution: bool = False,
+    yolo: Optional[bool] = None,
+    allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
 ) -> str:
     os.environ.setdefault("CI", "1")
+    allow_flag = allow_unsafe_execution
+    if yolo is not None:
+        logger.warning("codex_exec: 'yolo' is deprecated; use allow_unsafe_execution instead")
+        if allow_flag is None:
+            allow_flag = yolo
+        else:
+            allow_flag = allow_flag or yolo
+    allow_flag = bool(allow_flag)
     args: list[str] = ["codex"]
     if enable_search:
         args.append("--search")
-    if yolo or allow_unsafe_execution:
+    if allow_flag:
         verify_unsafe_execution_ready()
         args.append("--dangerously-bypass-approvals-and-sandbox")
         args.extend(["--config", 'sandbox_mode="danger-full-access"'])
@@ -145,13 +153,21 @@ def claude_exec(
     repo_root: Path,
     model: str | None = None,
     enable_search: bool = True,
-    yolo: bool = False,
-    allow_unsafe_execution: bool = False,
+    yolo: Optional[bool] = None,
+    allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
 ) -> str:
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
-    if not (yolo or allow_unsafe_execution):
+    allow_flag = allow_unsafe_execution
+    if yolo is not None:
+        logger.warning("claude_exec: 'yolo' is deprecated; use allow_unsafe_execution instead")
+        if allow_flag is None:
+            allow_flag = yolo
+        else:
+            allow_flag = allow_flag or yolo
+    allow_flag = bool(allow_flag)
+    if not allow_flag:
         raise PermissionError("Claude executor requires allow_unsafe_execution=True to bypass permissions.")
     os.environ.setdefault("CI", "1")
     verify_unsafe_execution_ready()
