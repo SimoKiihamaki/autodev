@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 from .agents import coderabbit_has_findings, coderabbit_prompt_only
 from .constants import CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
-from .policy import EXECUTOR_POLICY, policy_runner
+from .policy import policy_runner
 from .utils import checkbox_stats, detect_readonly_block, parse_tasks_left
 
 LOCAL_QA_SNIPPET = """
@@ -61,7 +61,7 @@ Read the spec at '{prd_path}'. Implement the NEXT uncompleted tasks in '{repo_ro
 
 At the end, print: TASKS_LEFT=<N>
 """
-        runner, runner_name = policy_runner(EXECUTOR_POLICY, i=i, phase="implement")
+        runner, runner_name = policy_runner(None, i=i, phase="implement")
         print("→ Launching implementation pass with", runner_name, "…")
         impl_output = runner(
             impl_prompt,

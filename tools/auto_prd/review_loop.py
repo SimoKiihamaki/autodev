@@ -10,7 +10,7 @@ from typing import Optional
 from .gh_ops import acknowledge_review_items, get_unresolved_feedback, trigger_copilot
 from .git_ops import git_head_sha
 from .logging_utils import logger
-from .policy import EXECUTOR_POLICY, policy_runner
+from .policy import policy_runner
 
 
 def review_fix_loop(
@@ -50,7 +50,7 @@ def review_fix_loop(
     processed_comment_ids: set[int] = set()
 
     def sleep_with_jitter(base: float) -> None:
-        jitter = random.uniform(-1.5, 1.5)
+        jitter = random.uniform(-1.5, 1.5)  # nosec S311 - non-crypto jitter
         duration = max(1.0, base + jitter)
         time.sleep(duration)
 
@@ -76,7 +76,7 @@ Unresolved review items:
 
 After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
-            review_runner, _ = policy_runner(EXECUTOR_POLICY, phase="review_fix")
+            review_runner, _ = policy_runner(None, phase="review_fix")
 
             review_runner(
                 fix_prompt,

@@ -1,4 +1,4 @@
-"""Executor policy resolution and verification.""" 
+"""Executor policy resolution and verification."""
 
 from __future__ import annotations
 
@@ -16,6 +16,10 @@ from .policy import (
     set_executor_policy,
     COMMAND_FALLBACK_CONFIG,
 )
+
+
+class AutoPrdError(RuntimeError):
+    """Raised when executor policy resolution fails."""
 
 
 def _verify_required_commands(
@@ -40,21 +44,21 @@ def _verify_required_commands(
                 )
                 fallback_policy = get_fallback_policy(executor_policy)
                 if fallback_policy is None:
-                    raise SystemExit(
-                        f"ERROR: {cmd_name} CLI check failed and no fallback policy available for '{executor_policy}'"
+                    raise AutoPrdError(
+                        f"{cmd_name} CLI check failed and no fallback policy available for '{executor_policy}'"
                     ) from err
                 executor_policy = fallback_policy
                 break
             else:
-                raise SystemExit(f"ERROR: {err}") from err
+                raise AutoPrdError(str(err)) from err
     return policy_changed, executor_policy, verified_commands
 
 
-def resolve_executor_policy(policy_arg: str | None, _phases: Set[str]) -> Tuple[str, str, Set[str]]:
+def resolve_executor_policy(policy_arg: str | None, _: Set[str]) -> Tuple[str, str, Set[str]]:
     policy_from_env = os.getenv("AUTO_PRD_EXECUTOR_POLICY")
     executor_policy = policy_arg or policy_from_env or EXECUTOR_POLICY_DEFAULT
     if executor_policy not in EXECUTOR_CHOICES:
-        raise SystemExit(f"Invalid executor policy: {executor_policy}")
+        raise AutoPrdError(f"Invalid executor policy: {executor_policy}")
     set_executor_policy(executor_policy)
 
     verified_commands: Set[str] = set()
@@ -90,8 +94,8 @@ def resolve_executor_policy(policy_arg: str | None, _phases: Set[str]) -> Tuple[
             error_type = "Cycle detected" if cycle_detected else "Persistent failure"
             cycle_message = f"\n{cycle_info}" if cycle_detected else ""
 
-            raise SystemExit(
-                f"ERROR: Exceeded maximum fallback attempts ({MAX_FALLBACK_ATTEMPTS}) while verifying required commands.\n"
+            raise AutoPrdError(
+                "Exceeded maximum fallback attempts while verifying required commands.\n"
                 f"{error_type} in executor policy fallback logic.{cycle_message}\n"
                 f"Executor policy chain tried: {executor_policy_chain}\n"
                 f"Commands that failed to verify: {failed_commands}"

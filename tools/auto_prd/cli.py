@@ -6,6 +6,7 @@ import argparse
 
 from .app import run
 from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
+from .executor import AutoPrdError
 from .policy import EXECUTOR_CHOICES
 from .logging_utils import CURRENT_LOG_PATH, ORIGINAL_PRINT, logger
 
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--log-level",
+        type=str.upper,
         default="INFO",
         choices=ACCEPTED_LOG_LEVELS,
         help="Log level for command diagnostics (default: INFO)",
@@ -90,7 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    run(args)
+    try:
+        run(args)
+    except AutoPrdError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":
