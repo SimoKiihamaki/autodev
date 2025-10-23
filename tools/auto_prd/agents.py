@@ -122,7 +122,7 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             if sleep_secs and attempts <= 3:
                 capped = max(5, min(900, sleep_secs))  # 5s..15m
                 jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - non-crypto jitter
-                wait = max(1, capped + jitter)
+                wait = max(capped, capped + jitter)
                 logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", wait)
                 time.sleep(wait)
                 continue

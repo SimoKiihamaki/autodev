@@ -29,8 +29,6 @@ CODEX_READONLY_ERROR_MSG = (
 ZSH_REQUIRED_ERROR = "zsh binary not found on PATH; required for shell environment policy."
 ALLOW_NO_ZSH_ENV = "AUTO_PRD_ALLOW_NO_ZSH"
 
-ZSH_PATH = shutil.which("zsh")
-
 COMMAND_ALLOWLIST = {
     "codex",
     "coderabbit",
@@ -39,8 +37,7 @@ COMMAND_ALLOWLIST = {
     "zsh",
     "claude",
 }
-if ZSH_PATH:
-    COMMAND_ALLOWLIST.update({Path(ZSH_PATH).name, ZSH_PATH})
+ZSH_PATH = shutil.which("zsh")
 UNSAFE_ARG_CHARS = set("|;><`")
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
@@ -84,6 +81,7 @@ def require_zsh() -> str:
     global ZSH_PATH
     with _ZSH_LOCK:
         if ZSH_PATH:
+            COMMAND_ALLOWLIST.update({Path(ZSH_PATH).name, ZSH_PATH})
             return ZSH_PATH
         maybe_skip = os.environ.get(ALLOW_NO_ZSH_ENV, "").strip()
         resolved = shutil.which("zsh")

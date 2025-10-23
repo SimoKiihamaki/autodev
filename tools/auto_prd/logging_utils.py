@@ -24,6 +24,7 @@ USER_LOG_LEVEL = logging.INFO
 ORIGINAL_PRINT = builtins.print
 PRINT_HOOK_INSTALLED = False
 PRINT_HOOK_LOCK = threading.Lock()
+SETUP_LOCK = threading.Lock()
 
 
 def resolve_log_level(level_name: str) -> int:
@@ -40,39 +41,42 @@ def resolve_log_level(level_name: str) -> int:
 def setup_file_logging(log_path: Path, level_name: str) -> None:
     global CURRENT_LOG_PATH, USER_LOG_LEVEL
     numeric_level = resolve_log_level(level_name)
-    USER_LOG_LEVEL = numeric_level
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         log_path.parent.chmod(0o700)
     except Exception:  # pragma: no cover - permissions vary by platform
         logger.debug("Unable to enforce permissions on %s", log_path.parent)
 
-    root_logger = logging.getLogger()
-    paths_to_remove = {str(log_path)}
-    if CURRENT_LOG_PATH:
-        paths_to_remove.add(str(CURRENT_LOG_PATH))
-    for handler in list(root_logger.handlers):
-        base_filename = getattr(handler, "baseFilename", None)
-        if base_filename and base_filename in paths_to_remove and isinstance(handler, logging.FileHandler):
-            root_logger.removeHandler(handler)
-            try:
-                handler.close()
-            except Exception:  # pragma: no cover - defensive close
-                logger.debug("Failed to close previous log handler for %s", base_filename)
+    with SETUP_LOCK:
+        USER_LOG_LEVEL = numeric_level
 
-    root_logger.setLevel(numeric_level)
+        root_logger = logging.getLogger()
+        paths_to_remove = {str(log_path)}
+        if CURRENT_LOG_PATH:
+            paths_to_remove.add(str(CURRENT_LOG_PATH))
+        for handler in list(root_logger.handlers):
+            base_filename = getattr(handler, "baseFilename", None)
+            if base_filename and base_filename in paths_to_remove and isinstance(handler, logging.FileHandler):
+                root_logger.removeHandler(handler)
+                try:
+                    handler.close()
+                except Exception:  # pragma: no cover - defensive close
+                    logger.debug("Failed to close previous log handler for %s", base_filename)
 
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
-    file_handler.setLevel(numeric_level)
-    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-    root_logger.addHandler(file_handler)
+        root_logger.setLevel(numeric_level)
+
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setLevel(numeric_level)
+        file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        root_logger.addHandler(file_handler)
+        CURRENT_LOG_PATH = log_path
+        logger.setLevel(numeric_level)
+
     try:
         log_path.chmod(0o600)
     except Exception:  # pragma: no cover - permissions vary by platform
         logger.debug("Unable to enforce permissions on %s", log_path)
 
-    logger.setLevel(numeric_level)
-    CURRENT_LOG_PATH = log_path
     install_print_logger()
 
 

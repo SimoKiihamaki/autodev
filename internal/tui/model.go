@@ -39,7 +39,15 @@ type item struct {
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string {
-	return strings.TrimSpace(i.title + " " + i.desc + " " + i.path)
+	parts := []string{i.title, i.desc, i.path}
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	return strings.Join(filtered, " ")
 }
 
 type model struct {
