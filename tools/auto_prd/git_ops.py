@@ -17,6 +17,7 @@ def git_root() -> Path:
 
 
 def parse_owner_repo_from_git() -> str:
+    """Return the owner/repo identifier for origin, handling SSH URLs with ports."""
     out, _, _ = run_cmd(["git", "remote", "get-url", "origin"])
     url = out.strip()
     if url.startswith("git@"):
@@ -40,7 +41,7 @@ def parse_owner_repo_from_git() -> str:
 
 def ensure_gh_alias() -> None:
     out, _, _ = run_cmd(["gh", "alias", "list"])
-    if "save-me-copilot" not in out:
+    if not any(line.split(":")[0].strip() == "save-me-copilot" for line in out.splitlines() if ":" in line):
         run_cmd(
             [
                 "gh",
@@ -109,8 +110,11 @@ def git_stash_worktree(repo_root: Path, message: str) -> Optional[str]:
     combined = (out + err).lower()
     if "no local changes to save" in combined:
         return None
-    _, _, rc = run_cmd(["git", "rev-parse", "--verify", "stash@{0}"], cwd=repo_root, check=False)
+    out_ref, _, rc = run_cmd(["git", "rev-parse", "--verify", "stash@{0}"], cwd=repo_root, check=False)
     if rc == 0:
+        ref = out_ref.strip()
+        if ref:
+            return ref
         return "stash@{0}"
     return None
 

@@ -22,7 +22,7 @@ from .constants import (
     SAFE_ENV_VAR,
     SAFE_STDIN_ALLOWED_CTRL,
     STDIN_MAX_BYTES,
-    ZSH_PATH,
+    require_zsh,
 )
 from .logging_utils import decode_output, logger, truncate_for_log
 
@@ -151,7 +151,8 @@ def verify_unsafe_execution_ready() -> None:
 
 def env_with_zsh(extra: dict | None = None) -> dict[str, str]:
     env = os.environ.copy()
-    env.update({"SHELL": ZSH_PATH, "AUTO_PRD_SHELL": ZSH_PATH})
+    zsh_path = require_zsh()
+    env.update({"SHELL": zsh_path, "AUTO_PRD_SHELL": zsh_path})
     if extra:
         env.update(extra)
     return env
@@ -293,7 +294,7 @@ def run_sh(
 ) -> tuple[str, str, int]:
     verify_unsafe_execution_ready()
     return run_cmd(
-        [ZSH_PATH, "-lc", script],
+        [require_zsh(), "-lc", script],
         cwd=cwd,
         check=check,
         capture=capture,

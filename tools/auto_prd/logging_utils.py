@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import io
 import logging
 import sys
 import threading
@@ -33,7 +34,7 @@ def resolve_log_level(level_name: str) -> int:
     if isinstance(level_value, int):
         return level_value
     valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
-    raise SystemExit(f"Invalid log level: {level_name}. Valid levels are: {valid_levels}")
+    raise ValueError(f"Invalid log level: {level_name}. Valid levels are: {valid_levels}")
 
 
 def setup_file_logging(log_path: Path, level_name: str) -> None:
@@ -47,11 +48,22 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
         logger.debug("Unable to enforce permissions on %s", log_path.parent)
 
     root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.setLevel(logging.DEBUG)
+    paths_to_remove = {str(log_path)}
+    if CURRENT_LOG_PATH:
+        paths_to_remove.add(str(CURRENT_LOG_PATH))
+    for handler in list(root_logger.handlers):
+        base_filename = getattr(handler, "baseFilename", None)
+        if base_filename and base_filename in paths_to_remove and isinstance(handler, logging.FileHandler):
+            root_logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:  # pragma: no cover - defensive close
+                logger.debug("Failed to close previous log handler for %s", base_filename)
+
+    root_logger.setLevel(numeric_level)
 
     file_handler = logging.FileHandler(log_path, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(numeric_level)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root_logger.addHandler(file_handler)
     try:
@@ -90,7 +102,13 @@ def install_print_logger() -> None:
         def tee_print(*args, **kwargs):
             message = format_print_message(*args, **kwargs)
             if message:
-                target_level = logging.WARNING if kwargs.get("file") == sys.stderr else logging.INFO
+                stream = kwargs.get("file") or sys.stdout
+                is_stderr = False
+                try:
+                    is_stderr = stream.fileno() == sys.stderr.fileno()
+                except (AttributeError, ValueError, io.UnsupportedOperation):
+                    is_stderr = stream is sys.stderr or stream is getattr(sys, "__stderr__", None)
+                target_level = logging.WARNING if is_stderr else logging.INFO
                 print_logger.log(target_level, message)
             ORIGINAL_PRINT(*args, **kwargs)
 

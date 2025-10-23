@@ -9,6 +9,14 @@ import (
 
 const focusedBgColor = "240"
 
+func focusStyle(active bool) lipgloss.Style {
+	style := lipgloss.NewStyle()
+	if active {
+		style = style.Background(lipgloss.Color(focusedBgColor))
+	}
+	return style
+}
+
 func (m model) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("autodev — PRD→PR TUI") + "\n")
@@ -124,10 +132,10 @@ func renderRunView(b *strings.Builder, m model) {
 		}
 
 		if m.running {
-			b.WriteString(helpStyle.Render(fmt.Sprintf("Ctrl+C cancel · %s\n", runScrollHelp)))
+			b.WriteString(helpStyle.Render(fmt.Sprintf("Ctrl+C cancel · q quit · %s\n", runScrollHelp)))
 		} else {
 			b.WriteString(helpStyle.Render("Press Enter to start a new run\n"))
-			b.WriteString(helpStyle.Render(fmt.Sprintf("Enter start · %s\n", runScrollHelp)))
+			b.WriteString(helpStyle.Render(fmt.Sprintf("Enter start · q quit · Ctrl+C force quit · %s\n", runScrollHelp)))
 		}
 		return
 	}
@@ -143,7 +151,7 @@ func renderRunView(b *strings.Builder, m model) {
 	} else {
 		b.WriteString("Status: Idle\n")
 	}
-	b.WriteString(helpStyle.Render("Press Enter to start a run · Ctrl+C quits\n"))
+	b.WriteString(helpStyle.Render("Press Enter to start a run · q quit · Ctrl+C force quit\n"))
 }
 
 func renderPRDView(b *strings.Builder, m model) {
@@ -178,46 +186,25 @@ func renderSettingsView(b *strings.Builder, m model) {
 	if m.focusedInput != "" {
 		b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
 	} else {
-		b.WriteString("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · s to save · 1-6,? to switch tabs\n")
+		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · s to save · 1-%d,? to switch tabs\n", len(tabNames)))
 	}
 }
 
 func renderEnvView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Env & Flags") + "\n")
 
-	localStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "local" {
-		localStyle = localStyle.Background(lipgloss.Color(focusedBgColor))
-	}
-	prStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "pr" {
-		prStyle = prStyle.Background(lipgloss.Color(focusedBgColor))
-	}
-	reviewStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "review" {
-		reviewStyle = reviewStyle.Background(lipgloss.Color(focusedBgColor))
-	}
+	localStyle := focusStyle(m.focusedFlag == "local")
+	prStyle := focusStyle(m.focusedFlag == "pr")
+	reviewStyle := focusStyle(m.focusedFlag == "review")
 
 	b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
 		prStyle.Render("[P] PR="+fmt.Sprint(m.runPR)) + "  " +
 		reviewStyle.Render("[R] ReviewFix="+fmt.Sprint(m.runReview)) + "\n")
 
-	unsafeStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "unsafe" {
-		unsafeStyle = unsafeStyle.Background(lipgloss.Color(focusedBgColor))
-	}
-	dryrunStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "dryrun" {
-		dryrunStyle = dryrunStyle.Background(lipgloss.Color(focusedBgColor))
-	}
-	syncgitStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "syncgit" {
-		syncgitStyle = syncgitStyle.Background(lipgloss.Color(focusedBgColor))
-	}
-	infiniteStyle := lipgloss.NewStyle()
-	if m.focusedFlag == "infinite" {
-		infiniteStyle = infiniteStyle.Background(lipgloss.Color(focusedBgColor))
-	}
+	unsafeStyle := focusStyle(m.focusedFlag == "unsafe")
+	dryrunStyle := focusStyle(m.focusedFlag == "dryrun")
+	syncgitStyle := focusStyle(m.focusedFlag == "syncgit")
+	infiniteStyle := focusStyle(m.focusedFlag == "infinite")
 
 	b.WriteString(unsafeStyle.Render(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)", m.flagAllowUnsafe)) + "\n")
 	b.WriteString(dryrunStyle.Render(fmt.Sprintf("[d] Dry Run:     %v", m.flagDryRun)) + "\n")

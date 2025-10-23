@@ -72,6 +72,7 @@ def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
 
 
 def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
+    """Return True when HEAD has commits newer than base_branch (base..HEAD)."""
     out, _, _ = run_cmd(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root)
     try:
         return int(out.strip() or "0") > 0

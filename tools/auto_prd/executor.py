@@ -81,7 +81,7 @@ def resolve_executor_policy(policy_arg: str | None, _phases: Set[str]) -> Tuple[
                 for i, policy in enumerate(executor_policy_chain):
                     if policy in seen_indices:
                         cycle_start = seen_indices[policy]
-                        cycle_policies = executor_policy_chain[cycle_start:]
+                        cycle_policies = executor_policy_chain[cycle_start:i]
                         cycle_detected = True
                         cycle_info = f"Detected cycle: {' -> '.join(cycle_policies)} -> {policy}"
                         break

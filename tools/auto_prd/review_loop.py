@@ -83,7 +83,6 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 repo_root,
                 model=codex_model,
                 enable_search=True,
-                yolo=allow_unsafe_execution,
                 allow_unsafe_execution=allow_unsafe_execution,
             )
             trigger_copilot(owner_repo, pr_number, repo_root)

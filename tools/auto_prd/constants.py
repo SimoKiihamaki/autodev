@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import os
 from pathlib import Path
 
 
@@ -25,19 +26,20 @@ CODEX_READONLY_ERROR_MSG = (
 )
 
 ZSH_REQUIRED_ERROR = "zsh binary not found on PATH; required for shell environment policy."
+ALLOW_NO_ZSH_ENV = "AUTO_PRD_ALLOW_NO_ZSH"
 
 ZSH_PATH = shutil.which("zsh")
-if not ZSH_PATH:
-    raise RuntimeError(ZSH_REQUIRED_ERROR)
+
 COMMAND_ALLOWLIST = {
     "codex",
     "coderabbit",
     "git",
     "gh",
-    Path(ZSH_PATH).name,
-    ZSH_PATH,
+    "zsh",
     "claude",
 }
+if ZSH_PATH:
+    COMMAND_ALLOWLIST.update({Path(ZSH_PATH).name, ZSH_PATH})
 UNSAFE_ARG_CHARS = set("|;><`")
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
@@ -72,3 +74,19 @@ REVIEW_BOT_LOGINS = {
     }
 }
 REVIEW_FALLBACK_MENTION = "@reviewer"
+
+
+def require_zsh() -> str:
+    """Return the path to zsh or raise if unavailable (unless explicitly allowed)."""
+    global ZSH_PATH
+    if ZSH_PATH:
+        return ZSH_PATH
+    maybe_skip = os.environ.get(ALLOW_NO_ZSH_ENV, "").strip()
+    resolved = shutil.which("zsh")
+    if resolved:
+        ZSH_PATH = resolved
+        COMMAND_ALLOWLIST.update({Path(resolved).name, resolved})
+        return resolved
+    if maybe_skip:
+        return "zsh"
+    raise RuntimeError(ZSH_REQUIRED_ERROR)

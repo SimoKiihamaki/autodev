@@ -10,7 +10,10 @@ import (
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 )
 
-const feedBufCap = 800
+const (
+	feedBufCap    = 800
+	feedFlushStep = 16
+)
 
 var (
 	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
@@ -52,7 +55,7 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 		m.runFeedBuf = m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 	}
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
-	flush := shouldFollow || len(m.runFeedBuf)%16 == 0
+	flush := shouldFollow || len(m.runFeedBuf)%feedFlushStep == 0
 	if flush {
 		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
 		if shouldFollow {
@@ -108,7 +111,7 @@ func (m *model) consumeRunSummary(rawLine string) {
 			if total, err := strconv.Atoi(match[2]); err == nil {
 				m.runIterTotal = total
 			} else {
-				m.runIterTotal = -1
+				m.runIterTotal = -1 // -1 signals "unknown total" for the current iteration.
 				log.Printf("tui: unable to parse iteration total %q: %v", match[2], err)
 			}
 		} else {

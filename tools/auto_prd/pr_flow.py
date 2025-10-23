@@ -96,7 +96,7 @@ Prepare and push a PR for this branch:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
         try:
-            run_cmd(["git", "push", "-u", "origin", new_branch], cwd=repo_root)
+            git_push_branch(repo_root, new_branch)
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
             manual = f"Manually push the branch if necessary: `git push -u origin {new_branch}`"

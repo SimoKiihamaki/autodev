@@ -68,7 +68,6 @@ At the end, print: TASKS_LEFT=<N>
             repo_root,
             model=codex_model,
             enable_search=True,
-            yolo=allow_unsafe_execution,
             allow_unsafe_execution=allow_unsafe_execution,
             dry_run=dry_run,
         )
@@ -131,7 +130,6 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     repo_root,
                     model=codex_model,
                     enable_search=True,
-                    yolo=allow_unsafe_execution,
                     allow_unsafe_execution=allow_unsafe_execution,
                     dry_run=dry_run,
                 )

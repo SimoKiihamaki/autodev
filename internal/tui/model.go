@@ -218,5 +218,9 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m *model) settingsInputMap() map[string]*textinput.Model {
-	return m.settingsInputs
+	out := make(map[string]*textinput.Model, len(m.settingsInputs))
+	for k, v := range m.settingsInputs {
+		out[k] = v
+	}
+	return out
 }

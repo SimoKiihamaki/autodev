@@ -6,6 +6,7 @@ import argparse
 
 from .app import run
 from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
+from .policy import EXECUTOR_CHOICES
 from .logging_utils import CURRENT_LOG_PATH, ORIGINAL_PRINT, logger
 
 
@@ -74,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="Do not execute Codex commands; useful for tests.")
     parser.add_argument(
         "--executor-policy",
-        choices=("codex-first", "codex-only", "claude-only"),
+        choices=EXECUTOR_CHOICES,
         default=None,
         help="Executor policy: 'codex-first' (default), 'codex-only', or 'claude-only'. Can also use AUTO_PRD_EXECUTOR_POLICY.",
     )

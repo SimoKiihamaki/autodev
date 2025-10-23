@@ -23,7 +23,13 @@ func (m *model) normalizeLogLevel() {
 		m.cfg.LogLevel = "INFO"
 		return
 	}
-	m.cfg.LogLevel = strings.ToUpper(lvl)
+	lvl = strings.ToUpper(lvl)
+	switch lvl {
+	case "DEBUG", "INFO", "WARN", "ERROR":
+		m.cfg.LogLevel = lvl
+	default:
+		m.cfg.LogLevel = "INFO"
+	}
 }
 
 func (m model) isActiveOrCancelling() bool {
@@ -81,7 +87,6 @@ func (m *model) startRunCmd() tea.Cmd {
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
 		defer close(logCh)
-		defer close(resultCh)
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
@@ -107,6 +112,7 @@ func (m *model) startRunCmd() tea.Cmd {
 			case resultCh <- err:
 			case <-ctx.Done():
 			}
+			close(resultCh)
 		}()
 		err = opts.Run(ctx)
 	}(ctx, options, ch, m.runResult)
@@ -115,18 +121,16 @@ func (m *model) startRunCmd() tea.Cmd {
 }
 
 func (m *model) preflightChecks() error {
-	if strings.TrimSpace(m.cfg.PythonCommand) == "" {
-		return errors.New("Set Python command in Settings")
-	}
-	exeParts, err := shlex.Split(m.cfg.PythonCommand)
+	cmd := strings.TrimSpace(m.cfg.PythonCommand)
+	exeParts, err := shlex.Split(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to parse Python command %q: %w", m.cfg.PythonCommand, err)
 	}
-	if len(exeParts) == 0 {
+	if len(exeParts) == 0 || strings.TrimSpace(exeParts[0]) == "" {
 		return errors.New("Set Python command in Settings")
 	}
 	if _, err := exec.LookPath(exeParts[0]); err != nil {
-		return fmt.Errorf("Python command not found on PATH: %w", err)
+		return fmt.Errorf("python executable %q not found on PATH: %w", exeParts[0], err)
 	}
 	if strings.TrimSpace(m.cfg.PythonScript) == "" {
 		return errors.New("Set Python script path in Settings")
@@ -195,10 +199,30 @@ func (m *model) hydrateConfigFromInputs() []string {
 		apply(val)
 	}
 
-	setNumeric(m.inWaitMin.Value(), "Wait minutes", func(v int) { m.cfg.Timings.WaitMinutes = v })
-	setNumeric(m.inPollSec.Value(), "Review poll seconds", func(v int) { m.cfg.Timings.ReviewPollSeconds = v })
-	setNumeric(m.inIdleMin.Value(), "Idle grace minutes", func(v int) { m.cfg.Timings.IdleGraceMinutes = v })
-	setNumeric(m.inMaxIters.Value(), "Max local iters", func(v int) { m.cfg.Timings.MaxLocalIters = v })
+	setNumeric(m.inWaitMin.Value(), "Wait minutes", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		m.cfg.Timings.WaitMinutes = v
+	})
+	setNumeric(m.inPollSec.Value(), "Review poll seconds", func(v int) {
+		if v <= 0 {
+			v = 15
+		}
+		m.cfg.Timings.ReviewPollSeconds = v
+	})
+	setNumeric(m.inIdleMin.Value(), "Idle grace minutes", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		m.cfg.Timings.IdleGraceMinutes = v
+	})
+	setNumeric(m.inMaxIters.Value(), "Max local iters", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		m.cfg.Timings.MaxLocalIters = v
+	})
 	m.cfg.Flags.AllowUnsafe = m.flagAllowUnsafe
 	m.cfg.Flags.DryRun = m.flagDryRun
 	m.cfg.Flags.SyncGit = m.flagSyncGit

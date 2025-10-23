@@ -2,6 +2,8 @@ package tui
 
 import tea "github.com/charmbracelet/bubbletea"
 
+// envFlagKeyMap documents the single-letter key bindings and their corresponding
+// config flag names; keep in sync with envFlagNames/model fields.
 var envFlagKeyMap = map[string]string{
 	"l": "local",
 	"p": "pr",
