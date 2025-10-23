@@ -16,6 +16,9 @@ from .command import run_cmd, verify_unsafe_execution_ready
 from .logging_utils import logger
 from .utils import extract_called_process_error_details
 
+RATE_LIMIT_JITTER_MIN = -3
+RATE_LIMIT_JITTER_MAX = 3
+
 
 def codex_exec(
     prompt: str,
@@ -118,7 +121,7 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
                 capped = max(5, min(900, sleep_secs))  # 5s..15m
-                jitter = random.randint(-3, 3)  # nosec S311 - non-crypto jitter
+                jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - non-crypto jitter
                 wait = max(1, capped + jitter)
                 logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", wait)
                 time.sleep(wait)

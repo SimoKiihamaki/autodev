@@ -39,7 +39,7 @@ type item struct {
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string {
-	return strings.TrimSpace(strings.Join([]string{i.title, i.desc, i.path}, " "))
+	return strings.TrimSpace(i.title + " " + i.desc + " " + i.path)
 }
 
 type model struct {

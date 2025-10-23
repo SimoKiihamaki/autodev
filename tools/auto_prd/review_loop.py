@@ -12,6 +12,9 @@ from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
 
+JITTER_MIN_SECONDS = -1.5
+JITTER_MAX_SECONDS = 1.5
+
 
 def review_fix_loop(
     pr_number: Optional[int],
@@ -50,7 +53,7 @@ def review_fix_loop(
     processed_comment_ids: set[int] = set()
 
     def sleep_with_jitter(base: float) -> None:
-        jitter = random.uniform(-1.5, 1.5)  # nosec S311 - non-crypto jitter
+        jitter = random.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)  # nosec S311 - non-crypto jitter
         duration = max(1.0, base + jitter)
         time.sleep(duration)
 
@@ -101,5 +104,4 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             break
         print("No unresolved feedback right now; waiting for potential new comments...")
         sleep_with_jitter(float(poll))
-
     print("Review loop complete.")

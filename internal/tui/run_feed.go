@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	feedBufCap    = 800
-	feedFlushStep = 16
+	feedBufCap           = 800
+	feedFlushStep        = 16
+	iterTotalUnspecified = 0  // iteration total not provided in the feed line
+	iterTotalUnknown     = -1 // iteration total provided but failed to parse
 )
 
 var (
@@ -111,11 +113,11 @@ func (m *model) consumeRunSummary(rawLine string) {
 			if total, err := strconv.Atoi(match[2]); err == nil {
 				m.runIterTotal = total
 			} else {
-				m.runIterTotal = -1 // -1 signals "unknown total" for the current iteration.
+				m.runIterTotal = iterTotalUnknown
 				log.Printf("tui: unable to parse iteration total %q: %v", match[2], err)
 			}
 		} else {
-			m.runIterTotal = 0
+			m.runIterTotal = iterTotalUnspecified
 		}
 		label := strings.TrimSpace(match[3])
 		m.runIterLabel = label

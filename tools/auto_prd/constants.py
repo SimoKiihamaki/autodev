@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
-import os
+import threading
 from pathlib import Path
 
 
@@ -75,18 +76,21 @@ REVIEW_BOT_LOGINS = {
 }
 REVIEW_FALLBACK_MENTION = "@reviewer"
 
+_ZSH_LOCK = threading.Lock()
+
 
 def require_zsh() -> str:
     """Return the path to zsh or raise if unavailable (unless explicitly allowed)."""
     global ZSH_PATH
-    if ZSH_PATH:
-        return ZSH_PATH
-    maybe_skip = os.environ.get(ALLOW_NO_ZSH_ENV, "").strip()
-    resolved = shutil.which("zsh")
-    if resolved:
-        ZSH_PATH = resolved
-        COMMAND_ALLOWLIST.update({Path(resolved).name, resolved})
-        return resolved
-    if maybe_skip:
-        return "zsh"
-    raise RuntimeError(ZSH_REQUIRED_ERROR)
+    with _ZSH_LOCK:
+        if ZSH_PATH:
+            return ZSH_PATH
+        maybe_skip = os.environ.get(ALLOW_NO_ZSH_ENV, "").strip()
+        resolved = shutil.which("zsh")
+        if resolved:
+            ZSH_PATH = resolved
+            COMMAND_ALLOWLIST.update({Path(resolved).name, resolved})
+            return resolved
+        if maybe_skip:
+            return "zsh"
+        raise RuntimeError(ZSH_REQUIRED_ERROR)
