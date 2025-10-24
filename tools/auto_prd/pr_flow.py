@@ -11,7 +11,7 @@ from .command import run_cmd
 from .gh_ops import get_pr_number_for_head
 from .git_ops import git_push_branch
 from .logging_utils import logger
-from .policy import EXECUTOR_POLICY, policy_runner
+from .policy import get_executor_policy, policy_runner
 from .utils import extract_called_process_error_details
 
 
@@ -30,6 +30,17 @@ def _raise_push_error(exc: subprocess.CalledProcessError, branch: str, manual_lo
     details = extract_called_process_error_details(exc)
     manual = f"Manually push the branch if necessary: `git push -u origin {branch}`"
     message = f"Failed to push branch '{branch}': {details}\n" + _format_troubleshooting(manual_location, manual)
+    raise SystemExit(message) from exc
+
+
+def _raise_pr_create_error(exc: subprocess.CalledProcessError, base_branch: str, new_branch: str) -> None:
+    details = extract_called_process_error_details(exc)
+    manual = f"Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
+    message = (
+        "Failed to create PR automatically via gh CLI.\n"
+        + _format_troubleshooting("below", manual)
+        + f"\n\ngh pr create error details:\n{details}\n"
+    )
     raise SystemExit(message) from exc
 
 
@@ -61,8 +72,10 @@ Prepare and push a PR for this branch:
         logger.info("Dry run enabled; skipping Codex PR creation routine for branch %s.", new_branch)
         return None
 
+    push_performed = already_pushed
+
     if not skip_runner:
-        pr_runner, _ = policy_runner(EXECUTOR_POLICY, phase="pr")
+        pr_runner, _ = policy_runner(get_executor_policy(), phase="pr")
 
         pr_runner(
             push_prompt,
@@ -76,6 +89,7 @@ Prepare and push a PR for this branch:
         if not already_pushed:
             try:
                 git_push_branch(repo_root, new_branch)
+                push_performed = True
             except subprocess.CalledProcessError as exc:
                 _raise_push_error(exc, new_branch)
 
@@ -99,10 +113,12 @@ Prepare and push a PR for this branch:
         if not has_commits:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
-        try:
-            git_push_branch(repo_root, new_branch)
-        except subprocess.CalledProcessError as exc:
-            _raise_push_error(exc, new_branch)
+        if not push_performed:
+            try:
+                git_push_branch(repo_root, new_branch)
+                push_performed = True
+            except subprocess.CalledProcessError as exc:
+                _raise_push_error(exc, new_branch)
         try:
             out, _, _ = run_cmd(
                 [
@@ -136,11 +152,7 @@ Prepare and push a PR for this branch:
             if "No commits between" in details:
                 print("GitHub refused to create a PR because the branch matches the base branch.")
                 return None
-            manual = f"Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
-            print("Failed to create PR automatically via gh CLI.")
-            print(_format_troubleshooting("below", manual))
-            print(f"gh pr create error details:\n{details}\n")
-            return None
+            _raise_pr_create_error(exc, base_branch, new_branch)
         if pr_number is None:
             pr_number = get_pr_number_for_head(new_branch, repo_root)
     if pr_number is not None:

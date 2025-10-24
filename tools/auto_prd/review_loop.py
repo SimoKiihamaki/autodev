@@ -15,6 +15,7 @@ from .policy import policy_runner
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
+_JITTER_RNG = random.SystemRandom()
 
 
 def review_fix_loop(
@@ -54,7 +55,7 @@ def review_fix_loop(
     processed_comment_ids: set[int] = set()
 
     def sleep_with_jitter(base: float) -> None:
-        jitter = random.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)  # nosec S311 - non-crypto jitter
+        jitter = _JITTER_RNG.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)
         duration = max(1.0, base + jitter)
         time.sleep(duration)
 

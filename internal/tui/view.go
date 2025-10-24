@@ -213,10 +213,10 @@ func renderEnvView(b *strings.Builder, m model) {
 
 	if m.focusedFlag != "" {
 		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc unfocus)") + "\n")
-	} else {
-		b.WriteString("\n" + lipgloss.NewStyle().Faint(true).Render("Arrow keys to navigate · Enter/←/→ toggle · s save"))
+		} else {
+			b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save"))
+		}
 	}
-}
 
 func renderPromptView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Initial Prompt (optional)") + "\n")

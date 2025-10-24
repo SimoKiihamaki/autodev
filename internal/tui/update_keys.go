@@ -56,6 +56,9 @@ func (m *model) handleGlobalKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 		m.blurAllInputs()
 		return true, nil
 	case "1", "2", "3", "4", "5", "6":
+		if len(msg.Runes) == 0 {
+			return true, nil
+		}
 		idx := int(msg.Runes[0] - '1')
 		if idx >= 0 && idx < len(tabNames) {
 			m.tab = tab(idx)
@@ -200,9 +203,11 @@ func (m *model) handlePRDTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "r":
 		m.rescanPRDs()
 		return *m, m.scanPRDsCmd()
+	default:
+		var cmd tea.Cmd
+		m.prdList, cmd = m.prdList.Update(msg)
+		return *m, cmd
 	}
 
-	var cmd tea.Cmd
-	m.prdList, cmd = m.prdList.Update(msg)
-	return *m, cmd
+	return *m, nil
 }

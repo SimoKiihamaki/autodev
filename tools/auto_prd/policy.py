@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from typing import Callable, Optional, Tuple
 
 from .agents import claude_exec, codex_exec
@@ -12,6 +13,7 @@ from .logging_utils import logger
 EXECUTOR_CHOICES = {"codex-first", "codex-only", "claude-only"}
 EXECUTOR_POLICY_DEFAULT = "codex-first"
 EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAULT
+_EXECUTOR_POLICY_LOCK = threading.RLock()
 
 FALLBACK_POLICIES = {"codex-first": "codex-only"}
 COMMAND_FALLBACK_CONFIG = {"claude": {"codex-first"}}
@@ -55,7 +57,13 @@ def set_executor_policy(value: str) -> None:
     selected = (value or "").strip().lower()
     if selected not in EXECUTOR_CHOICES:
         raise ValueError(f"Unknown executor policy: {value}")
-    EXECUTOR_POLICY = selected
+    with _EXECUTOR_POLICY_LOCK:
+        EXECUTOR_POLICY = selected
+
+
+def get_executor_policy() -> str:
+    with _EXECUTOR_POLICY_LOCK:
+        return EXECUTOR_POLICY
 
 
 def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement") -> Tuple[Callable[..., str], str]:
@@ -71,7 +79,8 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
         if override in ("codex", "claude"):
             return (codex_exec, "Codex") if override == "codex" else (claude_exec, "Claude")
 
-    selected = (policy or EXECUTOR_POLICY).strip().lower()
+    base_policy = policy or get_executor_policy()
+    selected = (base_policy or "").strip().lower()
     if selected not in EXECUTOR_CHOICES:
         logger.warning("Unknown executor policy %s; defaulting to %s", selected, EXECUTOR_POLICY_DEFAULT)
         selected = EXECUTOR_POLICY_DEFAULT

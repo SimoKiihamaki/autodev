@@ -235,7 +235,9 @@ func (m model) Init() tea.Cmd {
 	return m.scanPRDsCmd()
 }
 
-// settingsInputMap returns a shallow copy of the input map. Callers must not mutate values in-place.
+// settingsInputMap returns a shallow copy of the settings input map.
+// The map keys are copied, but the values remain pointers into the model so
+// callers share the same text inputs.
 func (m *model) settingsInputMap() map[string]*textinput.Model {
 	out := make(map[string]*textinput.Model, len(m.settingsInputs))
 	for k, v := range m.settingsInputs {

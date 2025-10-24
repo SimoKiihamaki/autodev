@@ -36,6 +36,16 @@ query($threadId:ID!,$cursor:String){
 """
 
 
+def _parse_owner_repo(owner_repo: str) -> tuple[str, str]:
+    stripped = (owner_repo or "").strip()
+    if "/" not in stripped:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+    owner, name = stripped.split("/", 1)
+    if not owner or not name:
+        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+    return owner, name
+
+
 def gh_graphql(query: str, variables: dict) -> dict:
     payload = json.dumps({"query": query, "variables": variables})
 
@@ -111,12 +121,7 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
 
 
 def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optional[str] = None) -> list[dict]:
-    owner_repo = owner_repo.strip()
-    if "/" not in owner_repo:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
-    owner, name = owner_repo.split("/", 1)
-    if not owner or not name:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+    owner, name = _parse_owner_repo(owner_repo)
     threads: list[dict] = []
     cursor: Optional[str] = None
     query = """
@@ -229,12 +234,7 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
     The caller owns the `processed_ids` set so tests can provide deterministic
     state without relying on package-level globals.
     """
-    owner_repo = owner_repo.strip()
-    if "/" not in owner_repo:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
-    owner, name = owner_repo.split("/", 1)
-    if not owner or not name:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+    owner, name = _parse_owner_repo(owner_repo)
     for item in items:
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
