@@ -45,11 +45,13 @@ func (m *model) handleGlobalKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.cancel()
 			return true, nil
 		}
+		m.closeLogFile("quit")
 		return true, tea.Quit
 	case "q":
 		if m.running {
 			return true, nil
 		}
+		m.closeLogFile("quit")
 		return true, tea.Quit
 	case "?":
 		m.tab = tabHelp

@@ -171,7 +171,7 @@ func renderPRDView(b *strings.Builder, m model) {
 	if len(m.tags) > 0 {
 		b.WriteString("Tags: " + strings.Join(m.tags, ", ") + "\n")
 	}
-	b.WriteString("t add tag · r rescan · Enter select · ←/→ filter · s save\n")
+	b.WriteString("t add tag · r rescan · Enter select · ←/→ filter · Ctrl+S save\n")
 }
 
 func renderSettingsView(b *strings.Builder, m model) {
@@ -192,7 +192,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 	if m.focusedInput != "" {
 		b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · s to save · 1-%d,? to switch tabs\n", len(tabNames)))
+		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · Ctrl+S save · 1-%d,? to switch tabs\n", len(tabNames)))
 	}
 }
 

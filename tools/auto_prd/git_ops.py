@@ -11,6 +11,9 @@ from .command import run_cmd
 from .logging_utils import logger
 
 
+PARSE_OWNER_REPO_ERROR = "Cannot parse owner/repo from: {}"
+
+
 def git_root() -> Path:
     out, _, _ = run_cmd(["git", "rev-parse", "--show-toplevel"])
     return Path(out.strip())
@@ -33,12 +36,12 @@ def parse_owner_repo_from_git() -> str:
         remainder = remainder[:-4]
     parts = [segment for segment in remainder.split("/") if segment]
     if len(parts) < 2:
-        raise RuntimeError(f"Cannot parse owner/repo from: {url}")
+        raise RuntimeError(PARSE_OWNER_REPO_ERROR.format(url))
     if len(parts) > 2:
         logger.warning("Remote URL %s contains extra path segments; using %s/%s", url, parts[-2], parts[-1])
     owner, repo = parts[-2], parts[-1]
     if not owner or not repo:
-        raise RuntimeError(f"Cannot parse owner/repo from: {url}")
+        raise RuntimeError(PARSE_OWNER_REPO_ERROR.format(url))
     return f"{owner}/{repo}"
 
 

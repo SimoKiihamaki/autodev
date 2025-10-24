@@ -124,6 +124,8 @@ type model struct {
 	cancelling bool
 }
 
+// settingsInputNames defines the navigation order for Settings inputs; keep the
+// explicit sequence so keyboard traversal remains predictable.
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
 	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
