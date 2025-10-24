@@ -22,8 +22,9 @@ def parse_owner_repo_from_git() -> str:
     url = out.strip()
     if url.startswith("git@"):
         _, remainder = url.split(":", 1)
-        # Handles git@host:owner/repo and git@host:port:owner/repo by peeling off
-        # the optional port segment before extracting owner/repo.
+        # Handles git@host:owner/repo and optional git@host:port:owner/repo (as emitted by some tools)
+        # by peeling off the trailing owner/repo segment. The split from the right preserves
+        # the owner/repo for the common git@host:owner/repo form while stripping a port segment when present.
         remainder = remainder.rsplit(":", 1)[-1]
     else:
         parsed = urlparse(url)

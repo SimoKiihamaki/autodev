@@ -95,9 +95,12 @@ func renderRunView(b *strings.Builder, m model) {
 		iteration := "(none)"
 		if m.runIterCurrent > 0 || m.runIterLabel != "" {
 			if m.runIterCurrent > 0 {
-				if m.runIterTotal > 0 {
+				switch {
+				case m.runIterTotal > 0:
 					iteration = fmt.Sprintf("%d/%d", m.runIterCurrent, m.runIterTotal)
-				} else {
+				case m.runIterTotal == iterTotalUnknown:
+					iteration = fmt.Sprintf("%d/?", m.runIterCurrent)
+				default:
 					iteration = fmt.Sprintf("%d", m.runIterCurrent)
 				}
 			} else {

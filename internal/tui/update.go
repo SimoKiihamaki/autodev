@@ -8,7 +8,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const maxLogLines = 2000
+const (
+	maxLogLines  = 2000
+	logFlushStep = 8
+)
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
@@ -39,6 +42,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "Running…"
 		m.tab = tabRun
 		m.runFeedAutoFollow = true
+		m.runFeedDirtyLines = 0
+		m.logDirtyLines = 0
 		return m, nil
 
 	case runFinishMsg:
@@ -50,8 +55,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logBuf = append(m.logBuf, display)
 		if len(m.logBuf) > maxLogLines {
 			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
+			m.logDirtyLines = logFlushStep
 		}
-		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+		m.logDirtyLines++
+		if len(m.logBuf) <= logFlushStep || m.logDirtyLines >= logFlushStep {
+			m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+			m.logDirtyLines = 0
+		}
 		m.handleRunFeedLine(display, plain)
 		return m, m.readLogs()
 
@@ -133,6 +143,15 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		m.errMsg = msg.err.Error()
 		m.status = "Run failed."
 		logReason = "failed"
+	}
+
+	if m.logDirtyLines > 0 {
+		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+		m.logDirtyLines = 0
+	}
+	if m.runFeedDirtyLines > 0 {
+		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+		m.runFeedDirtyLines = 0
 	}
 
 	m.closeLogFile(logReason)

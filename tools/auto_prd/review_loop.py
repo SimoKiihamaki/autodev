@@ -15,7 +15,7 @@ from .policy import policy_runner
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
-_JITTER_RNG = random.SystemRandom()
+_JITTER_RNG = random.Random()
 
 
 def review_fix_loop(

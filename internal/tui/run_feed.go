@@ -13,6 +13,7 @@ import (
 const (
 	feedBufCap           = 800
 	feedFlushStep        = 16
+	feedFollowFlushStep  = 4
 	iterTotalUnspecified = 0  // iteration total not provided in the feed line
 	iterTotalUnknown     = -1 // iteration total provided but failed to parse
 )
@@ -33,6 +34,7 @@ func (m *model) resetRunDashboard() {
 	m.runIterTotal = 0
 	m.runIterLabel = ""
 	m.runFeedAutoFollow = true
+	m.runFeedDirtyLines = 0
 }
 
 func (m *model) setRunCurrent(action string) {
@@ -52,15 +54,27 @@ func (m *model) setRunCurrent(action string) {
 }
 
 func (m *model) handleRunFeedLine(displayLine, rawLine string) {
+	wasEmpty := len(m.runFeedBuf) == 0
 	m.runFeedBuf = append(m.runFeedBuf, displayLine)
+	trimmed := false
 	if len(m.runFeedBuf) > feedBufCap {
 		tail := m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 		m.runFeedBuf = append([]string(nil), tail...)
+		trimmed = true
 	}
+	m.runFeedDirtyLines++
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
-	flush := shouldFollow || len(m.runFeedBuf)%feedFlushStep == 0
+	flush := wasEmpty || trimmed
+	if !flush {
+		if shouldFollow {
+			flush = m.runFeedDirtyLines >= feedFollowFlushStep
+		} else {
+			flush = m.runFeedDirtyLines >= feedFlushStep
+		}
+	}
 	if flush {
 		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+		m.runFeedDirtyLines = 0
 		if shouldFollow {
 			m.runFeed.GotoBottom()
 			m.runFeedAutoFollow = true
@@ -144,9 +158,13 @@ func (m *model) handleIterationHeader(text string) bool {
 	m.runIterLabel = label
 	countLabel := "Iteration"
 	if m.runIterCurrent > 0 {
-		countLabel = fmt.Sprintf("Iteration %d", m.runIterCurrent)
-		if m.runIterTotal > 0 {
+		switch {
+		case m.runIterTotal > 0:
 			countLabel = fmt.Sprintf("Iteration %d/%d", m.runIterCurrent, m.runIterTotal)
+		case m.runIterTotal == iterTotalUnknown:
+			countLabel = fmt.Sprintf("Iteration %d/?", m.runIterCurrent)
+		default:
+			countLabel = fmt.Sprintf("Iteration %d", m.runIterCurrent)
 		}
 	}
 	m.runPhase = countLabel

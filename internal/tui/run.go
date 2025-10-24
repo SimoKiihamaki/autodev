@@ -17,19 +17,35 @@ import (
 	"github.com/google/shlex"
 )
 
+var (
+	validLogLevels = map[string]struct{}{
+		"DEBUG":    {},
+		"INFO":     {},
+		"WARNING":  {},
+		"ERROR":    {},
+		"CRITICAL": {},
+	}
+	logLevelAliases = map[string]string{
+		"WARN":  "WARNING",
+		"TRACE": "DEBUG",
+	}
+)
+
 func (m *model) normalizeLogLevel() {
 	lvl := strings.TrimSpace(m.cfg.LogLevel)
 	if lvl == "" {
 		m.cfg.LogLevel = "INFO"
 		return
 	}
-	lvl = strings.ToUpper(lvl)
-	switch lvl {
-	case "DEBUG", "INFO", "WARN", "ERROR":
-		m.cfg.LogLevel = lvl
-	default:
-		m.cfg.LogLevel = "INFO"
+	upper := strings.ToUpper(lvl)
+	if mapped, ok := logLevelAliases[upper]; ok {
+		upper = mapped
 	}
+	if _, ok := validLogLevels[upper]; ok {
+		m.cfg.LogLevel = upper
+		return
+	}
+	m.cfg.LogLevel = "INFO"
 }
 
 func (m model) isActiveOrCancelling() bool {
@@ -68,6 +84,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.logCh = make(chan runner.Line, 2048)
 	ch := m.logCh
 	m.logBuf = nil
+	m.logDirtyLines = 0
 	m.logs.SetContent("")
 	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)

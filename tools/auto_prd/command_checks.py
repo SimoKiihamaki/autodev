@@ -49,3 +49,4 @@ def require_cmd(name: str) -> None:
             name,
             exc,
         )
+        return

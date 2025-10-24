@@ -14,7 +14,6 @@ from .policy import (
     build_required_list,
     get_fallback_policy,
     set_executor_policy,
-    COMMAND_FALLBACK_CONFIG,
 )
 
 
@@ -33,24 +32,21 @@ def _verify_required_commands(
             require_cmd(cmd_name)
             verified_commands.add(cmd_name)
         except RuntimeError as err:
-            trigger_policies = COMMAND_FALLBACK_CONFIG.get(cmd_name, set())
-            if executor_policy in trigger_policies:
-                policy_changed = True
-                logger.warning(
-                    "%s CLI check failed under policy %s; attempting fallback. Details: %s",
-                    cmd_name,
-                    executor_policy,
-                    err,
-                )
-                fallback_policy = get_fallback_policy(executor_policy)
-                if fallback_policy is None:
-                    raise AutoPrdError(
-                        f"{cmd_name} CLI check failed and no fallback policy available for '{executor_policy}'"
-                    ) from err
-                executor_policy = fallback_policy
-                break
-            else:
-                raise AutoPrdError(str(err)) from err
+            fallback_policy = get_fallback_policy(executor_policy)
+            if fallback_policy:
+                fallback_requires = set(build_required_list(fallback_policy))
+                if cmd_name not in fallback_requires:
+                    policy_changed = True
+                    logger.warning(
+                        "%s CLI check failed under policy %s; attempting fallback to %s. Details: %s",
+                        cmd_name,
+                        executor_policy,
+                        fallback_policy,
+                        err,
+                    )
+                    executor_policy = fallback_policy
+                    break
+            raise AutoPrdError(str(err)) from err
     return policy_changed, executor_policy, verified_commands
 
 

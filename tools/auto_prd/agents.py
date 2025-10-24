@@ -103,6 +103,15 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
     if match:
         return int(match.group(1)) * 60 + int(match.group(2)) + 5
 
+    # e.g. "try again in 5 minutes" or "in 12 min"
+    match = re.search(
+        r"(?:try (?:again )?(?:after|in)|in)\s+(\d+)\s*(?:minute(?:s)?|min(?:s)?)\b",
+        message,
+        re.IGNORECASE,
+    )
+    if match:
+        return int(match.group(1)) * 60 + 5
+
     # e.g. "try again in 75 seconds" or "try after 75 sec"
     match = re.search(r"(?:try (?:again )?(?:after|in)|in)\s+(\d+)\s*(?:second(?:s)?|sec(?:s)?)\b", message, re.IGNORECASE)
     if match:
@@ -124,7 +133,7 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
     while True:
         attempts += 1
         try:
-            out, _, _ = run_cmd(args, cwd=repo_root)
+            out, _, _ = run_cmd(args, cwd=repo_root, timeout=900)
             return out.strip()
         except subprocess.CalledProcessError as exc:
             msg = extract_called_process_error_details(exc)
@@ -135,7 +144,11 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - acceptable entropy
                 wait = max(1, capped + jitter)
                 sleep_for = min(wait, 900)
-                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", sleep_for)
+                logger.warning(
+                    "CodeRabbit rate limited; sleeping %s seconds before retry (attempt %d/3)",
+                    sleep_for,
+                    attempts,
+                )
                 time.sleep(sleep_for)
                 continue
             logger.warning("CodeRabbit prompt-only run failed: %s", msg or exc)

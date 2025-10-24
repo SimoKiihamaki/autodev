@@ -16,7 +16,6 @@ EXECUTOR_POLICY = os.getenv("AUTO_PRD_EXECUTOR_POLICY") or EXECUTOR_POLICY_DEFAU
 _EXECUTOR_POLICY_LOCK = threading.RLock()
 
 FALLBACK_POLICIES = {"codex-first": "codex-only"}
-COMMAND_FALLBACK_CONFIG = {"claude": {"codex-first"}}
 
 
 def _compute_max_fallback_attempts(fallback_policies: dict) -> int:
@@ -106,6 +105,7 @@ def policy_fallback_runner(
 ) -> str:
     attempts = 0
     current_policy = policy
+    errors: list[str] = []
     while attempts < MAX_FALLBACK_ATTEMPTS and current_policy:
         attempts += 1
         try:
@@ -114,7 +114,9 @@ def policy_fallback_runner(
             if verify is None or verify(result):
                 return result
         except Exception as exc:  # pragma: no cover - fallback best effort
-            logger.warning("Executor %s failed under policy %s: %s", command_name, current_policy, exc)
+            msg = f"{type(exc).__name__}: {exc}"
+            errors.append(f"{current_policy} -> {msg}")
+            logger.warning("Executor %s failed under policy %s: %s", command_name, current_policy, msg)
 
         fallback = get_fallback_policy(current_policy)
         if not fallback:
@@ -122,4 +124,7 @@ def policy_fallback_runner(
         logger.info("Falling back from %s to %s for %s", current_policy, fallback, command_name)
         current_policy = fallback
 
-    raise RuntimeError(f"All fallbacks exhausted for {command_name} (policy {policy})")
+    detail = f"All fallbacks exhausted for {command_name} (policy {policy})"
+    if errors:
+        detail += f"; errors: {', '.join(errors)}"
+    raise RuntimeError(detail)
