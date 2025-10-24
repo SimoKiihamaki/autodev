@@ -43,3 +43,14 @@ Implement a comprehensive REST API service with CRUD operations, authentication,
 - Authentication: JWT
 - Documentation: OpenAPI 3.0
 - Testing: Unit and integration tests
+
+## Tasks
+
+- [x] Bootstrap Go HTTP server with routing, configuration, and `/healthz` endpoint.
+- [ ] Create in-memory user repository and wire GET `/api/users` with pagination support.
+- [ ] Implement POST `/api/users` with payload validation and structured error responses.
+- [ ] Implement GET `/api/users/{id}` with not-found handling.
+- [ ] Implement PUT `/api/users/{id}` with update validation and optimistic locking placeholder.
+- [ ] Implement DELETE `/api/users/{id}` with idempotent behavior.
+- [ ] Add JWT-based authentication flows for login/logout endpoints.
+- [ ] Document the API with OpenAPI 3.0 and include request/response schemas.
