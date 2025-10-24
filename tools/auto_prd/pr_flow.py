@@ -12,7 +12,7 @@ from .gh_ops import get_pr_number_for_head
 from .git_ops import git_push_branch
 from .logging_utils import logger
 from .policy import get_executor_policy, policy_runner
-from .utils import extract_called_process_error_details
+from .utils import extract_called_process_error_details, scrub_cli_text
 
 
 def _format_troubleshooting(location: str, manual_step: str) -> str:
@@ -56,8 +56,12 @@ def open_or_get_pr(
     skip_runner: bool = False,
     already_pushed: bool = False,
 ) -> Optional[int]:
-    pr_title = f"Implement: {prd_path.name}"
-    pr_body = f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
+    pr_title_raw = f"Implement: {prd_path.name}"
+    pr_body_raw = (
+        f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
+    )
+    pr_title = scrub_cli_text(pr_title_raw)
+    pr_body = scrub_cli_text(pr_body_raw)
 
     print(f"\n=== Bot pushes branch and opens PR: {new_branch} -> {base_branch} ===")
     push_prompt = f"""

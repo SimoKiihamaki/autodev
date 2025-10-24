@@ -17,10 +17,42 @@ from .constants import (
     CODEX_READONLY_PATTERNS,
     RATE_LIMIT_STATUS,
     TASKS_LEFT_RE,
+    UNSAFE_ARG_CHARS,
 )
+from .logging_utils import decode_output, logger
+
+
+CLI_ARG_REPLACEMENTS = {
+    "`": "'",
+    "|": "/",
+    ";": ",",
+    "<": "(",
+    ">": ")",
+}
+
+
 def slugify(value: str) -> str:
     value = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
     return re.sub(r"-+", "-", value).strip("-") or "task"
+
+
+def scrub_cli_text(value: str) -> str:
+    """Return a version of value without shell metacharacters reserved by the safety policy."""
+    if not value:
+        return value
+    replaced = False
+    cleaned_chars: list[str] = []
+    for char in value:
+        if char in UNSAFE_ARG_CHARS:
+            cleaned_chars.append(CLI_ARG_REPLACEMENTS.get(char, " "))
+            replaced = True
+        else:
+            cleaned_chars.append(char)
+    if not replaced:
+        return value
+    cleaned = "".join(cleaned_chars)
+    logger.debug("Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r", value, cleaned)
+    return cleaned
 
 
 def now_stamp() -> str:
@@ -60,12 +92,21 @@ def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
     return None
 
 
+def _coerce_text(data: Any) -> str:
+    if data is None:
+        return ""
+    if isinstance(data, bytes):
+        return decode_output(data)
+    return str(data)
+
+
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
-    stderr = getattr(exc, "stderr", None)
-    stdout = getattr(exc, "output", None)
-    if stdout is None:
-        stdout = getattr(exc, "stdout", None)
-    return (stderr or stdout or "").strip() or f"exit code {exc.returncode}"
+    stderr = _coerce_text(getattr(exc, "stderr", None))
+    stdout = _coerce_text(getattr(exc, "output", None))
+    if not stdout:
+        stdout = _coerce_text(getattr(exc, "stdout", None))
+    text = (stderr or stdout or "").strip()
+    return text or f"exit code {exc.returncode}"
 
 
 def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> Any:

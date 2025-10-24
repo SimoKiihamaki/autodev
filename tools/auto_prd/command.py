@@ -22,6 +22,7 @@ from .constants import (
     SAFE_ENV_VAR,
     SAFE_STDIN_ALLOWED_CTRL,
     STDIN_MAX_BYTES,
+    UNSAFE_ARG_CHARS,
     require_zsh,
 )
 from .logging_utils import decode_output, logger, truncate_for_log
@@ -99,6 +100,8 @@ def validate_command_args(cmd: Sequence[str]) -> None:
     for arg in cmd:
         if not isinstance(arg, str):
             raise TypeError("command arguments must be strings")
+        if any(char in arg for char in UNSAFE_ARG_CHARS):
+            raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
