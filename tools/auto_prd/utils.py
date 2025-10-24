@@ -38,18 +38,23 @@ def slugify(value: str) -> str:
 
 def scrub_cli_text(value: str) -> str:
     """Return a version of value without shell metacharacters reserved by the safety policy."""
-    if not value:
+    if not value or not any(char in UNSAFE_ARG_CHARS for char in value):
         return value
-    replaced = False
+
     cleaned_chars: list[str] = []
     for char in value:
         if char in UNSAFE_ARG_CHARS:
-            cleaned_chars.append(CLI_ARG_REPLACEMENTS.get(char, " "))
-            replaced = True
+            replacement = CLI_ARG_REPLACEMENTS.get(char)
+            if replacement is None:
+                logger.warning(
+                    "Unmapped unsafe character %r encountered in CLI argument; replacing with space. "
+                    "Update CLI_ARG_REPLACEMENTS if this character should have a specific representation.",
+                    char,
+                )
+                replacement = " "
+            cleaned_chars.append(replacement)
         else:
             cleaned_chars.append(char)
-    if not replaced:
-        return value
     cleaned = "".join(cleaned_chars)
     logger.debug("Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r", value, cleaned)
     return cleaned
