@@ -35,6 +35,38 @@ query($threadId:ID!,$cursor:String){
 }
 """
 
+REVIEW_THREADS_QUERY = """
+query($owner:String!,$name:String!,$number:Int!,$cursor:String){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      reviewThreads(first:50,after:$cursor){
+        nodes{
+          id
+          isResolved
+          comments(first:20){
+            nodes{
+              author{login}
+              body
+              url
+              commit{oid}
+              databaseId
+            }
+            pageInfo{
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+        pageInfo{
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+"""
+
 
 def _parse_owner_repo(owner_repo: str) -> tuple[str, str]:
     stripped = (owner_repo or "").strip()
@@ -50,7 +82,7 @@ def gh_graphql(query: str, variables: dict) -> dict:
     payload = json.dumps({"query": query, "variables": variables})
 
     def action() -> dict:
-        out, _, _ = run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload)
+        out, _, _ = run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload, timeout=60)
         return json.loads(out)
 
     return call_with_backoff(action)
@@ -82,7 +114,7 @@ def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
 
 
 def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
-    """Return True when HEAD has commits newer than base_branch (base..HEAD)."""
+    """Return True when HEAD has commits newer than base_branch (compares base_branch..HEAD)."""
     out, _, _ = run_cmd(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root)
     try:
         return int(out.strip() or "0") > 0
@@ -93,7 +125,12 @@ def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
 
 def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path) -> None:
     try:
-        run_cmd(["gh", "save-me-copilot", owner_repo, str(pr_number)], cwd=repo_root)
+        run_cmd(
+            ["gh", "save-me-copilot", owner_repo, str(pr_number)],
+            cwd=repo_root,
+            capture=False,
+            timeout=30,
+        )
     except subprocess.CalledProcessError as exc:
         logger.debug(
             "Failed to trigger Copilot for %s PR #%s: %s",
@@ -124,33 +161,8 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
     owner, name = _parse_owner_repo(owner_repo)
     threads: list[dict] = []
     cursor: Optional[str] = None
-    query = """
-    query($owner:String!,$name:String!,$number:Int!,$cursor:String){
-      repository(owner:$owner,name:$name){
-        pullRequest(number:$number){
-          reviewThreads(first:50,after:$cursor){
-            nodes{
-              id
-              isResolved
-              comments(first:20){
-                nodes{
-                  author{login}
-                  body
-                  url
-                  commit{oid}
-                  databaseId
-                }
-                pageInfo{hasNextPage endCursor}
-              }
-            }
-            pageInfo{hasNextPage endCursor}
-          }
-        }
-      }
-    }
-    """
     while True:
-        data = gh_graphql(query, {"owner": owner, "name": name, "number": pr_number, "cursor": cursor})
+        data = gh_graphql(REVIEW_THREADS_QUERY, {"owner": owner, "name": name, "number": pr_number, "cursor": cursor})
         review_threads = (((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}
         nodes = review_threads.get("nodes") or []
         threads.extend(nodes)
@@ -209,6 +221,8 @@ def reply_to_review_comment(owner: str, name: str, pr_number: int, comment_id: i
                 "-",
             ],
             stdin=payload,
+            capture=False,
+            timeout=30,
         )
 
     call_with_backoff(action)
@@ -223,7 +237,7 @@ def resolve_review_thread(thread_id: str) -> None:
     )
 
     def action():
-        run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload)
+        run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload, capture=False, timeout=30)
 
     call_with_backoff(action)
 
@@ -294,6 +308,8 @@ def post_final_comment(pr_number: Optional[int], owner_repo: str, prd_path: Path
             ],
             cwd=repo_root,
             stdin=payload,
+            capture=False,
+            timeout=60,
         )
         print(f"Posted final comment on PR #{pr_number}. Done.")
     except subprocess.CalledProcessError as exc:

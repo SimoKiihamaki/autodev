@@ -83,13 +83,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
             review_runner, _ = policy_runner(None, phase="review_fix")
 
-            review_runner(
-                fix_prompt,
-                repo_root,
-                model=codex_model,
-                enable_search=True,
-                allow_unsafe_execution=allow_unsafe_execution,
-            )
+            try:
+                review_runner(
+                    fix_prompt,
+                    repo_root,
+                    model=codex_model,
+                    enable_search=True,
+                    allow_unsafe_execution=allow_unsafe_execution,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort resilience
+                logger.warning("Review runner failed: %s", exc)
+                sleep_with_jitter(float(poll))
+                continue
             trigger_copilot(owner_repo, pr_number, repo_root)
             processed_comment_ids = acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
             last_activity = time.time()

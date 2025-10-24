@@ -132,10 +132,9 @@ func (m *model) handleIterationHeader(text string) bool {
 		} else {
 			m.runIterTotal = iterTotalUnknown
 			log.Printf(
-				"tui: unable to parse iteration total %q: %v (using iterTotalUnknown=%d)",
+				"tui: unable to parse iteration total %q: %v (treating iteration total as unknown)",
 				match[2],
 				err,
-				iterTotalUnknown,
 			)
 		}
 	} else {

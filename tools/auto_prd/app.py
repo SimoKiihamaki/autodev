@@ -14,7 +14,6 @@ from .git_ops import (
     git_commit,
     git_current_branch,
     git_default_branch,
-    git_head_sha,
     git_has_staged_changes,
     git_push_branch,
     git_root,

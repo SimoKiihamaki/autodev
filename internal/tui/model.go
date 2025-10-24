@@ -237,7 +237,8 @@ func (m model) Init() tea.Cmd {
 
 // settingsInputMap returns a shallow copy of the settings input map.
 // The map keys are copied, but the values remain pointers into the model so
-// callers share the same text inputs.
+// callers share the same text inputs. Mutating the returned map's keys won't
+// affect the model, but mutating the pointed inputs will.
 func (m *model) settingsInputMap() map[string]*textinput.Model {
 	out := make(map[string]*textinput.Model, len(m.settingsInputs))
 	for k, v := range m.settingsInputs {

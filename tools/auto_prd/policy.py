@@ -109,7 +109,6 @@ def policy_fallback_runner(
     while attempts < MAX_FALLBACK_ATTEMPTS and current_policy:
         attempts += 1
         try:
-            set_executor_policy(current_policy)
             executor = executor_factory(current_policy)
             result = executor()
             if verify is None or verify(result):

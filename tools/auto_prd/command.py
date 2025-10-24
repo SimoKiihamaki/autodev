@@ -279,7 +279,7 @@ def run_cmd(
         level = logging.ERROR if check else logging.WARNING
         logger.log(level, "Command exited with code %s after %.2fs: %s", proc.returncode, duration, cmd_display)
     if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout_text, stderr=stderr_text)
+        raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout_bytes, stderr=stderr_bytes)
     return stdout_text, stderr_text, proc.returncode
 
 

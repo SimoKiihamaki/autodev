@@ -77,13 +77,15 @@ Prepare and push a PR for this branch:
     if not skip_runner:
         pr_runner, _ = policy_runner(get_executor_policy(), phase="pr")
 
-        pr_runner(
+        result = pr_runner(
             push_prompt,
             repo_root,
             model=codex_model,
             enable_search=True,
             allow_unsafe_execution=allow_unsafe_execution,
         )
+        if "PR_OPENED=YES" in (result or ""):
+            push_performed = True
     else:
         print("Skipping executor-driven PR routine; using direct git commands.")
         if not already_pushed:
@@ -103,6 +105,7 @@ Prepare and push a PR for this branch:
                 f"{base_branch}..{new_branch}",
             ],
             cwd=repo_root,
+            timeout=30,
         )
         has_commits = False
         out_stripped = (out or "0").strip()
@@ -139,6 +142,7 @@ Prepare and push a PR for this branch:
                     ".number",
                 ],
                 cwd=repo_root,
+                timeout=60,
             )
             num_text = out.strip()
             if num_text:

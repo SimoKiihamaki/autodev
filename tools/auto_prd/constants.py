@@ -37,7 +37,7 @@ COMMAND_ALLOWLIST = {
     "zsh",
     "claude",
 }
-ZSH_PATH = shutil.which("zsh")
+ZSH_PATH: str | None = None
 UNSAFE_ARG_CHARS = set("|;><`")
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
@@ -82,7 +82,6 @@ def require_zsh() -> str:
     global ZSH_PATH
     with _ZSH_LOCK:
         if ZSH_PATH:
-            COMMAND_ALLOWLIST.update({Path(ZSH_PATH).name, ZSH_PATH})
             return ZSH_PATH
         maybe_skip = os.environ.get(ALLOW_NO_ZSH_ENV, "").strip()
         resolved = shutil.which("zsh")
@@ -91,5 +90,6 @@ def require_zsh() -> str:
             COMMAND_ALLOWLIST.update({Path(resolved).name, resolved})
             return resolved
         if maybe_skip:
+            ZSH_PATH = "zsh"
             return "zsh"
         raise RuntimeError(ZSH_REQUIRED_ERROR)

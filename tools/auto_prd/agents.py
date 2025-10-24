@@ -55,7 +55,7 @@ def codex_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt)
+    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=1800)
     return out
 
 
@@ -134,8 +134,9 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 # Use predictable jitter; rate-limit backoff is not vulnerable to timing attacks here.
                 jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - acceptable entropy
                 wait = max(1, capped + jitter)
-                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", wait)
-                time.sleep(wait)
+                sleep_for = min(wait, 900)
+                logger.warning("CodeRabbit rate limited; sleeping %s seconds before retry", sleep_for)
+                time.sleep(sleep_for)
                 continue
             logger.warning("CodeRabbit prompt-only run failed: %s", msg or exc)
             return ""
@@ -188,5 +189,5 @@ def claude_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt)
+    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=1800)
     return out

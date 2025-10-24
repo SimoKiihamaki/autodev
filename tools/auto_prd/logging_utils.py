@@ -85,10 +85,10 @@ def format_print_message(*args, **kwargs) -> str:
         return ""
     sep = kwargs.get("sep", " ")
     end = kwargs.get("end", "\n")
+    if end is None:
+        end = ""
     message = sep.join(str(arg) for arg in args)
-    if end and end != "\n":
-        message = f"{message}{end}"
-    return message
+    return f"{message}{end}"
 
 
 def install_print_logger() -> None:
@@ -113,7 +113,10 @@ def install_print_logger() -> None:
                 except (AttributeError, ValueError, io.UnsupportedOperation):
                     is_stderr = stream is sys.stderr or stream is getattr(sys, "__stderr__", None)
                 target_level = logging.WARNING if is_stderr else logging.INFO
-                print_logger.log(target_level, message)
+                log_message = message[:-1] if message.endswith("\n") else message
+                if log_message:
+                    # Logging already appends its own newline, so trim the print newline to avoid doubles.
+                    print_logger.log(target_level, log_message)
             ORIGINAL_PRINT(*args, **kwargs)
 
         builtins.print = tee_print

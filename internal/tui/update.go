@@ -112,6 +112,9 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 
 func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	m.running = false
+	if m.cancel != nil {
+		m.cancel()
+	}
 	m.cancel = nil
 	m.runResult = nil
 	m.logCh = nil

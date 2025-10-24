@@ -10,10 +10,13 @@ from .constants import COMMAND_VERIFICATION_TIMEOUT_SECONDS
 from .logging_utils import logger
 
 
+MISSING_CMD_ERR = "'%s' command not found - not installed or not on PATH."
+
+
 def require_cmd(name: str) -> None:
     cmd_path = shutil.which(name)
     if cmd_path is None:
-        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.") from None
+        raise RuntimeError(MISSING_CMD_ERR % name) from None
 
     version_checks = [[name, "--version"], [name, "version"], [name, "--help"]]
 
@@ -39,7 +42,7 @@ def require_cmd(name: str) -> None:
             logger.warning("Command '%s' returned unusual exit code %s; continuing.", name, returncode)
         return
     except FileNotFoundError as exc:
-        raise RuntimeError(f"'{name}' command not found - not installed or not on PATH.") from exc
+        raise RuntimeError(MISSING_CMD_ERR % name) from exc
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         logger.warning(
             "Command '%s' exists but failed execution (may require arguments): %s",

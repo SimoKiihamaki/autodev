@@ -58,7 +58,7 @@ func renderRunView(b *strings.Builder, m model) {
 
 		switch {
 		case m.running:
-			b.WriteString(okStyle.Render("Status: Running (Ctrl+C to stop)") + "\n")
+			b.WriteString(okStyle.Render("Status: Running (Ctrl+C cancel)") + "\n")
 		case m.errMsg != "":
 			b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
 		case m.status != "":
@@ -213,10 +213,10 @@ func renderEnvView(b *strings.Builder, m model) {
 
 	if m.focusedFlag != "" {
 		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc unfocus)") + "\n")
-		} else {
-			b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save"))
-		}
+		return
 	}
+	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save") + "\n")
+}
 
 func renderPromptView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Initial Prompt (optional)") + "\n")
@@ -244,7 +244,7 @@ func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString("• Settings: Tab cycle · Alt+↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · Ctrl+S save\n")
 	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
 	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
-	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDown page · Home/End top/bottom · files saved in ~/.config/aprd/logs\n")
+	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDn page · Home/End top/bottom · path shown in the Logs tab\n")
 	b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
 	b.WriteString(fmt.Sprintf("\nGlobal: 1-%d tabs · ? help · q quit · Ctrl+C force quit\n", len(tabNames)))
 	b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
