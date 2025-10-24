@@ -167,7 +167,7 @@ def print_codex_diagnostics(repo_root: Path) -> None:
         logger.exception("codex config show --effective failed")
 
     try:
-        status_out = codex_exec("/status", repo_root)
+        status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
         if status_out.strip():
             print(status_out.strip())
     except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError):

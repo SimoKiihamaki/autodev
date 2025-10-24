@@ -150,44 +150,7 @@ func New() model {
 	m.prdList.SetFilteringEnabled(true)
 	m.prdList.DisableQuitKeybindings()
 
-	m.inRepo = mkInput("Repo path", cfg.RepoPath, 60)
-	m.inBase = mkInput("Base branch", cfg.BaseBranch, 20)
-	m.inBranch = mkInput("Feature branch (optional)", cfg.Branch, 30)
-	m.inCodexModel = mkInput("Codex model", cfg.CodexModel, 24)
-	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
-	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
-	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
-	m.inExecImpl = mkInput("Exec (implement): codex|claude|<empty>", cfg.PhaseExecutors.Implement, 16)
-	m.inExecFix = mkInput("Exec (fix): codex|claude|<empty>", cfg.PhaseExecutors.Fix, 16)
-	m.inExecPR = mkInput("Exec (pr): codex|claude|<empty>", cfg.PhaseExecutors.PR, 16)
-	m.inExecRev = mkInput("Exec (review_fix): codex|claude|<empty>", cfg.PhaseExecutors.ReviewFix, 22)
-	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(cfg.Timings.WaitMinutes), 6)
-	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
-	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
-	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
-
-	m.settingsInputs = map[string]*textinput.Model{
-		// repo + git wiring
-		"repo":   &m.inRepo,
-		"base":   &m.inBase,
-		"branch": &m.inBranch,
-		"codex":  &m.inCodexModel,
-
-		// executor configuration
-		"pycmd":    &m.inPyCmd,
-		"pyscript": &m.inPyScript,
-		"policy":   &m.inPolicy,
-		"execimpl": &m.inExecImpl,
-		"execfix":  &m.inExecFix,
-		"execpr":   &m.inExecPR,
-		"execrev":  &m.inExecRev,
-
-		// timings + iteration caps
-		"waitmin":  &m.inWaitMin,
-		"pollsec":  &m.inPollSec,
-		"idlemin":  &m.inIdleMin,
-		"maxiters": &m.inMaxIters,
-	}
+	m.initSettingsInputs()
 
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
@@ -231,6 +194,49 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 	ti.SetValue(value)
 	ti.Width = width
 	return ti
+}
+
+func (m *model) initSettingsInputs() {
+	cfg := m.cfg
+
+	m.inRepo = mkInput("Repo path", cfg.RepoPath, 60)
+	m.inBase = mkInput("Base branch", cfg.BaseBranch, 20)
+	m.inBranch = mkInput("Feature branch (optional)", cfg.Branch, 30)
+	m.inCodexModel = mkInput("Codex model", cfg.CodexModel, 24)
+	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
+	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
+	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
+	m.inExecImpl = mkInput("Exec (implement): codex|claude|<empty>", cfg.PhaseExecutors.Implement, 16)
+	m.inExecFix = mkInput("Exec (fix): codex|claude|<empty>", cfg.PhaseExecutors.Fix, 16)
+	m.inExecPR = mkInput("Exec (pr): codex|claude|<empty>", cfg.PhaseExecutors.PR, 16)
+	m.inExecRev = mkInput("Exec (review_fix): codex|claude|<empty>", cfg.PhaseExecutors.ReviewFix, 22)
+	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(cfg.Timings.WaitMinutes), 6)
+	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
+	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
+	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
+
+	m.settingsInputs = map[string]*textinput.Model{
+		// repo + git wiring
+		"repo":   &m.inRepo,
+		"base":   &m.inBase,
+		"branch": &m.inBranch,
+		"codex":  &m.inCodexModel,
+
+		// executor configuration
+		"pycmd":    &m.inPyCmd,
+		"pyscript": &m.inPyScript,
+		"policy":   &m.inPolicy,
+		"execimpl": &m.inExecImpl,
+		"execfix":  &m.inExecFix,
+		"execpr":   &m.inExecPR,
+		"execrev":  &m.inExecRev,
+
+		// timings + iteration caps
+		"waitmin":  &m.inWaitMin,
+		"pollsec":  &m.inPollSec,
+		"idlemin":  &m.inIdleMin,
+		"maxiters": &m.inMaxIters,
+	}
 }
 
 func (m model) Init() tea.Cmd {

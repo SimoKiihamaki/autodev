@@ -93,26 +93,29 @@ func renderRunView(b *strings.Builder, m model) {
 		}
 
 		iteration := "(none)"
-		if m.runIterCurrent > 0 || m.runIterLabel != "" {
-			if m.runIterCurrent > 0 {
-				switch {
-				case m.runIterTotal > 0:
-					iteration = fmt.Sprintf("%d/%d", m.runIterCurrent, m.runIterTotal)
-				case m.runIterTotal == iterTotalUnknown:
-					iteration = fmt.Sprintf("%d/?", m.runIterCurrent)
-				default:
-					iteration = fmt.Sprintf("%d", m.runIterCurrent)
-				}
+		switch {
+		case m.runIterCurrent == iterIndexUnknown:
+			if m.runIterLabel != "" {
+				iteration = m.runIterLabel
 			} else {
 				iteration = ""
 			}
-			if m.runIterLabel != "" {
-				if iteration != "" {
-					iteration = fmt.Sprintf("%s - %s", iteration, m.runIterLabel)
-				} else {
-					iteration = m.runIterLabel
-				}
+		case m.runIterCurrent > 0:
+			switch {
+			case m.runIterTotal > 0:
+				iteration = fmt.Sprintf("%d/%d", m.runIterCurrent, m.runIterTotal)
+			case m.runIterTotal == iterTotalUnknown:
+				iteration = fmt.Sprintf("%d/?", m.runIterCurrent)
+			default:
+				iteration = fmt.Sprintf("%d", m.runIterCurrent)
 			}
+			if m.runIterLabel != "" {
+				iteration = fmt.Sprintf("%s - %s", iteration, m.runIterLabel)
+			}
+		case m.runIterLabel != "":
+			iteration = m.runIterLabel
+		default:
+			iteration = ""
 		}
 
 		b.WriteString(fmt.Sprintf("Phase: %s\n", phase))

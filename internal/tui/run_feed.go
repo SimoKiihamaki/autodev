@@ -14,6 +14,7 @@ const (
 	feedBufCap           = 800
 	feedFlushStep        = 16
 	feedFollowFlushStep  = 4
+	iterIndexUnknown     = -1 // iteration index provided but failed to parse
 	iterTotalUnspecified = 0  // iteration total omitted entirely in the feed line
 	iterTotalUnknown     = -1 // iteration total provided but failed to parse; distinct from unspecified
 )
@@ -137,8 +138,8 @@ func (m *model) handleIterationHeader(text string) bool {
 	if cur, err := strconv.Atoi(match[1]); err == nil {
 		m.runIterCurrent = cur
 	} else {
-		m.runIterCurrent = 0
-		log.Printf("tui: unable to parse iteration index %q: %v (defaulting to 0)", match[1], err)
+		m.runIterCurrent = iterIndexUnknown
+		log.Printf("tui: unable to parse iteration index %q: %v (treating as iterIndexUnknown)", match[1], err)
 	}
 	if match[2] != "" {
 		if total, err := strconv.Atoi(match[2]); err == nil {
