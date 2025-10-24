@@ -36,3 +36,4 @@
 ## Agent-Specific Tips
 - Configure the embedded Python script path via Settings tab; default `tools/auto_prd_to_pr_v3.py` should remain valid.
 - When auto-running phases, document new flags within `internal/config` and surface them through the Env tab.
+- Before pushing large changes, run `codacy-cli analyze --fix` from the repo root to apply Codacy guardrails and address any findings.
