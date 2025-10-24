@@ -46,7 +46,7 @@ def review_fix_loop(
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
-    last_activity = time.time()
+    last_activity = time.monotonic()
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
     # Track processed comment IDs locally so we can inject deterministic state during tests
@@ -91,20 +91,20 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     enable_search=True,
                     allow_unsafe_execution=allow_unsafe_execution,
                 )
-            except Exception as exc:  # pragma: no cover - best-effort resilience
-                logger.warning("Review runner failed: %s", exc)
+            except Exception:  # pragma: no cover - best-effort resilience
+                logger.exception("Review runner failed")
                 sleep_with_jitter(float(poll))
                 continue
             trigger_copilot(owner_repo, pr_number, repo_root)
-            processed_comment_ids = acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
-            last_activity = time.time()
+            acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
+            last_activity = time.monotonic()
             sleep_with_jitter(float(poll))
             continue
 
         if idle_grace_seconds == 0:
             print("No unresolved feedback; stopping.")
             break
-        elapsed = time.time() - last_activity
+        elapsed = time.monotonic() - last_activity
         if elapsed >= idle_grace_seconds:
             minutes = "∞" if infinite_reviews else idle_grace
             print(f"No unresolved feedback for {minutes} minutes; finishing.")

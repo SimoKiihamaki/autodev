@@ -81,7 +81,7 @@ def run(args) -> None:
         def include(phase: str) -> bool:
             return phase in selected_phases
 
-        _, _, _ = resolve_executor_policy(args.executor_policy, selected_phases)
+        _, _, _ = resolve_executor_policy(args.executor_policy)
 
         ensure_gh_alias()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from typing import Set, Tuple
 
 from .command_checks import require_cmd
@@ -46,11 +47,11 @@ def _verify_required_commands(
                     )
                     executor_policy = fallback_policy
                     break
-            raise AutoPrdError(str(err)) from err
+            raise AutoPrdError(f"{executor_policy}: command verification failed for '{cmd_name}': {err}") from err
     return policy_changed, executor_policy, verified_commands
 
 
-def resolve_executor_policy(policy_arg: str | None, _: Set[str]) -> Tuple[str, str, Set[str]]:
+def resolve_executor_policy(policy_arg: str | None) -> Tuple[str, str, Set[str]]:
     policy_from_env = os.getenv("AUTO_PRD_EXECUTOR_POLICY")
     executor_policy = policy_arg or policy_from_env or EXECUTOR_POLICY_DEFAULT
     if executor_policy not in EXECUTOR_CHOICES:

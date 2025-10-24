@@ -85,7 +85,7 @@ def is_within(path: Path, root: Path) -> bool:
     try:
         path_resolved = path.resolve(strict=True)
     except FileNotFoundError:
-        return False
+        path_resolved = path.resolve()
     try:
         root_resolved = root.resolve(strict=True)
     except FileNotFoundError:

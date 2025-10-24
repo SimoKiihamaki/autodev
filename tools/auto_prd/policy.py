@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 from typing import Callable, Optional, Tuple
 
@@ -66,6 +67,14 @@ def get_executor_policy() -> str:
 
 
 def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement") -> Tuple[Callable[..., str], str]:
+    """Select an executor/label pair for the requested phase and iteration.
+
+    The ``i`` parameter tracks the iteration number emitted by the orchestrator;
+    the first iteration (``i == 1``) prefers Codex when the policy allows a
+    split strategy, whereas later iterations tilt to Claude. ``phase`` defaults
+    to "implement", with "pr" and "review_fix" phases defaulting directly to
+    Claude because they rely heavily on repo context rather than codegen depth.
+    """
     env_key_map = {
         "implement": "AUTO_PRD_EXECUTOR_IMPLEMENT",
         "fix": "AUTO_PRD_EXECUTOR_FIX",
@@ -113,7 +122,13 @@ def policy_fallback_runner(
             result = executor()
             if verify is None or verify(result):
                 return result
-        except Exception as exc:  # pragma: no cover - fallback best effort
+        except (
+            RuntimeError,
+            PermissionError,
+            OSError,
+            ValueError,
+            subprocess.CalledProcessError,
+        ) as exc:  # pragma: no cover - fallback best effort
             msg = f"{type(exc).__name__}: {exc}"
             errors.append(f"{current_policy} -> {msg}")
             logger.warning("Executor %s failed under policy %s: %s", command_name, current_policy, msg)

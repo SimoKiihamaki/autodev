@@ -21,11 +21,11 @@ def parse_owner_repo_from_git() -> str:
     out, _, _ = run_cmd(["git", "remote", "get-url", "origin"])
     url = out.strip()
     if url.startswith("git@"):
-        _, remainder = url.split(":", 1)
-        # Handles git@host:owner/repo and optional git@host:port:owner/repo (as emitted by some tools)
-        # by peeling off the trailing owner/repo segment. The split from the right preserves
-        # the owner/repo for the common git@host:owner/repo form while stripping a port segment when present.
-        remainder = remainder.rsplit(":", 1)[-1]
+        # Drop everything before the last colon so we support git@host:repo, git@host:port:repo,
+        # and git@[ipv6-host]:repo forms without needing to special-case bracketed addresses.
+        # Some tooling emits the non-standard git@host:port:repo variant; this approach keeps the
+        # owner/repo suffix regardless of how many intermediate segments appear before it.
+        remainder = url.rsplit(":", 1)[-1]
     else:
         parsed = urlparse(url)
         remainder = parsed.path.lstrip("/")

@@ -18,6 +18,14 @@ from .utils import extract_called_process_error_details
 
 RATE_LIMIT_JITTER_MIN = -3
 RATE_LIMIT_JITTER_MAX = 3
+RATE_LIMIT_MIN_SLEEP_SECONDS = 5
+RATE_LIMIT_MAX_SLEEP_SECONDS = 900
+CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
+CODEX_EXEC_TIMEOUT_SECONDS = 1800
+CLAUDE_EXEC_TIMEOUT_SECONDS = 1800
+
+# Use a cryptographically secure RNG for backoff jitter to avoid predictable retry cadences.
+_rate_limit_rng = random.SystemRandom()
 
 
 def codex_exec(
@@ -55,7 +63,7 @@ def codex_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=1800)
+    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=CODEX_EXEC_TIMEOUT_SECONDS)
     return out
 
 
@@ -133,17 +141,16 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
     while True:
         attempts += 1
         try:
-            out, _, _ = run_cmd(args, cwd=repo_root, timeout=900)
+            out, _, _ = run_cmd(args, cwd=repo_root, timeout=CODERABBIT_PROMPT_TIMEOUT_SECONDS)
             return out.strip()
         except subprocess.CalledProcessError as exc:
             msg = extract_called_process_error_details(exc)
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
-                capped = max(5, min(900, sleep_secs))  # 5s..15m
-                # Use predictable jitter; rate-limit backoff is not vulnerable to timing attacks here.
-                jitter = random.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)  # nosec S311 - acceptable entropy
+                capped = max(RATE_LIMIT_MIN_SLEEP_SECONDS, min(RATE_LIMIT_MAX_SLEEP_SECONDS, sleep_secs))
+                jitter = _rate_limit_rng.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)
                 wait = max(1, capped + jitter)
-                sleep_for = min(wait, 900)
+                sleep_for = min(wait, RATE_LIMIT_MAX_SLEEP_SECONDS)
                 logger.warning(
                     "CodeRabbit rate limited; sleeping %s seconds before retry (attempt %d/3)",
                     sleep_for,
@@ -202,5 +209,5 @@ def claude_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=1800)
+    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=CLAUDE_EXEC_TIMEOUT_SECONDS)
     return out

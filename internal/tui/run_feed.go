@@ -14,8 +14,8 @@ const (
 	feedBufCap           = 800
 	feedFlushStep        = 16
 	feedFollowFlushStep  = 4
-	iterTotalUnspecified = 0  // iteration total not provided in the feed line
-	iterTotalUnknown     = -1 // iteration total provided but failed to parse
+	iterTotalUnspecified = 0  // iteration total omitted entirely in the feed line
+	iterTotalUnknown     = -1 // iteration total provided but failed to parse; distinct from unspecified
 )
 
 var (
@@ -146,12 +146,13 @@ func (m *model) handleIterationHeader(text string) bool {
 		} else {
 			m.runIterTotal = iterTotalUnknown
 			log.Printf(
-				"tui: unable to parse iteration total %q: %v (treating iteration total as unknown)",
+				"tui: unable to parse iteration total %q: %v (treating as iterTotalUnknown)",
 				match[2],
 				err,
 			)
 		}
 	} else {
+		// No total was provided; record iterTotalUnspecified so views can elide the denominator entirely.
 		m.runIterTotal = iterTotalUnspecified
 	}
 	label := strings.TrimSpace(match[3])
