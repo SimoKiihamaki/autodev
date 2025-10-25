@@ -172,9 +172,13 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     back to stable locations under the system temp directory or the repo.
     """
 
-    def normalize(path: Path) -> Path:
-        path = path.expanduser()
-        if path.is_dir() or str(path).endswith(os.sep):
+    def normalize(path_like: Path | str) -> Path:
+        raw = os.fspath(path_like)
+        has_trailing_sep = raw.endswith(os.sep)
+        if os.altsep:
+            has_trailing_sep = has_trailing_sep or raw.endswith(os.altsep)
+        path = Path(path_like).expanduser()
+        if has_trailing_sep or path.is_dir():
             return path / "claude_code_debug.log"
         return path
 
@@ -182,7 +186,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
     candidates: list[Path] = []
     if existing:
         try:
-            candidates.append(normalize(Path(existing)))
+            candidates.append(normalize(existing))
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to other candidates.",
@@ -230,7 +234,10 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                     continue
             finally:
                 if test_file:
-                    test_file.unlink(missing_ok=True)
+                    try:
+                        test_file.unlink(missing_ok=True)
+                    except OSError as cleanup_exc:
+                        logger.warning("Failed to clean up temporary file %s: %s", test_file, cleanup_exc)
         except OSError:
             continue
         else:
