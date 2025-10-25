@@ -38,11 +38,19 @@ def slugify(value: str) -> str:
 
 def scrub_cli_text(value: str) -> str:
     """Return a version of value without shell metacharacters reserved by the safety policy."""
-    if not value or not any(char in UNSAFE_ARG_CHARS for char in value):
+    if not value:
         return value
 
-    cleaned_chars: list[str] = []
-    for char in value:
+    first_unsafe_index: int | None = None
+    for idx, char in enumerate(value):
+        if char in UNSAFE_ARG_CHARS:
+            first_unsafe_index = idx
+            break
+    if first_unsafe_index is None:
+        return value
+
+    cleaned_chars: list[str] = list(value[:first_unsafe_index])
+    for char in value[first_unsafe_index:]:
         if char in UNSAFE_ARG_CHARS:
             replacement = CLI_ARG_REPLACEMENTS.get(char)
             if replacement is None:
