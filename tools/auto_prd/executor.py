@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from typing import Set, Tuple
 
 from .command_checks import require_cmd
