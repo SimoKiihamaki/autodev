@@ -198,7 +198,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         parent = candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
-            if not os.access(parent, os.W_OK | os.X_OK):
+            if not (os.access(parent, os.W_OK) and os.access(parent, os.X_OK)):
                 continue
             now_iso = datetime.now(timezone.utc).isoformat()
             rand_str = f"{random.getrandbits(64):016x}"
@@ -229,15 +229,15 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                     )
                     continue
             finally:
-                if test_file and test_file.exists():
+                if test_file:
                     test_file.unlink(missing_ok=True)
-
+        except OSError:
+            continue
+        else:
             # Touch the final log target so the CLI can append immediately.
             candidate.touch(exist_ok=True)
             os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(candidate)
             return candidate
-        except OSError:
-            continue
     return None
 
 
