@@ -23,7 +23,7 @@ CODEX_READONLY_PATTERNS = (
 )
 CODEX_READONLY_ERROR_MSG = (
     "Codex reported it cannot modify the workspace (detected phrase: {pattern!r}). "
-    "Check `codex config show --effective` and adjust sandbox/approval settings so the agent has write access."
+    "Confirm your sandbox/approval settings in ~/.codex/config.toml or via `codex --help` so the agent has write access."
 )
 
 ZSH_REQUIRED_ERROR = "zsh binary not found on PATH; required for shell environment policy."
@@ -38,7 +38,7 @@ COMMAND_ALLOWLIST = {
     "claude",
 }
 ZSH_PATH: str | None = None
-UNSAFE_ARG_CHARS = set("|;><`")
+UNSAFE_ARG_CHARS = set("|;><")
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
 SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"

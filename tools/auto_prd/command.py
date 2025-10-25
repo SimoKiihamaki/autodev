@@ -162,11 +162,27 @@ def env_with_zsh(extra: dict | None = None) -> dict[str, str]:
 
 
 def ensure_claude_debug_dir() -> Optional[Path]:
+    """Ensure Claude Code writes debug output to a valid log *file*.
+
+    Despite the environment variable name (`CLAUDE_CODE_DEBUG_LOGS_DIR`), the
+    upstream CLI expects a concrete file path, not merely a directory. Pointing
+    the variable at a directory causes the CLI to call `open` on that directory
+    and crash with EISDIR. We therefore normalize any user-provided value to a
+    file path (if it already points to a file we keep it) and otherwise fall
+    back to stable locations under the system temp directory or the repo.
+    """
+
+    def normalize(path: Path) -> Path:
+        path = path.expanduser()
+        if path.is_dir() or str(path).endswith(os.sep):
+            return path / "claude_code_debug.log"
+        return path
+
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     candidates: list[Path] = []
     if existing:
         try:
-            candidates.append(Path(existing).expanduser())
+            candidates.append(normalize(Path(existing)))
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to other candidates.",
@@ -174,46 +190,52 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                 exc,
             )
     candidates += [
-        Path(tempfile.gettempdir()) / "claude_code_logs",
-        Path.cwd() / ".claude-debug",
+        normalize(Path(tempfile.gettempdir()) / "claude_code_logs"),
+        normalize(Path.cwd() / ".claude-debug"),
     ]
-    for base in candidates:
+
+    for candidate in candidates:
+        parent = candidate.parent
         try:
-            base.mkdir(parents=True, exist_ok=True)
-            if os.access(base, os.W_OK):
-                now_iso = datetime.now(timezone.utc).isoformat()
-                rand_str = f"{random.getrandbits(64):016x}"
-                test_content = f"writecheck-{os.getpid()}-{now_iso}-{rand_str}"
-                test: Optional[Path] = None
-                try:
-                    with tempfile.NamedTemporaryFile(
-                        mode="w+",
-                        encoding="utf-8",
-                        dir=base,
-                        prefix=".writecheck_",
-                        suffix=".tmp",
-                        delete=False,
-                    ) as tmpf:
-                        tmpf.write(test_content)
-                        tmpf.flush()
-                        os.fsync(tmpf.fileno())
-                        tmpf_name = tmpf.name
-                    test = Path(tmpf_name)
-                    with open(tmpf_name, "r", encoding="utf-8") as verify_f:
-                        read_back = verify_f.read()
-                    if read_back != test_content:
-                        logger.warning(
-                            "Write verification failed for %s: expected %r, got %r",
-                            base,
-                            test_content,
-                            read_back,
-                        )
-                        continue
-                finally:
-                    if test and test.exists():
-                        test.unlink(missing_ok=True)
-                os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(base)
-                return base
+            parent.mkdir(parents=True, exist_ok=True)
+            if not os.access(parent, os.W_OK | os.X_OK):
+                continue
+            now_iso = datetime.now(timezone.utc).isoformat()
+            rand_str = f"{random.getrandbits(64):016x}"
+            test_content = f"writecheck-{os.getpid()}-{now_iso}-{rand_str}"
+            test_file: Optional[Path] = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w+",
+                    encoding="utf-8",
+                    dir=parent,
+                    prefix=".writecheck_",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmpf:
+                    tmpf.write(test_content)
+                    tmpf.flush()
+                    os.fsync(tmpf.fileno())
+                    tmpf_name = tmpf.name
+                test_file = Path(tmpf_name)
+                with open(tmpf_name, "r", encoding="utf-8") as verify_f:
+                    read_back = verify_f.read()
+                if read_back != test_content:
+                    logger.warning(
+                        "Write verification failed for %s: expected %r, got %r",
+                        parent,
+                        test_content,
+                        read_back,
+                    )
+                    continue
+            finally:
+                if test_file and test_file.exists():
+                    test_file.unlink(missing_ok=True)
+
+            # Touch the final log target so the CLI can append immediately.
+            candidate.touch(exist_ok=True)
+            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(candidate)
+            return candidate
         except OSError:
             continue
     return None
