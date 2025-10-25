@@ -155,19 +155,18 @@ def print_codex_diagnostics(repo_root: Path) -> None:
 
     print("\n=== Codex diagnostics ===")
     try:
-        cfg_out, cfg_err, cfg_rc = run_cmd(["codex", "config", "show", "--effective"], cwd=repo_root, check=False)
-        if cfg_rc != 0:
-            details = cfg_err.strip() or cfg_out.strip() or f"exit code {cfg_rc}"
-            print(f"codex config show --effective exited with {cfg_rc}: {details}")
+        ver_out, ver_err, ver_rc = run_cmd(["codex", "--version"], cwd=repo_root, check=False)
+        if ver_rc == 0:
+            payload = ver_out.strip() or ver_err.strip()
+            if payload:
+                print(payload)
         else:
-            if cfg_out.strip():
-                print(cfg_out.strip())
-            if cfg_err.strip():
-                print(cfg_err.strip())
+            details = ver_err.strip() or ver_out.strip() or f"exit code {ver_rc}"
+            print(f"codex --version exited with {ver_rc}: {details}")
     except FileNotFoundError:
-        print("codex config show --effective unavailable (codex CLI may be outdated).")
+        print("codex CLI unavailable; install it to enable diagnostics.")
     except (subprocess.CalledProcessError, OSError, ValueError):
-        logger.exception("codex config show --effective failed")
+        logger.exception("codex --version failed")
 
     try:
         status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
