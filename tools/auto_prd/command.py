@@ -193,9 +193,10 @@ def ensure_claude_debug_dir() -> Optional[Path]:
                 existing,
                 exc,
             )
+    default_log_name = "claude_code_debug.log"
     candidates += [
-        normalize(Path(tempfile.gettempdir()) / "claude_code_logs"),
-        normalize(Path.cwd() / ".claude-debug"),
+        normalize(Path(tempfile.gettempdir()) / "claude_code_logs" / default_log_name),
+        normalize(Path.cwd() / ".claude-debug" / default_log_name),
     ]
 
     for candidate in candidates:
