@@ -199,7 +199,7 @@ func (o Options) Run(ctx context.Context) error {
 	}
 
 	// Ensure unbuffered Python output - this must be set before Python starts.
-	// NOTE: PYTHONUNBUFFERED=1 is also set in tools/auto_prd/command.py (safe_popen, line 388).
+	// NOTE: PYTHONUNBUFFERED=1 is also set in tools/auto_prd/command.py in the safe_popen function.
 	// This redundancy is intentional (defense-in-depth) to guarantee unbuffered output
 	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")

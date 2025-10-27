@@ -113,7 +113,8 @@ def ensure_line_buffering() -> None:
             # Reopen stdout with line buffering (Python 3.7+)
             sys.stdout.reconfigure(line_buffering=True)
         except (AttributeError, io.UnsupportedOperation):
-            # Python < 3.7 fallback: already set PYTHONUNBUFFERED above
+            # Fallback for older Python versions: already set PYTHONUNBUFFERED above
+            # Note: This project requires Python 3.9+, so this path should not be hit
             pass
 
     if not sys.stderr.isatty():
@@ -121,7 +122,8 @@ def ensure_line_buffering() -> None:
         try:
             sys.stderr.reconfigure(line_buffering=True)
         except (AttributeError, io.UnsupportedOperation):
-            # Python < 3.7 fallback: already set PYTHONUNBUFFERED above
+            # Fallback for older Python versions: already set PYTHONUNBUFFERED above
+            # Note: This project requires Python 3.9+, so this path should not be hit
             pass
 
 
