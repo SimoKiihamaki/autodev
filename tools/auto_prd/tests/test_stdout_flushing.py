@@ -15,6 +15,11 @@ from pathlib import Path
 from dataclasses import dataclass
 from textwrap import dedent
 
+# Constants for assertion messages to ensure consistency
+ASSERTION_MSG_TEMPLATES = {
+    "integration_test_failed": " integration test failed\nStdout:\n{stdout}\nStderr:\n{stderr}"
+}
+
 try:
     from tools.auto_prd.command import (
         run_cmd,
@@ -177,6 +182,7 @@ def test_real_time_output_capture():
     register_safe_cwd(Path(__file__).parent)
 
     script_path = create_flush_test_script()
+    process = None  # Initialize to avoid UnboundLocalError
 
     try:
         # Start the test script
@@ -209,7 +215,7 @@ def test_real_time_output_capture():
                 f"[{line['elapsed']:.2f}s] {line['stream']}: {line['text']}"
                 for line in lines[-10:]
             )
-            assert False, f"Missing patterns: {missing}\nLast lines:\n{tail}"
+            raise AssertionError(f"Missing patterns: {missing}\nLast lines:\n{tail}")
 
         # Analyze timing of output
         lines = capturer.get_output()
@@ -251,15 +257,18 @@ def test_real_time_output_capture():
 
     finally:
         # Clean up
-        try:
-            process.terminate()
-            process.wait(timeout=5)
-        except (OSError, ProcessLookupError, TimeoutError):
+        if process is not None:
             try:
-                process.kill()
-            except (OSError, ProcessLookupError) as kill_error:
-                # Process might already be dead
-                print(f"Warning: Failed to kill process {kill_error}", file=sys.stderr)
+                process.terminate()
+                process.wait(timeout=5)
+            except (OSError, ProcessLookupError, TimeoutError):
+                try:
+                    process.kill()
+                except (OSError, ProcessLookupError) as kill_error:
+                    # Process might already be dead
+                    print(
+                        f"Warning: Failed to kill process {kill_error}", file=sys.stderr
+                    )
 
         safe_cleanup(script_path, "script file")
 
@@ -370,9 +379,9 @@ except ImportError as e:
         return True
     if "LOGGING_UTILS_TEST_SKIPPED" in result.stdout:
         return True
-    assert (
-        False
-    ), f"Logging utils integration test failed\nStdout:\n{result.stdout}\nStderr:\n{result.stderr}"
+    raise AssertionError(
+        f"Logging utils{ASSERTION_MSG_TEMPLATES['integration_test_failed'].format(stdout=result.stdout, stderr=result.stderr)}"
+    )
 
 
 def main():

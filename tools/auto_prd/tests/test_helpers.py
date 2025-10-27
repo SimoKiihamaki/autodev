@@ -9,33 +9,34 @@ from pathlib import Path
 
 def safe_import(relative_module_path, fallback_module_path, item_names=None):
     """
-    Safely import from relative module with fallback to absolute import.
+    Safely import from a relative module with fallback to an absolute import.
 
     Args:
         relative_module_path: Module path when running as script (e.g., 'tools.auto_prd.module')
         fallback_module_path: Module path when running as module (e.g., '..module')
-        item_names: List of specific items to import (None imports all)
+        item_names: Name or list/tuple of specific items to import (None imports the whole module)
 
     Returns:
-        Imported module or items
+        - If item_names is None: the imported module.
+        - If item_names is a string: the imported item.
+        - If item_names is a list/tuple: a tuple of imported items (must use tuple unpacking).
 
-    Example:
-        # Import single module
+    Examples:
+        # Import the whole module
         logging_utils = safe_import(
             'tools.auto_prd.logging_utils',
             '..logging_utils'
         )
 
-        # Import specific items
+        # Import specific items (must use tuple unpacking for multiple items)
         run_cmd, safe_popen = safe_import(
             'tools.auto_prd.command',
             '..command',
             ['run_cmd', 'safe_popen']
         )
 
-        # Import constants pattern (as seen in review comments)
+        # Import a single constant (returns the item directly)
         CLI_ARG_REPLACEMENTS = safe_import("tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS")
-        UNSAFE_ARG_CHARS = safe_import("tools.auto_prd.constants", "..constants", "UNSAFE_ARG_CHARS")
     """
     try:
         if item_names:
