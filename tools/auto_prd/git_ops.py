@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
 from .command import run_cmd
+from .constants import SAFE_ENV_VAR
 from .logging_utils import logger
 
 
@@ -154,6 +156,7 @@ def print_codex_diagnostics(repo_root: Path) -> None:
     from .agents import codex_exec
 
     print("\n=== Codex diagnostics ===")
+    codex_available = True
     try:
         ver_out, ver_err, ver_rc = run_cmd(["codex", "--version"], cwd=repo_root, check=False)
         if ver_rc == 0:
@@ -165,9 +168,15 @@ def print_codex_diagnostics(repo_root: Path) -> None:
             print(f"codex --version exited with {ver_rc}: {details}")
     except FileNotFoundError:
         print("codex CLI unavailable; install it to enable diagnostics.")
+        codex_available = False
     except (subprocess.CalledProcessError, OSError, ValueError):
         logger.exception("codex --version failed")
 
+    if not codex_available:
+        return
+    if os.environ.get(SAFE_ENV_VAR) != "1":
+        print(f"codex /status skipped (set {SAFE_ENV_VAR}=1 to enable).")
+        return
     try:
         status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
         if status_out.strip():

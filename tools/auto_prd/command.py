@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
-import random
 import re
 import shlex
 import shutil
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Optional
@@ -38,6 +36,8 @@ SENSITIVE_KEYS = {
     "key",
     "access_token",
 }
+
+CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
 
 
 def sanitize_args(args: Sequence[str]) -> list[str]:
@@ -161,91 +161,87 @@ def env_with_zsh(extra: dict | None = None) -> dict[str, str]:
     return env
 
 
-def ensure_claude_debug_dir() -> Optional[Path]:
-    """Ensure Claude Code writes debug output to a valid log *file*.
+def ensure_claude_debug_dir() -> Path:
+    """Ensure CLAUDE_CODE_DEBUG_LOGS_DIR points at a writable debug log file.
 
-    Despite the environment variable name (`CLAUDE_CODE_DEBUG_LOGS_DIR`), the
-    upstream CLI expects a concrete file path, not merely a directory. Pointing
-    the variable at a directory causes the CLI to call `open` on that directory
-    and crash with EISDIR. We therefore normalize any user-provided value to a
-    file path (if it already points to a file we keep it) and otherwise fall
-    back to stable locations under the system temp directory or the repo.
+    Preference order:
+        1. User-specified path from CLAUDE_CODE_DEBUG_LOGS_DIR.
+        2. Repo-local ``.claude-debug`` file under the current working directory.
+        3. A file inside the system temp directory.
+
+    Each candidate attempts directory creation and file touch; failures fall through to
+    the next option. As a last resort the repo-local path is returned even if touching
+    the file fails. The selected path is stored back into CLAUDE_CODE_DEBUG_LOGS_DIR.
     """
 
     def normalize(path_like: Path | str) -> Path:
         raw = os.fspath(path_like)
+        # Expand environment variables after coercing to string so values like $TMPDIR resolve correctly.
+        # Note: expandvars must run before expanduser; the latter leaves placeholders such as
+        # `~${USER}/foo` untouched inside the user segment, so expanding variables first
+        # produces a path expanduser can resolve properly.
+        raw = os.path.expandvars(raw)
         has_trailing_sep = raw.endswith(os.sep)
         if os.altsep:
             has_trailing_sep = has_trailing_sep or raw.endswith(os.altsep)
-        path = Path(path_like).expanduser()
-        if has_trailing_sep or path.is_dir():
-            return path / "claude_code_debug.log"
-        return path
+        path = Path(raw).expanduser()
+        try:
+            exists = path.exists()
+        except OSError:
+            exists = False
+        if has_trailing_sep or (exists and path.is_dir()):
+            return path / CLAUDE_DEBUG_LOG_NAME
+        if exists and path.is_file():
+            return path
+        if path.suffix:
+            return path
+        parent = path.parent
+        try:
+            parent_exists = parent.exists() and parent.is_dir()
+        except OSError:
+            parent_exists = False
+        if parent_exists:
+            return path
+        return path / CLAUDE_DEBUG_LOG_NAME
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
+    repo_candidate = normalize(Path.cwd() / ".claude-debug")
+    temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
+
     candidates: list[Path] = []
     if existing:
         try:
             candidates.append(normalize(existing))
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
-                "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to other candidates.",
+                "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to defaults.",
                 existing,
                 exc,
             )
-    candidates += [
-        normalize(Path(tempfile.gettempdir()) / "claude_code_logs"),
-        normalize(Path.cwd() / ".claude-debug"),
-    ]
+    candidates.extend([repo_candidate, temp_candidate])
 
     for candidate in candidates:
         parent = candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
-            if not (os.access(parent, os.W_OK) and os.access(parent, os.X_OK)):
-                continue
-            now_iso = datetime.now(timezone.utc).isoformat()
-            rand_str = f"{random.getrandbits(64):016x}"
-            test_content = f"writecheck-{os.getpid()}-{now_iso}-{rand_str}"
-            test_file: Optional[Path] = None
-            try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w+",
-                    encoding="utf-8",
-                    dir=parent,
-                    prefix=".writecheck_",
-                    suffix=".tmp",
-                    delete=False,
-                ) as tmpf:
-                    tmpf.write(test_content)
-                    tmpf.flush()
-                    os.fsync(tmpf.fileno())
-                    tmpf_name = tmpf.name
-                test_file = Path(tmpf_name)
-                with open(tmpf_name, "r", encoding="utf-8") as verify_f:
-                    read_back = verify_f.read()
-                if read_back != test_content:
-                    logger.warning(
-                        "Write verification failed for %s: expected %r, got %r",
-                        parent,
-                        test_content,
-                        read_back,
-                    )
-                    continue
-            finally:
-                if test_file:
-                    try:
-                        test_file.unlink(missing_ok=True)
-                    except OSError as cleanup_exc:
-                        logger.warning("Failed to clean up temporary file %s: %s", test_file, cleanup_exc)
-        except OSError:
-            continue
-        else:
-            # Touch the final log target so the CLI can append immediately.
             candidate.touch(exist_ok=True)
-            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(candidate)
-            return candidate
-    return None
+        except OSError as exc:
+            logger.debug("Unable to prepare Claude debug log at %s: %s", candidate, exc)
+            continue
+        os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(candidate)
+        return candidate
+
+    # As a last resort, force the repo-local path even if touch failed earlier.
+    try:
+        repo_candidate.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    try:
+        repo_candidate.touch(exist_ok=True)
+    except OSError:
+        logger.debug("Failed to touch fallback Claude debug log at %s", repo_candidate)
+    os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(repo_candidate)
+    return repo_candidate
 
 
 def run_cmd(
