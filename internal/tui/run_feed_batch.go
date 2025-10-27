@@ -21,6 +21,10 @@ func (m model) readLogsBatch() tea.Cmd {
 	return func() tea.Msg {
 		var lines []runner.Line
 
+		// Create a timer that can be reused and properly cleaned up
+		timer := time.NewTimer(1 * time.Millisecond)
+		defer timer.Stop()
+
 		// Read up to maxBatchSize lines or until channel is empty
 		for i := 0; i < maxBatchSize; i++ {
 			select {
@@ -34,7 +38,7 @@ func (m model) readLogsBatch() tea.Cmd {
 				}
 				lines = append(lines, line)
 
-			case <-time.After(1 * time.Millisecond):
+			case <-timer.C:
 				// Channel is empty, return what we have
 				if len(lines) > 0 {
 					return logBatchMsg{lines: lines}

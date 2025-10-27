@@ -12,7 +12,7 @@ import os
 import shutil
 from pathlib import Path
 
-from tools.auto_prd.command import (
+from ..command import (
     run_cmd,
     validate_command_args,
     validate_cwd,
@@ -261,7 +261,11 @@ This is a test PRD for integration testing.
             try:
                 os.unlink(prd_path)
             except FileNotFoundError:
-                pass
+                # PRD file might already be deleted
+                print(
+                    f"Warning: PRD file {prd_path} not found during cleanup",
+                    file=sys.stderr,
+                )
             except OSError as e:
                 print(f"Warning: Failed to clean up PRD file {prd_path}: {e}")
 
@@ -269,9 +273,12 @@ This is a test PRD for integration testing.
         # Clean up fake script
         try:
             os.unlink(fake_script)
-        except (OSError, FileNotFoundError):
+        except (OSError, FileNotFoundError) as e:
             # File might already be deleted or inaccessible
-            pass
+            print(
+                f"Warning: Failed to clean up fake script {fake_script}: {e}",
+                file=sys.stderr,
+            )
 
 
 def test_simple_log_streaming():

@@ -19,7 +19,10 @@ try:
 except ImportError:
     # Fallback if we can't import from the main module
     def setup_file_logging(*args, **kwargs):
-        pass
+        print(
+            "Warning: logging_utils not available, setup_file_logging is no-op",
+            file=sys.stderr,
+        )
 
     def print_flush(*args, **kwargs):
         print(*args, **kwargs)

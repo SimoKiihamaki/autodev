@@ -1,8 +1,8 @@
 import subprocess
 import unittest
 
-from tools.auto_prd.constants import CLI_ARG_REPLACEMENTS, UNSAFE_ARG_CHARS
-from tools.auto_prd.utils import (
+from ..constants import CLI_ARG_REPLACEMENTS, UNSAFE_ARG_CHARS
+from ..utils import (
     extract_called_process_error_details,
     parse_tasks_left,
     scrub_cli_text,
@@ -54,7 +54,9 @@ class ScrubCliTextTests(unittest.TestCase):
         for char in UNSAFE_ARG_CHARS:
             original = f"prefix{char}suffix"
             sanitized = scrub_cli_text(original)
-            self.assertTrue(sanitized.startswith("prefix"), msg=f"prefix lost for {char!r}")
+            self.assertTrue(
+                sanitized.startswith("prefix"), msg=f"prefix lost for {char!r}"
+            )
             replacement = CLI_ARG_REPLACEMENTS.get(char, " ")
             self.assertNotIn(char, sanitized)
             self.assertIn(replacement, sanitized)

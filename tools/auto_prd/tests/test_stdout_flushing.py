@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from dataclasses import dataclass
 
-from tools.auto_prd.command import (
+from ..command import (
     run_cmd,
     validate_command_args,
     validate_cwd,
@@ -353,13 +353,16 @@ def test_real_time_output_capture():
                 process.kill()
             except (OSError, ProcessLookupError) as kill_error:
                 # Process might already be dead
-                pass
+                print(f"Warning: Failed to kill process {kill_error}", file=sys.stderr)
 
         try:
             os.unlink(script_path)
         except (OSError, FileNotFoundError) as e:
             # File might already be deleted
-            pass
+            print(
+                f"Warning: Failed to clean up script file {script_path}: {e}",
+                file=sys.stderr,
+            )
 
 
 def test_buffering_edge_cases():

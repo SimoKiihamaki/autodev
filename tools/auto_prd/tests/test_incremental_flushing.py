@@ -10,10 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-# Add the parent directory to the path to import the tools
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from tools.auto_prd.logging_utils import (
+from ..logging_utils import (
     install_print_logger,
     uninstall_print_logger,
     print_flush,
