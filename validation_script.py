@@ -80,7 +80,7 @@ def test_go_test_coverage():
     print("\n=== Testing Go Test Coverage ===")
 
     # Run Go tests with coverage
-    result = subprocess.run(
+    result = safe_run(
         ["go", "test", "./...", "-cover"],
         capture_output=True,
         text=True,
@@ -141,7 +141,7 @@ def test_runner_backpressure():
     print("\n=== Testing Runner Backpressure Handling ===")
 
     # Run specific runner tests for backpressure
-    result = subprocess.run(
+    result = safe_run(
         [
             "go",
             "test",
@@ -184,7 +184,7 @@ def test_tui_feed_behavior():
     print("\n=== Testing TUI Feed Behavior ===")
 
     # Run TUI tests for feed handling
-    result = subprocess.run(
+    result = safe_run(
         [
             "go",
             "test",

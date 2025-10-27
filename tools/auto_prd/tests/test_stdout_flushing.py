@@ -12,6 +12,7 @@ import threading
 import queue
 import os
 from pathlib import Path
+from dataclasses import dataclass
 
 from tools.auto_prd.command import (
     run_cmd,
@@ -19,6 +20,15 @@ from tools.auto_prd.command import (
     validate_cwd,
     env_with_zsh,
 )
+
+
+@dataclass
+class CmdResult:
+    """Result object for command execution."""
+
+    stdout: str
+    stderr: str
+    returncode: int
 
 
 def safe_popen(cmd, *, text=True, bufsize=1):
@@ -205,14 +215,7 @@ def test_subprocess_output():
     stdout, stderr, returncode = run_cmd([sys.executable, "-c",
                                          "for i in range(3): print(f'Subprocess line {i+1}')"])
 
-    # Create a result object for compatibility
-    class Result:
-        def __init__(self, stdout, stderr, returncode):
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-
-    result = Result(stdout, stderr, returncode)
+    result = CmdResult(stdout, stderr, returncode)
 
     print("Subprocess stdout:", flush=True)
     for line in result.stdout.strip().split('\\n'):
@@ -376,14 +379,7 @@ print("RAPID_TEST_DONE", flush=True)
         [sys.executable, "-c", rapid_script], timeout=10
     )
 
-    # Create a result object for compatibility
-    class Result:
-        def __init__(self, stdout, stderr, returncode):
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-
-    result = Result(stdout, stderr, returncode)
+    result = CmdResult(stdout, stderr, returncode)
 
     if "RAPID_TEST_DONE" not in result.stdout:
         print("❌ Rapid output test failed")
@@ -431,14 +427,7 @@ print("LARGE_TEST_DONE", flush=True)
         [sys.executable, "-c", large_script], timeout=10
     )
 
-    # Create a result object for compatibility
-    class Result:
-        def __init__(self, stdout, stderr, returncode):
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-
-    result = Result(stdout, stderr, returncode)
+    result = CmdResult(stdout, stderr, returncode)
 
     if "LARGE_TEST_DONE" not in result.stdout:
         print("❌ Large output test failed")
@@ -482,14 +471,7 @@ except ImportError as e:
         timeout=10,
     )
 
-    # Create a result object for compatibility
-    class Result:
-        def __init__(self, stdout, stderr, returncode):
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-
-    result = Result(stdout, stderr, returncode)
+    result = CmdResult(stdout, stderr, returncode)
 
     if "LOGGING_UTILS_TEST_DONE" in result.stdout:
         print("✅ Logging utils integration test passed")

@@ -43,9 +43,11 @@ class IncrementalLogFlushingTests(unittest.TestCase):
         # Install should set the flag and change behavior
         install_print_logger()
         # The hook is now installed - test by checking print behavior
-        with patch("tools.auto_prd.logging_utils.ORIGINAL_PRINT") as mock_original:
+        # After install_print_logger(), builtins.print is replaced with tee_print
+        # The hook receives the original args and adds flush=True internally
+        with patch("builtins.print") as mock_print:
             print("Test")
-            mock_original.assert_called_once_with("Test", flush=True)
+            mock_print.assert_called_once_with("Test")
 
         # Uninstall should reset the flag
         uninstall_print_logger()
