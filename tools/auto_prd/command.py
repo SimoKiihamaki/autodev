@@ -51,9 +51,6 @@ def find_repo_root(start_path: Optional[Path] = None) -> Path:
 
     Returns:
         Path to the repository root directory. Falls back to Path.cwd() if not found.
-
-    Raises:
-        RuntimeError: If .git entry is not found in parent hierarchy and fallback fails
     """
     if start_path is None:
         start_path = Path(__file__).resolve()
