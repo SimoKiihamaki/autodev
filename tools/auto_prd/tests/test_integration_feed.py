@@ -9,6 +9,7 @@ import sys
 import time
 import tempfile
 import os
+import shutil
 from pathlib import Path
 
 
@@ -164,7 +165,7 @@ This is a test PRD for integration testing.
                             f"[{time.time() - start_time:.1f}s] STDERR: {stderr_line.strip()}"
                         )
 
-                except Exception as e:
+                except (IOError, OSError, UnicodeDecodeError) as e:
                     print(f"Error reading output: {e}")
                     break
 
@@ -238,8 +239,10 @@ This is a test PRD for integration testing.
             # Clean up PRD file
             try:
                 os.unlink(prd_path)
-            except:
+            except FileNotFoundError:
                 pass
+            except OSError as e:
+                print(f"Warning: Failed to clean up PRD file {prd_path}: {e}")
 
     finally:
         # Clean up fake script
@@ -267,6 +270,11 @@ print("Process completed", flush=True)
 """,
     ]
 
+    # Safety check: ensure python3 executable exists
+    python_exe = shutil.which("python3")
+    if not python_exe:
+        raise RuntimeError("python3 executable not found for test")
+
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
     )
@@ -277,7 +285,7 @@ print("Process completed", flush=True)
     while True:
         return_code = process.poll()
         if return_code is not None:
-            remaining_stdout, remaining_stderr = process.communicate()
+            remaining_stdout, _ = process.communicate()
             if remaining_stdout:
                 output_lines.extend(remaining_stdout.split("\n"))
             break
@@ -289,7 +297,7 @@ print("Process completed", flush=True)
                 output_lines.append(line)
                 elapsed = time.time() - start_time
                 print(f"[{elapsed:.1f}s] {line}")
-        except:
+        except StopIteration:
             break
 
         time.sleep(0.01)

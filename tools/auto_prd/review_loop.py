@@ -9,7 +9,12 @@ from typing import Optional
 
 from .agents import codex_exec
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
-from .gh_ops import acknowledge_review_items, get_unresolved_feedback, should_stop_review_after_push, trigger_copilot
+from .gh_ops import (
+    acknowledge_review_items,
+    get_unresolved_feedback,
+    should_stop_review_after_push,
+    trigger_copilot,
+)
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
@@ -40,7 +45,7 @@ def review_fix_loop(
     trigger_copilot(owner_repo, pr_number, repo_root)
     initial_wait_seconds = max(0, initial_wait_minutes * 60)
     if initial_wait_seconds:
-        print(f"Waiting {initial_wait_minutes} minutes for bot reviews...")
+        print(f"Waiting {initial_wait_minutes} minutes for bot reviews...", flush=True)
         time.sleep(initial_wait_seconds)
 
     idle_grace_seconds = max(0, idle_grace * 60)
@@ -70,8 +75,12 @@ def review_fix_loop(
                 continue
             unresolved.append(item)
         if unresolved:
-            bullets = format_unresolved_bullets(unresolved, CODERABBIT_FINDINGS_CHAR_LIMIT)
-            print("\nUnresolved feedback detected, asking the bot to fix...")
+            bullets = format_unresolved_bullets(
+                unresolved, CODERABBIT_FINDINGS_CHAR_LIMIT
+            )
+            print(
+                "\nUnresolved feedback detected, asking the bot to fix...", flush=True
+            )
             fix_prompt = f"""
 Resolve ALL items below, commit fixes, ensure QA passes, and push to the SAME PR (do not create a new one).
 Before every push, run `make ci` locally and confirm it succeeds; only push after `make ci` passes cleanly.
@@ -103,12 +112,16 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 sleep_with_jitter(float(poll))
                 continue
             trigger_copilot(owner_repo, pr_number, repo_root)
-            acknowledge_review_items(owner_repo, pr_number, unresolved, processed_comment_ids)
+            acknowledge_review_items(
+                owner_repo, pr_number, unresolved, processed_comment_ids
+            )
             last_activity = time.monotonic()
             sleep_with_jitter(float(poll))
             continue
 
-        if should_stop_review_after_push(owner_repo, pr_number, current_head, repo_root):
+        if should_stop_review_after_push(
+            owner_repo, pr_number, current_head, repo_root
+        ):
             print("Automatic reviewers report no new findings; stopping.")
             break
 

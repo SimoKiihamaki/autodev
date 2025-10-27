@@ -89,7 +89,6 @@ class IncrementalLogFlushingTests(unittest.TestCase):
                 install_print_logger()
 
                 # Check that the hook is installed by testing if print behavior changed
-                original_stdout = sys.stdout
                 with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
                     print("Test message")
                     # Should appear in stdout due to hook

@@ -9,6 +9,7 @@ import time
 import subprocess
 import tempfile
 import os
+import re
 from pathlib import Path
 
 
@@ -108,8 +109,6 @@ def test_python_test_coverage():
         output = result.stdout
         if "Ran" in output and "tests" in output:
             # Extract test count
-            import re
-
             match = re.search(r"Ran (\d+) tests", output)
             if match:
                 test_count = match.group(1)

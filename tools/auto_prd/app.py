@@ -187,10 +187,13 @@ def run(args) -> None:
                     current_branch = git_current_branch(repo_root)
                     if base_branch_exists:
                         if args.sync_git:
-                            print("Synchronizing base branch from origin…")
+                            print("Synchronizing base branch from origin…", flush=True)
                             run_cmd(["git", "fetch", "origin"], cwd=repo_root)
                         else:
-                            print("Skipping git fetch (pass --sync-git to enable).")
+                            print(
+                                "Skipping git fetch (pass --sync-git to enable).",
+                                flush=True,
+                            )
                         if current_branch != base_branch:
                             run_cmd(["git", "checkout", base_branch], cwd=repo_root)
                             current_branch = base_branch
@@ -207,7 +210,8 @@ def run(args) -> None:
 
                 if base_branch_exists:
                     print(
-                        f"Creating/checking out working branch '{new_branch}' from '{base_branch}'…"
+                        f"Creating/checking out working branch '{new_branch}' from '{base_branch}'…",
+                        flush=True,
                     )
                     run_cmd(
                         ["git", "checkout", "-B", new_branch, base_branch],
@@ -259,13 +263,15 @@ def run(args) -> None:
                     raise SystemExit(
                         f"Failed to commit staged changes: {details}"
                     ) from exc
-                print(f"Committed changes with message: {commit_message}")
+                print(f"Committed changes with message: {commit_message}", flush=True)
             else:
-                print("No staged changes detected before PR; skipping commit.")
+                print(
+                    "No staged changes detected before PR; skipping commit.", flush=True
+                )
             try:
                 git_push_branch(repo_root, new_branch)
                 branch_pushed = True
-                print(f"Pushed branch '{new_branch}' to origin.")
+                print(f"Pushed branch '{new_branch}' to origin.", flush=True)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
                 raise SystemExit(
@@ -339,6 +345,6 @@ def run(args) -> None:
         )
 
         if appears_complete:
-            print(f"Final TASKS_LEFT={tasks_left}")
+            print(f"Final TASKS_LEFT={tasks_left}", flush=True)
     finally:
         os.chdir(original_cwd)
