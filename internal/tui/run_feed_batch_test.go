@@ -88,7 +88,7 @@ func TestHandleLogBatch(t *testing.T) {
 
 	// Create a model with a viewport and log channel
 	logCh := make(chan runner.Line, 100)
-	m := model{
+	m := &model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
@@ -105,9 +105,15 @@ func TestHandleLogBatch(t *testing.T) {
 	}
 
 	// Process the batch
-	cmd := m.handleLogBatch(testLines)
+	newModel, cmd := m.handleLogBatch(testLines)
 	if cmd == nil {
 		t.Fatal("Expected non-nil command returned from handleLogBatch")
+	}
+	// Update the model reference to the new model (if it changed)
+	if newModel != nil {
+		if model, ok := newModel.(*model); ok {
+			m = model
+		}
 	}
 
 	// Verify buffer contains lines

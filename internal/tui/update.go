@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -65,6 +66,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleRunFeedLine(display, plain)
 		return m, m.readLogs()
 
+	case logBatchMsg:
+		newModel, cmd := m.handleLogBatch(typed.lines)
+		return newModel, cmd
+
 	case runErrMsg:
 		m.running = false
 		m.errMsg = typed.err.Error()
@@ -118,6 +123,37 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 	}
 	m.prompt.SetWidth(promptW)
 	return m
+}
+
+func (m *model) handleLogBatch(lines []runner.Line) (tea.Model, tea.Cmd) {
+	if len(lines) == 0 {
+		return m, nil
+	}
+
+	// Process each line in the batch
+	for _, line := range lines {
+		display, plain := m.formatLogLine(line)
+		m.persistLogLine(line)
+		m.logBuf = append(m.logBuf, display)
+		if len(m.logBuf) > maxLogLines {
+			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
+			m.logDirtyLines = logFlushStep
+		}
+		m.logDirtyLines++
+		m.handleRunFeedLine(display, plain)
+	}
+
+	// Flush logs if needed
+	if m.logDirtyLines >= logFlushStep {
+		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+		m.logDirtyLines = 0
+	}
+
+	// Schedule another batch read if we still have a log channel
+	if m.logCh != nil {
+		return m, m.readLogsBatch()
+	}
+	return m, nil
 }
 
 func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {

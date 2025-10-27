@@ -109,7 +109,7 @@ def test_go_runner_log_capture():
         aprd_binary = get_project_root() / "bin" / "aprd"
         if not aprd_binary.exists():
             print("SKIP: aprd binary not found. Run 'make build' first.")
-            return True
+            return True  # Skip is considered success
 
         # Create temporary PRD file
         prd_content = """# Test PRD
@@ -153,51 +153,62 @@ This is a test PRD for integration testing.
                 bufsize=1,  # Line buffered
             )
 
-            # Capture output in real-time
-            output_lines = []
-            start_time = time.time()
+            # Use non-blocking readers with threading and queue
+            import threading
+            import queue
 
-            while True:
-                # Check if process is still running
-                return_code = process.poll()
-                if return_code is not None:
-                    # Process has finished
-                    remaining_stdout, remaining_stderr = process.communicate()
-                    if remaining_stdout:
-                        output_lines.extend(remaining_stdout.split("\n"))
-                    if remaining_stderr:
-                        output_lines.extend(remaining_stderr.split("\n"))
-                    break
-
-                # Read any available output
+            def pump(stream, q, prefix=""):
+                """Read from stream and push lines to queue."""
                 try:
-                    # Use non-blocking read with timeout
-                    stdout_line = process.stdout.readline()
-                    if stdout_line:
-                        output_lines.append(stdout_line.strip())
-                        print(
-                            f"[{time.time() - start_time:.1f}s] {stdout_line.strip()}"
-                        )
+                    for line in iter(stream.readline, ""):
+                        if line:
+                            q.put(prefix + line.rstrip())
+                    q.put(None)  # Signal end of stream
+                except Exception as e:
+                    q.put(f"ERROR: {e}")
+                    q.put(None)
 
-                    stderr_line = process.stderr.readline()
-                    if stderr_line:
-                        output_lines.append(f"STDERR: {stderr_line.strip()}")
-                        print(
-                            f"[{time.time() - start_time:.1f}s] STDERR: {stderr_line.strip()}"
-                        )
+            output_lines = []
+            q = queue.Queue()
 
-                except (IOError, OSError, UnicodeDecodeError) as e:
-                    print(f"Error reading output: {e}")
-                    break
+            # Start reader threads
+            t1 = threading.Thread(target=pump, args=(process.stdout, q))
+            t2 = threading.Thread(target=pump, args=(process.stderr, q, "STDERR: "))
+            t1.daemon = True
+            t2.daemon = True
+            t1.start()
+            t2.start()
 
-                # Small delay to prevent busy waiting
-                time.sleep(0.01)
+            start_time = time.time()
+            deadline = start_time + 30
+            active_threads = 2
 
-                # Timeout after 30 seconds
-                if time.time() - start_time > 30:
-                    print("TIMEOUT: Process took too long")
-                    process.terminate()
-                    break
+            # Read from queue with timeout
+            while active_threads > 0 and time.time() < deadline:
+                try:
+                    item = q.get(timeout=0.1)
+                    if item is None:
+                        active_threads -= 1
+                    elif item.startswith("ERROR:"):
+                        print(f"Stream error: {item}")
+                        active_threads -= 1
+                    else:
+                        output_lines.append(item)
+                        elapsed = time.time() - start_time
+                        print(f"[{elapsed:.1f}s] {item}")
+                except queue.Empty:
+                    # Check if process is done
+                    if process.poll() is not None:
+                        break
+                    continue
+
+            # Clean up any hanging process
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
 
             # Analyze captured output
             print(f"\nCaptured {len(output_lines)} lines of output")
@@ -242,19 +253,15 @@ This is a test PRD for integration testing.
             success_rate = len(found_patterns) / len(expected_patterns)
             print(f"Success rate: {success_rate:.1%}")
 
-            # Consider it a success if we found at least 80% of patterns
-            success = success_rate >= 0.8
+            # Use assertions instead of returning booleans
+            assert success_rate >= 0.8, (
+                f"Go runner did not capture enough patterns. "
+                f"Found {len(found_patterns)}/{len(expected_patterns)} patterns. "
+                f"Missing: {missing_patterns}"
+            )
 
-            if success:
-                print(
-                    "✓ Integration test PASSED: Go runner captured logs incrementally"
-                )
-            else:
-                print(
-                    "✗ Integration test FAILED: Go runner did not capture all expected logs"
-                )
-
-            return success
+            print("✓ Integration test PASSED: Go runner captured logs incrementally")
+            return True
 
         finally:
             # Clean up PRD file
@@ -286,65 +293,108 @@ def test_simple_log_streaming():
     print("\n" + "=" * 50)
     print("Testing simple log streaming...")
 
-    # Test with a simple command that outputs incrementally
-    cmd = [
-        "python3",
-        "-c",
-        """
-import time
-for i in range(5):
-    print(f"Progress line {i+1}/5", flush=True)
-    time.sleep(0.2)
-print("Process completed", flush=True)
-""",
-    ]
+    # Create temporary script file instead of using -c to avoid validation issues
+    tiny_script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+    try:
+        tiny_script.write(
+            "import time\n"
+            "for i in range(5):\n"
+            "    print(f'Progress line {i+1}/5', flush=True)\n"
+            "    time.sleep(0.2)\n"
+            "print('Process completed', flush=True)\n"
+        )
+        tiny_script.close()
+        cmd = ["python3", tiny_script.name]
+    except Exception:
+        tiny_script.close()
+        os.unlink(tiny_script.name)
+        raise
 
     # Safety check: ensure python3 executable exists
     python_exe = shutil.which("python3")
     if not python_exe:
         raise RuntimeError("python3 executable not found for test")
 
-    process = safe_popen(cmd)
+    try:
+        process = safe_popen(cmd, cwd=get_project_root())
 
-    output_lines = []
-    start_time = time.time()
+        # Use non-blocking readers with threading and queue
+        import threading
+        import queue
 
-    while True:
-        return_code = process.poll()
-        if return_code is not None:
-            remaining_stdout, _ = process.communicate()
-            if remaining_stdout:
-                output_lines.extend(remaining_stdout.split("\n"))
-            break
+        def pump(stream, q, prefix=""):
+            """Read from stream and push lines to queue."""
+            try:
+                for line in iter(stream.readline, ""):
+                    if line:
+                        q.put(prefix + line.rstrip())
+                q.put(None)  # Signal end of stream
+            except Exception as e:
+                q.put(f"ERROR: {e}")
+                q.put(None)
 
-        try:
-            stdout_line = process.stdout.readline()
-            if stdout_line:
-                line = stdout_line.strip()
-                output_lines.append(line)
-                elapsed = time.time() - start_time
-                print(f"[{elapsed:.1f}s] {line}")
-        except StopIteration:
-            break
+        output_lines = []
+        q = queue.Queue()
 
-        time.sleep(0.01)
+        # Start reader threads
+        t1 = threading.Thread(target=pump, args=(process.stdout, q))
+        t2 = threading.Thread(target=pump, args=(process.stderr, q, "STDERR: "))
+        t1.daemon = True
+        t2.daemon = True
+        t1.start()
+        t2.start()
 
-        if time.time() - start_time > 10:
+        start_time = time.time()
+        deadline = start_time + 10
+        active_threads = 2
+
+        # Read from queue with timeout
+        while active_threads > 0 and time.time() < deadline:
+            try:
+                item = q.get(timeout=0.1)
+                if item is None:
+                    active_threads -= 1
+                elif item.startswith("ERROR:"):
+                    print(f"Stream error: {item}")
+                    active_threads -= 1
+                else:
+                    output_lines.append(item)
+                    elapsed = time.time() - start_time
+                    print(f"[{elapsed:.1f}s] {item}")
+            except queue.Empty:
+                # Check if process is done
+                if process.poll() is not None:
+                    break
+                continue
+
+        # Clean up any hanging process
+        if process.poll() is None:
             process.terminate()
-            break
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
-    expected_lines = 6  # 5 progress + 1 completion
-    actual_lines = len([line for line in output_lines if line.strip()])
+        expected_lines = 6  # 5 progress + 1 completion
+        actual_lines = len([line for line in output_lines if line.strip()])
 
-    print(f"Expected {expected_lines} lines, got {actual_lines}")
+        print(f"Expected {expected_lines} lines, got {actual_lines}")
 
-    success = actual_lines >= expected_lines
-    if success:
+        # Use assertions instead of returning booleans
+        assert actual_lines >= expected_lines, (
+            f"Expected at least {expected_lines} lines, got {actual_lines}. "
+            f"Captured output: {output_lines}"
+        )
+
         print("✓ Simple streaming test PASSED")
-    else:
-        print("✗ Simple streaming test FAILED")
+        return True
 
-    return success
+    finally:
+        # Clean up temporary script file
+        try:
+            os.unlink(tiny_script.name)
+        except (OSError, FileNotFoundError):
+            pass
 
 
 if __name__ == "__main__":

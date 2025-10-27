@@ -93,7 +93,7 @@ def test_go_test_coverage():
         # Parse coverage output
         lines = result.stdout.split("\n")
         for line in lines:
-            if "ok:" in line and "coverage:" in line:
+            if "ok" in line and "coverage:" in line:
                 print(f"  {line.strip()}")
 
         return True

@@ -2,82 +2,10 @@ package tui
 
 import (
 	"time"
-
-	"github.com/SimoKiihamaki/autodev/internal/runner"
-	tea "github.com/charmbracelet/bubbletea"
 )
-
-// logBatchMsg represents multiple log lines processed in a batch
-type logBatchMsg struct {
-	lines []runner.Line
-}
-
-// batchLogReader reads multiple lines from the log channel in one operation
-func (m model) readLogsBatch() tea.Cmd {
-	if m.logCh == nil {
-		return nil
-	}
-	ch := m.logCh
-	return func() tea.Msg {
-		var lines []runner.Line
-
-		// Create a timer that can be reused and properly cleaned up
-		timer := time.NewTimer(1 * time.Millisecond)
-		defer timer.Stop()
-
-		// Read up to maxBatchSize lines or until channel is empty
-		for i := 0; i < maxBatchSize; i++ {
-			select {
-			case line, ok := <-ch:
-				if !ok {
-					// Channel closed
-					if len(lines) > 0 {
-						return logBatchMsg{lines: lines}
-					}
-					return nil
-				}
-				lines = append(lines, line)
-
-			case <-timer.C:
-				// Channel is empty, return what we have
-				if len(lines) > 0 {
-					return logBatchMsg{lines: lines}
-				}
-				// No lines available, schedule another read
-				return nil
-			}
-		}
-
-		// Got maxBatchSize lines
-		if len(lines) > 0 {
-			return logBatchMsg{lines: lines}
-		}
-		return nil
-	}
-}
-
-// handleLogBatch processes multiple log lines efficiently
-func (m *model) handleLogBatch(lines []runner.Line) tea.Cmd {
-	if len(lines) == 0 {
-		return nil
-	}
-
-	// Process each line in the batch
-	for _, line := range lines {
-		styled, plain := m.formatLogLine(line)
-		m.handleRunFeedLine(styled, plain)
-	}
-
-	// Schedule another read if we still have a log channel
-	if m.logCh != nil {
-		return m.readLogsBatch()
-	}
-	return nil
-}
 
 // Constants for batch processing
 const (
-	maxBatchSize     = 25   // Maximum lines to process in one batch (reduced from 50 for responsiveness)
 	batchTimeoutMs   = 1    // Timeout in milliseconds to wait for more lines
 	highVolumeRate   = 10.0 // Lines per second considered high volume
 	lowVolumeRate    = 2.0  // Lines per second considered low volume

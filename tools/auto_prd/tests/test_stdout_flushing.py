@@ -212,8 +212,10 @@ def test_subprocess_output():
     print("=== STARTING SUBPROCESS TEST ===", flush=True)
 
     # Test a simple subprocess
-    stdout, stderr, returncode = run_cmd([sys.executable, "-c",
-                                         "for i in range(3): print(f'Subprocess line {i+1}')"])
+    stdout, stderr, returncode = run_cmd(
+        [sys.executable, "-c", "for i in range(3): print(f'Subprocess line {i+1}')"],
+        sanitize_args=False,
+    )
 
     result = CmdResult(stdout, stderr, returncode)
 
@@ -295,15 +297,12 @@ def test_real_time_output_capture():
 
         if not found_all:
             missing = set(expected_patterns) - found_patterns
-            print(f"❌ Missing patterns: {missing}")
-
-            # Show what we got
             lines = capturer.get_output()
-            print(f"Captured {len(lines)} lines total")
-            for line in lines[-10:]:  # Show last 10 lines
-                print(f"  [{line['elapsed']:.2f}s] {line['stream']}: {line['text']}")
-
-            return False
+            tail = "\n".join(
+                f"[{line['elapsed']:.2f}s] {line['stream']}: {line['text']}"
+                for line in lines[-10:]
+            )
+            assert False, f"Missing patterns: {missing}\nLast lines:\n{tail}"
 
         # Analyze timing of output
         lines = capturer.get_output()
@@ -379,14 +378,12 @@ print("RAPID_TEST_DONE", flush=True)
 """
 
     stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", rapid_script], timeout=10
+        [sys.executable, "-c", rapid_script], timeout=10, sanitize_args=False
     )
 
     result = CmdResult(stdout, stderr, returncode)
 
-    if "RAPID_TEST_DONE" not in result.stdout:
-        print("❌ Rapid output test failed")
-        return False
+    assert "RAPID_TEST_DONE" in result.stdout, "Rapid output test failed"
 
     # Test 2: Mixed flush and no-flush
     print("  Test 2: Mixed flush behavior...")
@@ -409,10 +406,7 @@ print("MIXED_TEST_DONE", flush=True)
 
     found, _ = capturer.wait_for_output(["MIXED_TEST_DONE"], timeout=10)
 
-    if not found:
-        print("❌ Mixed flush test failed")
-        process.terminate()
-        return False
+    assert found, "Mixed flush test failed"
 
     process.wait(timeout=5)
 
@@ -427,14 +421,12 @@ print("LARGE_TEST_DONE", flush=True)
 """
 
     stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", large_script], timeout=10
+        [sys.executable, "-c", large_script], timeout=10, sanitize_args=False
     )
 
     result = CmdResult(stdout, stderr, returncode)
 
-    if "LARGE_TEST_DONE" not in result.stdout:
-        print("❌ Large output test failed")
-        return False
+    assert "LARGE_TEST_DONE" in result.stdout, "Large output test failed"
 
     print("✅ All buffering edge case tests passed")
     return True
@@ -472,21 +464,18 @@ except ImportError as e:
         [sys.executable, "-c", test_script],
         cwd=Path(__file__).parent.parent,
         timeout=10,
+        sanitize_args=False,
     )
 
     result = CmdResult(stdout, stderr, returncode)
 
     if "LOGGING_UTILS_TEST_DONE" in result.stdout:
-        print("✅ Logging utils integration test passed")
         return True
-    elif "LOGGING_UTILS_TEST_SKIPPED" in result.stdout:
-        print("ℹ️  Logging utils not available, test skipped")
+    if "LOGGING_UTILS_TEST_SKIPPED" in result.stdout:
         return True
-    else:
-        print("❌ Logging utils integration test failed")
-        print(f"Stdout: {result.stdout}")
-        print(f"Stderr: {result.stderr}")
-        return False
+    assert (
+        False
+    ), f"Logging utils integration test failed\nStdout:\n{result.stdout}\nStderr:\n{result.stderr}"
 
 
 def main():
