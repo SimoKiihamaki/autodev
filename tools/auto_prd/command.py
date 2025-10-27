@@ -44,30 +44,32 @@ CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
 
 
 def find_repo_root(start_path: Optional[Path] = None) -> Path:
-    """Find the repository root by searching for a .git directory.
+    """Find the repository root by searching for a .git entry (dir or file).
 
     Args:
         start_path: Path to start searching from, defaults to the file's location
 
     Returns:
-        Path to the repository root directory
+        Path to the repository root directory. Falls back to Path.cwd() if not found.
 
     Raises:
-        RuntimeError: If .git directory is not found in parent hierarchy
+        RuntimeError: If .git entry is not found in parent hierarchy and fallback fails
     """
     if start_path is None:
         start_path = Path(__file__).resolve()
 
     current = start_path
-    while current != current.parent:
-        if (current / ".git").is_dir():
+    while True:
+        git_entry = current / ".git"
+        # Accept both directories and files (worktrees/submodules have a file that points to the gitdir)
+        if git_entry.exists():
             return current
+        if current == current.parent:
+            break
         current = current.parent
 
-    # If we can't find .git, raise an error as documented
-    raise RuntimeError(
-        "Could not find .git directory in any parent of {}".format(start_path)
-    )
+    # If we can't find .git, fall back to current working directory
+    return Path.cwd()
 
 
 def get_claude_debug_path() -> Path:

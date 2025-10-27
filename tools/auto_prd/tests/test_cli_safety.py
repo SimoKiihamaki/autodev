@@ -59,47 +59,45 @@ class ValidateCommandArgsTests(unittest.TestCase):
 
 class EnsureClaudeDebugDirTests(unittest.TestCase):
     def setUp(self) -> None:
-        self._env_backup = os.environ.copy()
         register_safe_cwd(Path(__file__).parent)
 
     def tearDown(self) -> None:
-        os.environ.clear()
-        os.environ.update(self._env_backup)
+        pass
 
     def test_converts_directory_env_value_into_log_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = tmpdir
-            path = ensure_claude_debug_dir()
-            expected = (Path(__file__).resolve().parents[3] / ".claude-debug").resolve()
-            self.assertTrue(
-                path.is_file(), msg="expected Claude debug path to become a file"
-            )
-            self.assertEqual(path.resolve(), expected)
-            self.assertEqual(
-                Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
-            )
+            with mock.patch.dict(os.environ, {"CLAUDE_CODE_DEBUG_LOGS_DIR": tmpdir}):
+                path = ensure_claude_debug_dir()
+                expected = (
+                    Path(__file__).resolve().parents[3] / ".claude-debug"
+                ).resolve()
+                self.assertTrue(
+                    path.is_file(), msg="expected Claude debug path to become a file"
+                )
+                self.assertEqual(path.resolve(), expected)
+                self.assertEqual(
+                    Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
+                )
 
     def test_creates_repo_local_file_when_variable_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = Path.cwd()
             try:
                 os.chdir(tmpdir)
-                os.environ.pop("CLAUDE_CODE_DEBUG_LOGS_DIR", None)
-                path = ensure_claude_debug_dir()
-                self.assertTrue(path.exists())
-                expected = (
-                    Path(__file__).resolve().parents[3] / ".claude-debug"
-                ).resolve()
-                self.assertEqual(path.resolve(), expected)
+                with mock.patch.dict(os.environ, clear=True):
+                    path = ensure_claude_debug_dir()
+                    self.assertTrue(path.exists())
+                    expected = (
+                        Path(__file__).resolve().parents[3] / ".claude-debug"
+                    ).resolve()
+                    self.assertEqual(path.resolve(), expected)
             finally:
                 os.chdir(original_cwd)
 
 
 class RequireCmdClaudeTests(unittest.TestCase):
     def test_require_cmd_invokes_debug_dir_setup(self) -> None:
-        env_backup = os.environ.copy()
-        try:
-            os.environ.pop("CLAUDE_CODE_DEBUG_LOGS_DIR", None)
+        with mock.patch.dict(os.environ, clear=True):
             with mock.patch(
                 "tools.auto_prd.command_checks.shutil.which",
                 return_value="/usr/bin/claude",
@@ -114,9 +112,6 @@ class RequireCmdClaudeTests(unittest.TestCase):
             self.assertEqual(
                 Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
             )
-        finally:
-            os.environ.clear()
-            os.environ.update(env_backup)
 
 
 class RunCmdTests(unittest.TestCase):
