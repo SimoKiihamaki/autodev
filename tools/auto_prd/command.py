@@ -149,8 +149,8 @@ def validate_command_args(cmd: Sequence[str]) -> None:
     Note:
         Validates against UNSAFE_ARG_CHARS, which contains shell metacharacters:
         {'|', ';', '>', '<', '`'} that could enable shell injection.
-        Backticks ('`') are technically included in UNSAFE_ARG_CHARS, but are explicitly
-        permitted by the validation logic because subprocess is always run with shell=False,
+        Backticks ('`') remain in UNSAFE_ARG_CHARS but are treated as a special case that
+        is permitted by the validation logic because subprocess is always run with shell=False,
         so backticks are not interpreted by the shell and do not pose a risk in this context.
     """
     if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
@@ -289,7 +289,7 @@ def ensure_claude_debug_dir() -> Path:
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
     temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
-    # Use dict.fromkeys to maintain insertion order while preventing duplicates
+    # Using a dict to maintain insertion order while preventing duplicates
     candidate_dict: dict[Path, None] = {}
 
     if repo_root_candidate is not None:
