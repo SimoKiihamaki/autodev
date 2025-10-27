@@ -255,6 +255,11 @@ func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
 }
 
+// startsWithFourDigits checks if the string starts with exactly four digits
+func startsWithFourDigits(s string) bool {
+	return len(s) >= 4 && isDigit(s[0]) && isDigit(s[1]) && isDigit(s[2]) && isDigit(s[3])
+}
+
 func trimAutomationLogPrefix(text string) string {
 	idx := strings.Index(text, ": ")
 	if idx == -1 {
@@ -264,8 +269,7 @@ func trimAutomationLogPrefix(text string) string {
 	prefix := strings.TrimSpace(text[:idx]) + ":"
 
 	// Fast heuristic: prefix starts with 4 digits and contains a log level
-	if len(prefix) >= 4 && isDigit(prefix[0]) && isDigit(prefix[1]) && isDigit(prefix[2]) && isDigit(prefix[3]) &&
-		containsLogLevel(prefix) {
+	if startsWithFourDigits(prefix) && containsLogLevel(prefix) {
 
 		// Use compiled regex for exact match only when heuristic passes
 		if rePythonLogPrefix.MatchString(prefix) {
