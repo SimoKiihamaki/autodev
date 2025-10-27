@@ -272,13 +272,17 @@ def run_cmd(
     timeout: Optional[int] = None,
     extra_env: Optional[dict] = None,
     stdin: Optional[str] = None,
+    sanitize_args: bool = True,
 ) -> tuple[str, str, int]:
-    # Automatically sanitize all command arguments via scrub_cli_text.
+    # Automatically sanitize all command arguments via scrub_cli_text when sanitize_args=True.
     # This replaces backticks, quotes, and other shell-sensitive characters to prevent shell injection.
+    # Set sanitize_args=False to preserve special characters that may be intentional (e.g., JSON payloads, regex patterns).
     # Note: The original vs. sanitized diff is logged at debug level to aid debugging.
-    sanitized_cmd: list[str] = [scrub_cli_text(arg) for arg in cmd]
+    sanitized_cmd: list[str] = (
+        [scrub_cli_text(arg) for arg in cmd] if sanitize_args else list(cmd)
+    )
 
-    if list(cmd) != sanitized_cmd:
+    if sanitize_args and list(cmd) != sanitized_cmd:
         # Log the diff between original and sanitized arguments for debugging.
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
@@ -290,6 +294,8 @@ def run_cmd(
                 "Sanitized command arguments before validation: %s", sanitized_cmd
             )
             logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
+    elif not sanitize_args:
+        logger.debug("Argument sanitization disabled (sanitize_args=False)")
 
     validate_command_args(sanitized_cmd)
     validate_cwd(cwd)

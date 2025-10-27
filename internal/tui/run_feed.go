@@ -242,22 +242,30 @@ func (m *model) handleStatusPhrases(text string) {
 	}
 }
 
+// Helper to check if prefix contains a log level
+func containsLogLevel(prefix string) bool {
+	return strings.Contains(prefix, "INFO") ||
+		strings.Contains(prefix, "WARNING") ||
+		strings.Contains(prefix, "ERROR") ||
+		strings.Contains(prefix, "DEBUG")
+}
+
+// Helper to check if a byte is a digit
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
 func trimAutomationLogPrefix(text string) string {
 	idx := strings.Index(text, ": ")
 	if idx == -1 {
 		return text
 	}
 
-	// Helper to check if a byte is a digit
-	isDigit := func(b byte) bool {
-		return b >= '0' && b <= '9'
-	}
-
 	prefix := strings.TrimSpace(text[:idx]) + ":"
 
 	// Fast heuristic: prefix starts with 4 digits and contains a log level
 	if len(prefix) >= 4 && isDigit(prefix[0]) && isDigit(prefix[1]) && isDigit(prefix[2]) && isDigit(prefix[3]) &&
-		(strings.Contains(prefix, "INFO") || strings.Contains(prefix, "WARNING") || strings.Contains(prefix, "ERROR") || strings.Contains(prefix, "DEBUG")) {
+		containsLogLevel(prefix) {
 
 		// Use compiled regex for exact match only when heuristic passes
 		if rePythonLogPrefix.MatchString(prefix) {
