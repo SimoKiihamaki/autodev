@@ -134,7 +134,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		err = opts.Run(ctx)
 	}(ctx, options, ch, m.runResult)
 
-	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogs(), m.waitRunResult())
+	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogsBatch(), m.waitRunResult())
 }
 
 func (m *model) preflightChecks() error {

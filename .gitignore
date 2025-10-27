@@ -8,3 +8,7 @@ build/
 .DS_Store
 .idea/
 .vscode/
+.claude-debug
+latest
+__pycache__/
+*.pyc

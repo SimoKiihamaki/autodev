@@ -364,6 +364,49 @@ def run_cmd(
     return stdout_text, stderr_text, proc.returncode
 
 
+def safe_popen(
+    cmd: Sequence[str], *, text=True, bufsize=1, extra_env: Optional[dict] = None
+) -> subprocess.Popen[str]:
+    """Safe wrapper for subprocess.Popen using validation from command.py.
+
+    Args:
+        cmd: Command sequence to execute
+        text: Whether to open streams in text mode
+        bufsize: Buffer size for streams (1= line buffered)
+        extra_env: Additional environment variables
+
+    Returns:
+        subprocess.Popen object with validated environment and security checks
+    """
+    validate_command_args(cmd)
+    validate_cwd(None)
+    validate_extra_env(extra_env)
+
+    env = env_with_zsh(extra_env or {})
+    # Ensure unbuffered child Python and resolvable project imports
+    repo_root = str(Path(__file__).resolve().parents[2])
+    env["PYTHONUNBUFFERED"] = "1"
+    # Note: Appending repo_root to PYTHONPATH allows project modules to be imported
+    # without shadowing system packages.
+    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
+        os.pathsep
+    )
+    env["AUTO_PRD_ROOT"] = repo_root
+
+    exe = shutil.which(cmd[0])
+    if not exe:
+        raise FileNotFoundError(f"Command not found: {cmd[0]}")
+
+    return subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=text,
+        bufsize=bufsize,
+        env=env,
+    )
+
+
 def run_sh(
     script: str,
     *,

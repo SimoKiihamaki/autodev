@@ -5,9 +5,23 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tools.auto_prd.command import CLAUDE_DEBUG_LOG_NAME, ensure_claude_debug_dir, run_cmd, validate_command_args
-from tools.auto_prd.utils import scrub_cli_text
-from tools.auto_prd.pr_flow import open_or_get_pr
+from .test_helpers import safe_import
+
+CLAUDE_DEBUG_LOG_NAME = safe_import(
+    "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
+)
+ensure_claude_debug_dir = safe_import(
+    "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
+)
+run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
+validate_command_args = safe_import(
+    "tools.auto_prd.command", "..command", "validate_command_args"
+)
+register_safe_cwd = safe_import(
+    "tools.auto_prd.command", "..command", "register_safe_cwd"
+)
+scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
+open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
 
 
 class ScrubCliTextTests(unittest.TestCase):
@@ -24,7 +38,9 @@ class ScrubCliTextTests(unittest.TestCase):
 class ValidateCommandArgsTests(unittest.TestCase):
     def test_rejects_unsafe_arguments(self) -> None:
         with self.assertRaises(ValueError):
-            validate_command_args(["gh", "pr", "create", "--body", "contains `backticks`"])
+            validate_command_args(
+                ["gh", "pr", "create", "--body", "contains `backticks`"]
+            )
 
     def test_accepts_scrubbed_arguments(self) -> None:
         safe_body = scrub_cli_text("contains `backticks`")
@@ -35,6 +51,7 @@ class ValidateCommandArgsTests(unittest.TestCase):
 class EnsureClaudeDebugDirTests(unittest.TestCase):
     def setUp(self) -> None:
         self._env_backup = os.environ.copy()
+        register_safe_cwd(Path(__file__).parent)
 
     def tearDown(self) -> None:
         os.environ.clear()
@@ -44,7 +61,9 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = tmpdir
             path = ensure_claude_debug_dir()
-            self.assertTrue(path.is_file(), msg="expected Claude debug path to become a file")
+            self.assertTrue(
+                path.is_file(), msg="expected Claude debug path to become a file"
+            )
             self.assertTrue(path.name.endswith(CLAUDE_DEBUG_LOG_NAME))
             self.assertEqual(Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]), path)
 
@@ -63,20 +82,29 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
 
 class RequireCmdClaudeTests(unittest.TestCase):
     def test_require_cmd_invokes_debug_dir_setup(self) -> None:
-        with mock.patch("tools.auto_prd.command_checks.shutil.which", return_value="/usr/bin/claude"), mock.patch(
+        with mock.patch(
+            "tools.auto_prd.command_checks.shutil.which", return_value="/usr/bin/claude"
+        ), mock.patch(
             "tools.auto_prd.command_checks.run_cmd", return_value=("", "", 0)
-        ), mock.patch("tools.auto_prd.command_checks.ensure_claude_debug_dir") as ensure_mock:
-            from tools.auto_prd.command_checks import require_cmd
+        ), mock.patch(
+            "tools.auto_prd.command_checks.ensure_claude_debug_dir"
+        ) as ensure_mock:
+            from ..command_checks import require_cmd
 
             require_cmd("claude")
             ensure_mock.assert_called_once()
 
 
 class RunCmdTests(unittest.TestCase):
+    def setUp(self):
+        register_safe_cwd(Path(__file__).parent)
+
     @mock.patch("tools.auto_prd.command.subprocess.run")
     @mock.patch("tools.auto_prd.command.env_with_zsh", return_value={})
     @mock.patch("tools.auto_prd.command.shutil.which", return_value="/usr/bin/gh")
-    def test_auto_sanitizes_arguments(self, mock_which, _mock_env_with_zsh, mock_run) -> None:
+    def test_auto_sanitizes_arguments(
+        self, _mock_which, _mock_env_with_zsh, mock_run
+    ) -> None:
         mock_run.return_value = subprocess.CompletedProcess(
             args=["gh"],
             returncode=0,
@@ -84,7 +112,9 @@ class RunCmdTests(unittest.TestCase):
             stderr=b"",
         )
 
-        stdout, stderr, code = run_cmd(["gh", "pr", "create", "--body", "contains `code`"])
+        stdout, stderr, code = run_cmd(
+            ["gh", "pr", "create", "--body", "contains `code`"]
+        )
 
         self.assertEqual(stdout, "")
         self.assertEqual(stderr, "")
@@ -96,6 +126,9 @@ class RunCmdTests(unittest.TestCase):
 
 
 class OpenOrGetPrTests(unittest.TestCase):
+    def setUp(self):
+        register_safe_cwd(Path(__file__).parent)
+
     def test_pr_arguments_passed_to_gh_are_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
@@ -124,9 +157,14 @@ class OpenOrGetPrTests(unittest.TestCase):
                     return None
                 return 101
 
-            with mock.patch("tools.auto_prd.pr_flow.run_cmd", side_effect=fake_run_cmd), mock.patch(
-                "tools.auto_prd.pr_flow.get_pr_number_for_head", side_effect=fake_get_pr_number
-            ), mock.patch("tools.auto_prd.pr_flow.git_push_branch"):
+            with mock.patch(
+                "tools.auto_prd.pr_flow.run_cmd", side_effect=fake_run_cmd
+            ), mock.patch(
+                "tools.auto_prd.pr_flow.get_pr_number_for_head",
+                side_effect=fake_get_pr_number,
+            ), mock.patch(
+                "tools.auto_prd.pr_flow.git_push_branch"
+            ):
                 pr_number = open_or_get_pr(
                     new_branch="feature/test",
                     base_branch="main",

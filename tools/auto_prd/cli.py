@@ -8,7 +8,12 @@ from .app import run
 from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
 from .executor import AutoPrdError
 from .policy import EXECUTOR_CHOICES
-from .logging_utils import CURRENT_LOG_PATH, ORIGINAL_PRINT, logger
+from .logging_utils import (
+    CURRENT_LOG_PATH,
+    ORIGINAL_PRINT,
+    logger,
+    initialize_output_buffering,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,9 +27,14 @@ def build_parser() -> argparse.ArgumentParser:
         if intval < 0:
             raise argparse.ArgumentTypeError("must be >= 0")
         return intval
+
     parser.add_argument("--prd", required=True, help="Path to PRD/task .md file")
-    parser.add_argument("--repo", default=None, help="Path to repo root (default: current git root)")
-    parser.add_argument("--repo-slug", default=None, help="owner/repo; default parsed from git remote")
+    parser.add_argument(
+        "--repo", default=None, help="Path to repo root (default: current git root)"
+    )
+    parser.add_argument(
+        "--repo-slug", default=None, help="owner/repo; default parsed from git remote"
+    )
     parser.add_argument(
         "--log-file",
         default=None,
@@ -37,10 +47,21 @@ def build_parser() -> argparse.ArgumentParser:
         choices=ACCEPTED_LOG_LEVELS,
         help="Log level for command diagnostics (default: INFO)",
     )
-    parser.add_argument("--base", default=None, help="Base branch (default: repository default branch)")
-    parser.add_argument("--branch", default=None, help="Feature branch (default: from PRD filename)")
-    parser.add_argument("--codex-model", default="gpt-5-codex", help="Codex model to use")
-    parser.add_argument("--wait-minutes", type=non_negative, default=0, help="Initial wait for PR bot reviews")
+    parser.add_argument(
+        "--base", default=None, help="Base branch (default: repository default branch)"
+    )
+    parser.add_argument(
+        "--branch", default=None, help="Feature branch (default: from PRD filename)"
+    )
+    parser.add_argument(
+        "--codex-model", default="gpt-5-codex", help="Codex model to use"
+    )
+    parser.add_argument(
+        "--wait-minutes",
+        type=non_negative,
+        default=0,
+        help="Initial wait for PR bot reviews",
+    )
     parser.add_argument(
         "--review-poll-seconds",
         type=non_negative,
@@ -74,7 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"Allow Codex to run with unsafe capabilities (requires {SAFE_ENV_VAR}=1 and CI=1).",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Do not execute Codex commands; useful for tests.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not execute Codex commands; useful for tests.",
+    )
     parser.add_argument(
         "--executor-policy",
         choices=EXECUTOR_CHOICES,
@@ -90,6 +115,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # Initialize output buffering fixes BEFORE any significant output
+    initialize_output_buffering()
+
     parser = build_parser()
     args = parser.parse_args()
     try:
@@ -103,10 +131,14 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception as exc:  # pragma: no cover - capture unexpected failures for operators
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - capture unexpected failures for operators
         logger.exception("Fatal error during automation run")
         if CURRENT_LOG_PATH:
-            ORIGINAL_PRINT(f"Fatal error: {exc}. See detailed logs at {CURRENT_LOG_PATH}")
+            ORIGINAL_PRINT(
+                f"Fatal error: {exc}. See detailed logs at {CURRENT_LOG_PATH}"
+            )
         else:
             ORIGINAL_PRINT(f"Fatal error: {exc}")
         raise

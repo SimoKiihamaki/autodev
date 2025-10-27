@@ -35,7 +35,9 @@ def resolve_log_level(level_name: str) -> int:
     if isinstance(level_value, int):
         return level_value
     valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
-    raise ValueError(f"Invalid log level: {level_name}. Valid levels are: {valid_levels}")
+    raise ValueError(
+        f"Invalid log level: {level_name}. Valid levels are: {valid_levels}"
+    )
 
 
 def setup_file_logging(log_path: Path, level_name: str) -> None:
@@ -56,12 +58,18 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
             paths_to_remove.add(str(CURRENT_LOG_PATH))
         for handler in list(root_logger.handlers):
             base_filename = getattr(handler, "baseFilename", None)
-            if base_filename and base_filename in paths_to_remove and isinstance(handler, logging.FileHandler):
+            if (
+                base_filename
+                and base_filename in paths_to_remove
+                and isinstance(handler, logging.FileHandler)
+            ):
                 root_logger.removeHandler(handler)
                 try:
                     handler.close()
                 except Exception:  # pragma: no cover - defensive close
-                    logger.debug("Failed to close previous log handler for %s", base_filename)
+                    logger.debug(
+                        "Failed to close previous log handler for %s", base_filename
+                    )
 
         root_logger.setLevel(numeric_level)
 
@@ -91,6 +99,43 @@ def format_print_message(*args, **kwargs) -> str:
     return f"{message}{end}"
 
 
+def ensure_line_buffering() -> None:
+    """Ensure stdout/stderr are line-buffered when piped to prevent stalls."""
+    import os
+
+    # Set PYTHONUNBUFFERED early for maximum effect
+    os.environ["PYTHONUNBUFFERED"] = "1"
+
+    # Check if stdout is connected to a terminal
+    if not sys.stdout.isatty():
+        # stdout is piped, ensure line buffering
+        try:
+            # Reopen stdout with line buffering (Python 3.7+)
+            sys.stdout.reconfigure(line_buffering=True)
+        except (AttributeError, io.UnsupportedOperation):
+            # Fallback for older Python versions: already set PYTHONUNBUFFERED above
+            # Note: This project requires Python 3.9+, so this path should not be hit
+            pass
+
+    if not sys.stderr.isatty():
+        # stderr is piped, ensure line buffering
+        try:
+            sys.stderr.reconfigure(line_buffering=True)
+        except (AttributeError, io.UnsupportedOperation):
+            # Fallback for older Python versions: already set PYTHONUNBUFFERED above
+            # Note: This project requires Python 3.9+, so this path should not be hit
+            pass
+
+
+def initialize_output_buffering() -> None:
+    """
+    Initialize output buffering fixes as early as possible.
+    This function should be called at application startup to prevent
+    any stdout buffering issues when the process is piped.
+    """
+    ensure_line_buffering()
+
+
 def install_print_logger() -> None:
     global PRINT_HOOK_INSTALLED
     if PRINT_HOOK_INSTALLED:
@@ -99,6 +144,9 @@ def install_print_logger() -> None:
     with PRINT_HOOK_LOCK:
         if PRINT_HOOK_INSTALLED:
             return
+
+        # Ensure line buffering first
+        ensure_line_buffering()
 
         print_logger = logging.getLogger(PRINT_LOGGER_NAME)
         print_logger.setLevel(logging.INFO)
@@ -111,13 +159,31 @@ def install_print_logger() -> None:
                 try:
                     is_stderr = stream.fileno() == sys.stderr.fileno()
                 except (AttributeError, ValueError, io.UnsupportedOperation):
-                    is_stderr = stream is sys.stderr or stream is getattr(sys, "__stderr__", None)
+                    is_stderr = stream is sys.stderr or stream is getattr(
+                        sys, "__stderr__", None
+                    )
                 target_level = logging.WARNING if is_stderr else logging.INFO
                 log_message = message[:-1] if message.endswith("\n") else message
                 if log_message:
                     # Logging already appends its own newline, so trim the print newline to avoid doubles.
                     print_logger.log(target_level, log_message)
+
+            # Force flush=True for all output to prevent buffering stalls.
+            # Python switches to block buffering for stdout when output is piped (as opposed to line buffering for terminals),
+            # so setting flush=True ensures immediate output regardless of buffering mode.
+            kwargs["flush"] = True
+
+            # Call original print
             ORIGINAL_PRINT(*args, **kwargs)
+
+            # Additional explicit flush of the target stream for maximum reliability
+            try:
+                stream = kwargs.get("file") or sys.stdout
+                if hasattr(stream, "flush"):
+                    stream.flush()
+            except Exception as exc:
+                # Log flush errors at debug level for troubleshooting
+                logger.debug("Failed to flush stream: %s", exc)
 
         builtins.print = tee_print
         PRINT_HOOK_INSTALLED = True
@@ -142,3 +208,9 @@ def decode_output(data: bytes) -> str:
     if not data:
         return ""
     return data.decode("utf-8", errors="replace")
+
+
+def print_flush(*args, **kwargs) -> None:
+    """Print with explicit flushing to ensure immediate output when piped."""
+    kwargs["flush"] = True
+    ORIGINAL_PRINT(*args, **kwargs)

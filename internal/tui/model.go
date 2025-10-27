@@ -117,6 +117,9 @@ type model struct {
 	runIterTotal      int
 	runIterLabel      string
 
+	// Adaptive flush controller for optimized batch processing
+	flushController *adaptiveFlushController
+
 	running    bool
 	cancel     context.CancelFunc
 	logCh      chan runner.Line
@@ -142,6 +145,7 @@ func New() model {
 	}
 
 	m := model{tab: tabRun, cfg: cfg}
+	m.flushController = newAdaptiveFlushController()
 	m.normalizeLogLevel()
 
 	delegate := list.NewDefaultDelegate()

@@ -26,7 +26,9 @@ CODEX_READONLY_ERROR_MSG = (
     "Confirm your sandbox/approval settings in ~/.codex/config.toml or via `codex --help` so the agent has write access."
 )
 
-ZSH_REQUIRED_ERROR = "zsh binary not found on PATH; required for shell environment policy."
+ZSH_REQUIRED_ERROR = (
+    "zsh binary not found on PATH; required for shell environment policy."
+)
 ALLOW_NO_ZSH_ENV = "AUTO_PRD_ALLOW_NO_ZSH"
 
 COMMAND_ALLOWLIST = {

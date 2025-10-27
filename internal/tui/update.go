@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -65,6 +66,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleRunFeedLine(display, plain)
 		return m, m.readLogs()
 
+	case logBatchMsg:
+		newModel, cmd := m.handleLogBatch(typed.lines)
+		return newModel, cmd
+
 	case runErrMsg:
 		m.running = false
 		m.errMsg = typed.err.Error()
@@ -118,6 +123,50 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 	}
 	m.prompt.SetWidth(promptW)
 	return m
+}
+
+func (m *model) handleLogBatch(lines []runner.Line) (tea.Model, tea.Cmd) {
+	if len(lines) == 0 {
+		return m, nil
+	}
+
+	// Prepare batch arrays for run feed processing
+	displayLines := make([]string, 0, len(lines))
+	rawLines := make([]string, 0, len(lines))
+
+	// Process each line in the batch
+	for _, line := range lines {
+		display, plain := m.formatLogLine(line)
+		m.persistLogLine(line)
+		m.logBuf = append(m.logBuf, display)
+		if len(m.logBuf) > maxLogLines {
+			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
+			m.logDirtyLines = logFlushStep
+		}
+		m.logDirtyLines++
+
+		// Collect lines for batch processing
+		displayLines = append(displayLines, display)
+		rawLines = append(rawLines, plain)
+	}
+
+	// Process run feed lines as a batch using adaptive flush logic
+	m.handleRunFeedLineBatch(displayLines, rawLines)
+
+	// Flush logs using adaptive controller
+	wasEmpty := len(m.logBuf) == len(lines)
+	trimmed := len(m.logBuf) > maxLogLines
+	if m.flushController.shouldFlush(m.logDirtyLines, len(m.logBuf), wasEmpty, trimmed) {
+		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
+		m.logDirtyLines = 0
+		m.flushController.recordFlush()
+	}
+
+	// Schedule another batch read if we still have a log channel
+	if m.logCh != nil {
+		return m, m.readLogsBatch()
+	}
+	return m, nil
 }
 
 func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
