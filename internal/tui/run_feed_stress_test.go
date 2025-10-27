@@ -311,6 +311,7 @@ func TestRunFeedBurstHandling(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Simulate a rapid burst that exceeds normal flush thresholds

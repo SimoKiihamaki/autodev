@@ -233,7 +233,13 @@ def test_subprocess_output():
 
         print("=== SUBPROCESS TEST COMPLETED ===", flush=True)
     finally:
-        safe_cleanup(tmp_script_path, "temporary script")
+        try:
+            import os
+            os.unlink(tmp_script_path)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"Warning: Failed to clean up temporary script {tmp_script_path}: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     import subprocess

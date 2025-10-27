@@ -15,7 +15,7 @@ func TestBatchLogReader(t *testing.T) {
 
 	// Create a model with a log channel
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh}
+	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
 
 	// Create batch reader command
 	cmd := m.readLogsBatch()
@@ -67,7 +67,7 @@ func TestBatchLogReaderEmptyChannel(t *testing.T) {
 
 	// Create a model with an empty log channel
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh}
+	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
 
 	// Create batch reader command
 	cmd := m.readLogsBatch()
@@ -88,7 +88,7 @@ func TestBatchLogReaderChannelClosure(t *testing.T) {
 
 	// Create a model with a log channel
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh}
+	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
 
 	// Send some test lines before closing
 	testLines := []runner.Line{
@@ -150,7 +150,7 @@ func TestBatchLogReaderPartialBatch(t *testing.T) {
 
 	// Create a model with a log channel
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh}
+	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
 
 	// Send fewer lines than maxBatchSize
 	testLines := []runner.Line{
@@ -204,6 +204,7 @@ func TestHandleLogBatch(t *testing.T) {
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
 		logCh:             logCh,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Create test lines
@@ -311,6 +312,7 @@ func TestBatchEnabledModel(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Create batch-enabled model
@@ -379,6 +381,7 @@ func TestBatchProcessingUnderLoad(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 	bm := newBatchEnabledModel(baseModel)
 

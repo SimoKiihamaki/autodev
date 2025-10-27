@@ -71,17 +71,14 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 	}
 	m.runFeedDirtyLines++
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
-	flush := wasEmpty || trimmed
-	if !flush {
-		if shouldFollow {
-			flush = m.runFeedDirtyLines >= feedFollowFlushStep
-		} else {
-			flush = m.runFeedDirtyLines >= feedFlushStep
-		}
-	}
+
+	// Use adaptive flush controller to determine when to flush
+	flush := m.flushController.shouldFlush(m.runFeedDirtyLines, len(m.runFeedBuf), wasEmpty, trimmed)
+
 	if flush {
 		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
 		m.runFeedDirtyLines = 0
+		m.flushController.recordFlush()
 		if shouldFollow {
 			m.runFeed.GotoBottom()
 			m.runFeedAutoFollow = true

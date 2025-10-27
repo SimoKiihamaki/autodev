@@ -130,6 +130,10 @@ func (m *model) handleLogBatch(lines []runner.Line) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Prepare batch arrays for run feed processing
+	displayLines := make([]string, 0, len(lines))
+	rawLines := make([]string, 0, len(lines))
+
 	// Process each line in the batch
 	for _, line := range lines {
 		display, plain := m.formatLogLine(line)
@@ -140,13 +144,22 @@ func (m *model) handleLogBatch(lines []runner.Line) (tea.Model, tea.Cmd) {
 			m.logDirtyLines = logFlushStep
 		}
 		m.logDirtyLines++
-		m.handleRunFeedLine(display, plain)
+
+		// Collect lines for batch processing
+		displayLines = append(displayLines, display)
+		rawLines = append(rawLines, plain)
 	}
 
-	// Flush logs if needed
-	if m.logDirtyLines >= logFlushStep {
+	// Process run feed lines as a batch using adaptive flush logic
+	m.handleRunFeedLineBatch(displayLines, rawLines)
+
+	// Flush logs using adaptive controller
+	wasEmpty := len(m.logBuf) == len(lines)
+	trimmed := len(m.logBuf) > maxLogLines
+	if m.flushController.shouldFlush(m.logDirtyLines, len(m.logBuf), wasEmpty, trimmed) {
 		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
 		m.logDirtyLines = 0
+		m.flushController.recordFlush()
 	}
 
 	// Schedule another batch read if we still have a log channel

@@ -4,6 +4,22 @@ import (
 	"time"
 )
 
+// max returns the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // Constants for batch processing
 const (
 	minAdaptiveFlushStep = 2    // Minimum flush threshold for high-volume scenarios
@@ -105,6 +121,31 @@ func newBatchEnabledModel(baseModel model) *batchEnabledModel {
 		model:           baseModel,
 		diagnostics:     make([]feedDiagnostic, 0, diagnosticCount),
 		flushController: newAdaptiveFlushController(),
+	}
+}
+
+// handleRunFeedLineBatch processes a batch of lines with adaptive flush control
+func (m *model) handleRunFeedLineBatch(displayLines, rawLines []string) {
+	if len(displayLines) == 0 {
+		return
+	}
+
+	// Update output rate sample for adaptive flush control
+	m.flushController.updateSample(len(displayLines))
+
+	for i, displayLine := range displayLines {
+		rawLine := ""
+		if i < len(rawLines) {
+			rawLine = rawLines[i]
+		}
+
+		// Use the original handleRunFeedLine logic
+		m.handleRunFeedLine(displayLine, rawLine)
+	}
+
+	// Record flush with adaptive controller if flush just occurred
+	if m.runFeedDirtyLines == 0 { // Flush just occurred
+		m.flushController.recordFlush()
 	}
 }
 

@@ -139,6 +139,7 @@ func TestHandleRunFeedLine_LongStreamingSession(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Simulate a long streaming session with more lines than feedBufCap
@@ -192,6 +193,7 @@ func TestHandleRunFeedLine_FlushBoundaries(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	line := fLogLineInfo("First line")
@@ -231,6 +233,7 @@ func TestHandleRunFeedLine_EmptyBufferFirstFlush(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// First line should trigger immediate flush (wasEmpty = true)
@@ -261,6 +264,7 @@ func TestHandleRunFeedLine_TrimmingFlush(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Fill buffer to capacity to trigger trimming
@@ -299,6 +303,7 @@ func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
+		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Add enough lines to trigger a flush
