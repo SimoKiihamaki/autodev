@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional, Tuple
 
 from .constants import (
+    CLI_ARG_REPLACEMENTS,
     CHECKBOX_ANY_RE,
     CHECKBOX_UNCHECKED_RE,
     CODEX_READONLY_ERROR_MSG,
@@ -20,15 +21,6 @@ from .constants import (
     UNSAFE_ARG_CHARS,
 )
 from .logging_utils import decode_output, logger
-
-
-CLI_ARG_REPLACEMENTS = {
-    "`": "'",
-    "|": "/",
-    ";": ",",
-    "<": "(",
-    ">": ")",
-}
 
 
 def slugify(value: str) -> str:

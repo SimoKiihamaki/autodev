@@ -127,6 +127,8 @@ Prepare and push a PR for this branch:
             except subprocess.CalledProcessError as exc:
                 _raise_push_error(exc, new_branch)
         try:
+            safe_title = scrub_cli_text(pr_title)
+            safe_body = scrub_cli_text(pr_body)
             out, _, _ = run_cmd(
                 [
                     "gh",
@@ -137,9 +139,9 @@ Prepare and push a PR for this branch:
                     "--head",
                     new_branch,
                     "--title",
-                    pr_title,
+                    safe_title,
                     "--body",
-                    pr_body,
+                    safe_body,
                     "--json",
                     "number",
                     "--jq",

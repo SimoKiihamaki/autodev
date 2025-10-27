@@ -176,6 +176,9 @@ def ensure_claude_debug_dir() -> Path:
 
     def normalize(path_like: Path | str) -> Path:
         raw = os.fspath(path_like)
+        raw = raw.strip()
+        if not raw:
+            raise ValueError("Empty CLAUDE_CODE_DEBUG_LOGS_DIR path")
         # Expand environment variables after coercing to string so values like $TMPDIR resolve correctly.
         # Note: expandvars must run before expanduser; the latter leaves placeholders such as
         # `~${USER}/foo` untouched inside the user segment, so expanding variables first
@@ -221,6 +224,8 @@ def ensure_claude_debug_dir() -> Path:
     candidates.extend([repo_candidate, temp_candidate])
 
     for candidate in candidates:
+        if candidate.is_dir():
+            candidate = candidate / CLAUDE_DEBUG_LOG_NAME
         parent = candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)

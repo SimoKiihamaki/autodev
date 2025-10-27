@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 
-from .command import run_cmd
+from .command import ensure_claude_debug_dir, run_cmd
 from .constants import COMMAND_VERIFICATION_TIMEOUT_SECONDS
 from .logging_utils import logger
 
@@ -17,6 +17,9 @@ def require_cmd(name: str) -> None:
     cmd_path = shutil.which(name)
     if cmd_path is None:
         raise RuntimeError(MISSING_CMD_ERR % name) from None
+
+    if name == "claude":
+        ensure_claude_debug_dir()
 
     version_checks = [[name, "--version"], [name, "version"], [name, "--help"]]
 

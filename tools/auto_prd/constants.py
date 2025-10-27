@@ -39,6 +39,13 @@ COMMAND_ALLOWLIST = {
 }
 ZSH_PATH: str | None = None
 UNSAFE_ARG_CHARS = set("|;><`")
+CLI_ARG_REPLACEMENTS = {
+    "`": "'",
+    "|": "/",
+    ";": ",",
+    "<": "(",
+    ">": ")",
+}
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
 SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
