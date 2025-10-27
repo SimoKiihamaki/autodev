@@ -32,20 +32,34 @@ def safe_import(relative_module_path, fallback_module_path, item_names=None):
             '..command',
             ['run_cmd', 'safe_popen']
         )
+
+        # Import constants pattern (as seen in review comments)
+        CLI_ARG_REPLACEMENTS = safe_import("tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS")
+        UNSAFE_ARG_CHARS = safe_import("tools.auto_prd.constants", "..constants", "UNSAFE_ARG_CHARS")
     """
     try:
         if item_names:
-            # Import specific items
-            module = __import__(relative_module_path, fromlist=item_names)
-            return tuple(getattr(module, name) for name in item_names)
+            if isinstance(item_names, str):
+                # Single item import - return the item directly
+                module = __import__(relative_module_path, fromlist=[item_names])
+                return getattr(module, item_names)
+            else:
+                # Multiple items import - return tuple
+                module = __import__(relative_module_path, fromlist=item_names)
+                return tuple(getattr(module, name) for name in item_names)
         else:
             # Import entire module
             return __import__(relative_module_path)
     except ImportError:
         if item_names:
-            # Import specific items from fallback
-            module = __import__(fallback_module_path, fromlist=item_names)
-            return tuple(getattr(module, name) for name in item_names)
+            if isinstance(item_names, str):
+                # Single item import from fallback - return the item directly
+                module = __import__(fallback_module_path, fromlist=[item_names])
+                return getattr(module, item_names)
+            else:
+                # Multiple items import from fallback - return tuple
+                module = __import__(fallback_module_path, fromlist=item_names)
+                return tuple(getattr(module, name) for name in item_names)
         else:
             # Import entire fallback module
             return __import__(fallback_module_path)
@@ -69,6 +83,23 @@ def try_send_with_timeout(queue_func, item, timeout=0.1):
     except Exception:
         # Handle queue full or timeout
         return False
+
+
+def min_int(a, b):
+    """
+    Return the minimum of two integers.
+
+    This helper function exists to avoid import issues with the built-in min function
+    in certain test contexts where relative imports may be problematic.
+
+    Args:
+        a: First integer
+        b: Second integer
+
+    Returns:
+        int: The smaller of the two integers
+    """
+    return a if a < b else b
 
 
 def assert_threads_cleanly_terminated(

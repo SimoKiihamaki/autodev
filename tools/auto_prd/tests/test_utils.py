@@ -1,20 +1,19 @@
 import subprocess
 import unittest
 
-try:
-    from tools.auto_prd.constants import CLI_ARG_REPLACEMENTS, UNSAFE_ARG_CHARS
-    from tools.auto_prd.utils import (
-        extract_called_process_error_details,
-        parse_tasks_left,
-        scrub_cli_text,
-    )
-except ImportError:
-    from ..constants import CLI_ARG_REPLACEMENTS, UNSAFE_ARG_CHARS
-    from ..utils import (
-        extract_called_process_error_details,
-        parse_tasks_left,
-        scrub_cli_text,
-    )
+from .test_helpers import safe_import
+
+CLI_ARG_REPLACEMENTS = safe_import(
+    "tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS"
+)
+UNSAFE_ARG_CHARS = safe_import(
+    "tools.auto_prd.constants", "..constants", "UNSAFE_ARG_CHARS"
+)
+extract_called_process_error_details = safe_import(
+    "tools.auto_prd.utils", "..utils", "extract_called_process_error_details"
+)
+parse_tasks_left = safe_import("tools.auto_prd.utils", "..utils", "parse_tasks_left")
+scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
 
 
 class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):

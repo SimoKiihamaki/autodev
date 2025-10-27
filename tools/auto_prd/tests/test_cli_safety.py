@@ -5,26 +5,23 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-try:
-    from tools.auto_prd.command import (
-        CLAUDE_DEBUG_LOG_NAME,
-        ensure_claude_debug_dir,
-        run_cmd,
-        validate_command_args,
-        register_safe_cwd,
-    )
-    from tools.auto_prd.utils import scrub_cli_text
-    from tools.auto_prd.pr_flow import open_or_get_pr
-except ImportError:
-    from ..command import (
-        CLAUDE_DEBUG_LOG_NAME,
-        ensure_claude_debug_dir,
-        run_cmd,
-        validate_command_args,
-        register_safe_cwd,
-    )
-    from ..utils import scrub_cli_text
-    from ..pr_flow import open_or_get_pr
+from .test_helpers import safe_import
+
+CLAUDE_DEBUG_LOG_NAME = safe_import(
+    "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
+)
+ensure_claude_debug_dir = safe_import(
+    "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
+)
+run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
+validate_command_args = safe_import(
+    "tools.auto_prd.command", "..command", "validate_command_args"
+)
+register_safe_cwd = safe_import(
+    "tools.auto_prd.command", "..command", "register_safe_cwd"
+)
+scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
+open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
 
 
 class ScrubCliTextTests(unittest.TestCase):

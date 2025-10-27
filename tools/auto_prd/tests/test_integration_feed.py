@@ -12,30 +12,18 @@ import os
 import shutil
 from pathlib import Path
 
-try:
-    from tools.auto_prd.command import (
-        run_cmd,
-        safe_popen,
-        register_safe_cwd,
-    )
-    from tools.auto_prd.tests import safe_cleanup, get_project_root
-    from tools.auto_prd.tests.test_helpers import (
-        safe_import,
-        try_send_with_timeout,
-        assert_threads_cleanly_terminated,
-    )
-except ImportError:
-    from ..command import (
-        run_cmd,
-        safe_popen,
-        register_safe_cwd,
-    )
-    from . import safe_cleanup, get_project_root
-    from .test_helpers import (
-        safe_import,
-        try_send_with_timeout,
-        assert_threads_cleanly_terminated,
-    )
+from tools.auto_prd.tests import safe_cleanup, get_project_root
+from tools.auto_prd.tests.test_helpers import (
+    safe_import,
+    try_send_with_timeout,
+    assert_threads_cleanly_terminated,
+)
+
+run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
+safe_popen = safe_import("tools.auto_prd.command", "..command", "safe_popen")
+register_safe_cwd = safe_import(
+    "tools.auto_prd.command", "..command", "register_safe_cwd"
+)
 
 
 def create_fake_python_script():

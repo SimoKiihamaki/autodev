@@ -198,7 +198,10 @@ func (o Options) Run(ctx context.Context) error {
 		env = append(env, o.ExtraEnv...)
 	}
 
-	// Ensure unbuffered Python output - this must be set before Python starts
+	// Ensure unbuffered Python output - this must be set before Python starts.
+	// NOTE: PYTHONUNBUFFERED=1 is also set in tools/auto_prd/command.py (safe_popen, line 388).
+	// This redundancy is intentional (defense-in-depth) to guarantee unbuffered output
+	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
