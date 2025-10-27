@@ -138,7 +138,6 @@ def create_flush_test_script():
 import sys
 import time
 import tempfile
-import os
 from dataclasses import dataclass
 
 @dataclass

@@ -366,7 +366,7 @@ def run_cmd(
 
 def safe_popen(
     cmd: Sequence[str], *, text=True, bufsize=1, extra_env: Optional[dict] = None
-):
+) -> subprocess.Popen[str]:
     """Safe wrapper for subprocess.Popen using validation from command.py.
 
     Args:
