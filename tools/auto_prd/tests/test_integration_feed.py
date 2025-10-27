@@ -197,7 +197,7 @@ This is a test PRD for integration testing.
                     process.kill()
                     try:
                         process.wait(timeout=1)
-                    except Exception as wait_error:
+                    except subprocess.TimeoutExpired as wait_error:
                         print(
                             f"Warning: Failed to wait for process after kill: {wait_error}",
                             file=sys.stderr,
@@ -355,7 +355,7 @@ def test_simple_log_streaming():
                 process.kill()
                 try:
                     process.wait(timeout=1)
-                except Exception as wait_error:
+                except subprocess.TimeoutExpired as wait_error:
                     print(
                         f"Warning: Failed to wait for process after kill: {wait_error}",
                         file=sys.stderr,
