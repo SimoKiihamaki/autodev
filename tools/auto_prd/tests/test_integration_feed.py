@@ -12,6 +12,29 @@ import os
 import shutil
 from pathlib import Path
 
+from tools.auto_prd.command import (
+    run_cmd,
+    validate_command_args,
+    validate_cwd,
+    env_with_zsh,
+)
+
+
+def safe_popen(cmd, *, text=True, bufsize=1):
+    """Safe wrapper for subprocess.Popen using validation from command.py."""
+    validate_command_args(cmd)
+    validate_cwd(None)
+
+    env = env_with_zsh()
+    return subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=text,
+        bufsize=bufsize,
+        env=env,
+    )
+
 
 def get_project_root():
     """Get the project root directory dynamically."""
@@ -248,7 +271,8 @@ This is a test PRD for integration testing.
         # Clean up fake script
         try:
             os.unlink(fake_script)
-        except:
+        except (OSError, FileNotFoundError) as e:
+            # File might already be deleted or inaccessible
             pass
 
 
@@ -275,9 +299,7 @@ print("Process completed", flush=True)
     if not python_exe:
         raise RuntimeError("python3 executable not found for test")
 
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
-    )
+    process = safe_popen(cmd)
 
     output_lines = []
     start_time = time.time()
