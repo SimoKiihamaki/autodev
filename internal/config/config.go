@@ -24,6 +24,11 @@ type Timings struct {
 	MaxLocalIters     int `yaml:"max_local_iters"`
 }
 
+type BatchProcessing struct {
+	MaxBatchSize   int `yaml:"max_batch_size"`
+	BatchTimeoutMs int `yaml:"batch_timeout_ms"`
+}
+
 type PRDMeta struct {
 	Tags     []string  `yaml:"tags"`
 	LastUsed time.Time `yaml:"last_used,omitempty"`
@@ -43,19 +48,20 @@ type Phases struct {
 }
 
 type Config struct {
-	ExecutorPolicy string             `yaml:"executor_policy"`
-	LogLevel       string             `yaml:"log_level"`
-	PythonCommand  string             `yaml:"python_command"`
-	PythonScript   string             `yaml:"python_script"`
-	RepoPath       string             `yaml:"repo_path"`
-	BaseBranch     string             `yaml:"base_branch"`
-	Branch         string             `yaml:"branch"`
-	CodexModel     string             `yaml:"codex_model"`
-	Flags          Flags              `yaml:"flags"`
-	Timings        Timings            `yaml:"timings"`
-	PhaseExecutors PhaseExec          `yaml:"phase_executors"`
-	RunPhases      Phases             `yaml:"run_phases"`
-	PRDs           map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
+	ExecutorPolicy  string             `yaml:"executor_policy"`
+	LogLevel        string             `yaml:"log_level"`
+	PythonCommand   string             `yaml:"python_command"`
+	PythonScript    string             `yaml:"python_script"`
+	RepoPath        string             `yaml:"repo_path"`
+	BaseBranch      string             `yaml:"base_branch"`
+	Branch          string             `yaml:"branch"`
+	CodexModel      string             `yaml:"codex_model"`
+	Flags           Flags              `yaml:"flags"`
+	Timings         Timings            `yaml:"timings"`
+	BatchProcessing BatchProcessing    `yaml:"batch_processing"`
+	PhaseExecutors  PhaseExec          `yaml:"phase_executors"`
+	RunPhases       Phases             `yaml:"run_phases"`
+	PRDs            map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
 }
 
 // Defaults returns a sensible default config.
@@ -80,6 +86,10 @@ func Defaults() Config {
 			ReviewPollSeconds: 120,
 			IdleGraceMinutes:  10,
 			MaxLocalIters:     50,
+		},
+		BatchProcessing: BatchProcessing{
+			MaxBatchSize:   25,
+			BatchTimeoutMs: 1,
 		},
 		PhaseExecutors: PhaseExec{},
 		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},

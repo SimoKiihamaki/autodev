@@ -7,11 +7,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const (
-	maxBatchSize   = 25 // Maximum lines to process in one batch
-	batchTimeoutMs = 1  // Timeout in milliseconds to wait for more lines
-)
-
 type runStartMsg struct{}
 type logLineMsg struct{ line runner.Line }
 type logBatchMsg struct{ lines []runner.Line }
@@ -38,11 +33,12 @@ func (m model) readLogsBatch() tea.Cmd {
 		return nil
 	}
 	ch := m.logCh
+	batchConfig := m.cfg.BatchProcessing
 	return func() tea.Msg {
 		var lines []runner.Line
 
 		// Read up to maxBatchSize lines or until channel is empty
-		for i := 0; i < maxBatchSize; i++ {
+		for i := 0; i < batchConfig.MaxBatchSize; i++ {
 			select {
 			case line, ok := <-ch:
 				if !ok {
@@ -54,7 +50,7 @@ func (m model) readLogsBatch() tea.Cmd {
 				}
 				lines = append(lines, line)
 
-			case <-time.After(batchTimeoutMs * time.Millisecond):
+			case <-time.After(time.Duration(batchConfig.BatchTimeoutMs) * time.Millisecond):
 				// Channel is empty, return what we have
 				if len(lines) > 0 {
 					return logBatchMsg{lines: lines}

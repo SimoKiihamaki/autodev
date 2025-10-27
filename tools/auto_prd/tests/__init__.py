@@ -31,3 +31,24 @@ def safe_cleanup(path: Path | str, description: str = "file") -> None:
             f"Warning: Failed to clean up {description} {path}: {e}",
             file=sys.stderr,
         )
+
+
+def get_project_root() -> Path:
+    """Get the project root directory dynamically.
+
+    Starts from the current file location and walks up the directory tree
+    looking for common project markers (.git or go.mod files).
+
+    Returns:
+        Path to the project root directory. Falls back to current working
+        directory if no markers are found.
+    """
+    # Start from the current file location and walk up to find .git or go.mod
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / ".git").exists() or (current / "go.mod").exists():
+            return current
+        current = current.parent
+
+    # Fallback to current working directory if no markers found
+    return Path.cwd()

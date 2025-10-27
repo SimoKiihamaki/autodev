@@ -17,20 +17,7 @@ from ..command import (
     safe_popen,
     register_safe_cwd,
 )
-from . import safe_cleanup
-
-
-def get_project_root():
-    """Get the project root directory dynamically."""
-    # Start from the current script location and walk up to find .git or go.mod
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        if (current / ".git").exists() or (current / "go.mod").exists():
-            return current
-        current = current.parent
-
-    # Fallback to current working directory if no markers found
-    return Path.cwd()
+from . import safe_cleanup, get_project_root
 
 
 def create_fake_python_script():

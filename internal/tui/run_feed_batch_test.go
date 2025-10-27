@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	"github.com/charmbracelet/bubbles/viewport"
 )
@@ -13,9 +14,10 @@ import (
 func TestBatchLogReader(t *testing.T) {
 	t.Parallel()
 
-	// Create a model with a log channel
+	// Create a model with a log channel and default config
+	defaultCfg := config.Defaults()
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
+	m := model{logCh: logCh, cfg: defaultCfg, flushController: newAdaptiveFlushController()}
 
 	// Create batch reader command
 	cmd := m.readLogsBatch()
@@ -49,6 +51,9 @@ func TestBatchLogReader(t *testing.T) {
 		t.Fatal("Expected at least one line in batch")
 	}
 
+	// Get default batch size from config
+	maxBatchSize := defaultCfg.BatchProcessing.MaxBatchSize
+
 	if len(batchMsg.lines) > maxBatchSize {
 		t.Fatalf("Expected at most %d lines, got %d", maxBatchSize, len(batchMsg.lines))
 	}
@@ -65,9 +70,10 @@ func TestBatchLogReader(t *testing.T) {
 func TestBatchLogReaderEmptyChannel(t *testing.T) {
 	t.Parallel()
 
-	// Create a model with an empty log channel
+	// Create a model with an empty log channel and default config
+	defaultCfg := config.Defaults()
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
+	m := model{logCh: logCh, cfg: defaultCfg, flushController: newAdaptiveFlushController()}
 
 	// Create batch reader command
 	cmd := m.readLogsBatch()
@@ -86,9 +92,10 @@ func TestBatchLogReaderEmptyChannel(t *testing.T) {
 func TestBatchLogReaderChannelClosure(t *testing.T) {
 	t.Parallel()
 
-	// Create a model with a log channel
+	// Create a model with a log channel and default config
+	defaultCfg := config.Defaults()
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
+	m := model{logCh: logCh, cfg: defaultCfg, flushController: newAdaptiveFlushController()}
 
 	// Send some test lines before closing
 	testLines := []runner.Line{
@@ -148,9 +155,10 @@ func TestBatchLogReaderChannelClosure(t *testing.T) {
 func TestBatchLogReaderPartialBatch(t *testing.T) {
 	t.Parallel()
 
-	// Create a model with a log channel
+	// Create a model with a log channel and default config
+	defaultCfg := config.Defaults()
 	logCh := make(chan runner.Line, 100)
-	m := model{logCh: logCh, flushController: newAdaptiveFlushController()}
+	m := model{logCh: logCh, cfg: defaultCfg, flushController: newAdaptiveFlushController()}
 
 	// Send fewer lines than maxBatchSize
 	testLines := []runner.Line{
@@ -197,13 +205,15 @@ func TestBatchLogReaderPartialBatch(t *testing.T) {
 func TestHandleLogBatch(t *testing.T) {
 	t.Parallel()
 
-	// Create a model with a viewport and log channel
+	// Create a model with a viewport, log channel and default config
 	logCh := make(chan runner.Line, 100)
+	defaultCfg := config.Defaults()
 	m := &model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
 		logCh:             logCh,
+		cfg:               defaultCfg,
 		flushController:   newAdaptiveFlushController(),
 	}
 
@@ -307,11 +317,13 @@ func TestAdaptiveFlushController(t *testing.T) {
 func TestBatchEnabledModel(t *testing.T) {
 	t.Parallel()
 
-	// Create base model
+	// Create base model with default config
+	defaultCfg := config.Defaults()
 	baseModel := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		cfg:               defaultCfg,
 		flushController:   newAdaptiveFlushController(),
 	}
 
@@ -376,11 +388,13 @@ func TestBatchProcessingUnderLoad(t *testing.T) {
 		t.Skip("Skipping load test in short mode")
 	}
 
-	// Create batch-enabled model
+	// Create batch-enabled model with default config
+	defaultCfg := config.Defaults()
 	baseModel := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
+		cfg:               defaultCfg,
 		flushController:   newAdaptiveFlushController(),
 	}
 	bm := newBatchEnabledModel(baseModel)
