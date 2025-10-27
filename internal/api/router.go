@@ -27,7 +27,7 @@ func newRouter(deps Dependencies) http.Handler {
 
 	if deps.RateLimiter == nil {
 		// Default rate limit: 60 requests per minute with burst of 10
-		deps.RateLimiter = NewRateLimiter(60, 10)
+		deps.RateLimiter = NewRateLimiter(DefaultRequestsPerMinute, DefaultBurstSize)
 		// Start cleanup routine
 		deps.RateLimiter.CleanupRoutine(context.Background(), DefaultCleanupInterval)
 	}

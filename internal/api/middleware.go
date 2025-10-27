@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -14,6 +13,9 @@ const (
 	SecondsPerMinute        = 60.0
 	CleanupWindowMultiplier = 5
 	DefaultCleanupInterval  = 5 * time.Minute
+	// Default rate limit settings
+	DefaultRequestsPerMinute = 60
+	DefaultBurstSize         = 10
 )
 
 // RateLimiter implements a simple token bucket rate limiter
@@ -42,29 +44,15 @@ func NewRateLimiter(requestsPerMinute, burst int) *RateLimiter {
 	}
 }
 
-// getClientIP extracts the real client IP from request headers, considering trusted proxies
+// getClientIP extracts the real client IP from the request.
 func getClientIP(r *http.Request) string {
 	clientIP := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(clientIP); err == nil && host != "" {
 		clientIP = host
 	}
 
-	// Use X-Forwarded-For only when behind trusted proxies (TODO: inject allowlist)
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		// Split on commas and trim whitespace, then take the first (leftmost) IP
-		ips := strings.Split(forwarded, ",")
-		if len(ips) > 0 {
-			leftmostIP := strings.TrimSpace(ips[0])
-			if leftmostIP != "" {
-				clientIP = leftmostIP
-			}
-		}
-	} else if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		// Fall back to X-Real-IP if X-Forwarded-For is not present
-		clientIP = strings.TrimSpace(realIP)
-	}
-
-	// TODO: Validate IP format and enforce trusted proxy CIDRs before trusting headers.
+	// Do not trust X-Forwarded-For or X-Real-IP headers unless behind trusted proxies.
+	// See https://github.com/golang/go/issues/38678 for discussion.
 	return clientIP
 }
 

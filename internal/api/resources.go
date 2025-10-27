@@ -254,7 +254,7 @@ func (r *InMemoryResourceRepository) UpdateResource(_ context.Context, id string
 		if resource.ID == id {
 			// Enforce ownership without leaking existence
 			if resource.OwnerID != ownerID {
-				return Resource{}, fmt.Errorf("resource with ID %s not found", id)
+				return Resource{}, fmt.Errorf("access denied to resource with ID %s", id)
 			}
 
 			updated := resource
@@ -301,7 +301,7 @@ func (r *InMemoryResourceRepository) DeleteResource(_ context.Context, id string
 		if resource.ID == id {
 			// Enforce ownership without leaking existence
 			if resource.OwnerID != ownerID {
-				return fmt.Errorf("resource with ID %s not found", id)
+				return fmt.Errorf("access denied to resource with ID %s", id)
 			}
 
 			// Remove resource from slice

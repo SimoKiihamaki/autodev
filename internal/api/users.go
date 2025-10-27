@@ -278,7 +278,9 @@ func NewInMemoryUserRepositoryWithoutConfig(initial []User) *InMemoryUserReposit
 
 // SetConfig sets the configuration for the repository.
 func (r *InMemoryUserRepository) SetConfig(config *UserConfig) {
+	r.mu.Lock()
 	r.config = config
+	r.mu.Unlock()
 }
 
 // ListUsers returns a paginated slice of users.
@@ -490,7 +492,11 @@ func (r *InMemoryUserRepository) AuthenticateUser(_ context.Context, email, pass
 
 // GenerateJWTToken creates a new JWT token for the given user.
 func (r *InMemoryUserRepository) GenerateJWTToken(user User) (string, error) {
-	if r.config == nil || r.config.JWTSecret == "" {
+	r.mu.RLock()
+	cfg := r.config
+	r.mu.RUnlock()
+
+	if cfg == nil || cfg.JWTSecret == "" {
 		return "", errors.New("JWT configuration is missing")
 	}
 
@@ -507,21 +513,32 @@ func (r *InMemoryUserRepository) GenerateJWTToken(user User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(r.config.JWTSecret))
+	return token.SignedString([]byte(cfg.JWTSecret))
 }
 
 // ValidateJWTToken validates a JWT token and returns the claims if valid.
 func (r *InMemoryUserRepository) ValidateJWTToken(tokenString string) (*JWTClaims, error) {
-	if r.config == nil || r.config.JWTSecret == "" {
+	r.mu.RLock()
+	cfg := r.config
+	r.mu.RUnlock()
+
+	if cfg == nil || cfg.JWTSecret == "" {
 		return nil, errors.New("JWT configuration is missing")
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(r.config.JWTSecret), nil
-	})
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&JWTClaims{},
+		func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(cfg.JWTSecret), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithLeeway(30*time.Second),
+	)
 
 	if err != nil {
 		return nil, err
