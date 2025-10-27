@@ -11,11 +11,8 @@ import logging
 import argparse
 from pathlib import Path
 
-# Add the tools directory to the path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 try:
-    from logging_utils import setup_file_logging, print_flush
+    from ..logging_utils import setup_file_logging, print_flush
 except ImportError:
     # Fallback if we can't import from the main module
     def setup_file_logging(*args, **kwargs):

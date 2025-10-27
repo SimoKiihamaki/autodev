@@ -354,7 +354,7 @@ def test_real_time_output_capture():
         try:
             process.terminate()
             process.wait(timeout=5)
-        except (OSError, ProcessLookupError, TimeoutError) as e:
+        except (OSError, ProcessLookupError, TimeoutError):
             try:
                 process.kill()
             except (OSError, ProcessLookupError) as kill_error:
@@ -446,9 +446,6 @@ def test_logging_utils_integration():
     # Try to import and use logging_utils
     test_script = """
 try:
-    import sys
-    sys.path.insert(0, ".")
-
     from logging_utils import setup_file_logging, print_flush
 
     print("STARTING_LOGGING_UTILS_TEST", flush=True)

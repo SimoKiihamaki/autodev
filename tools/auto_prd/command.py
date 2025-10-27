@@ -386,7 +386,7 @@ def safe_popen(
     # Ensure unbuffered child Python and resolvable project imports
     repo_root = str(Path(__file__).resolve().parents[2])
     env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}{env.get('PYTHONPATH','')}"
+    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}{env.get('PYTHONPATH', '')}"
     env["AUTO_PRD_ROOT"] = repo_root
 
     exe = shutil.which(cmd[0])
