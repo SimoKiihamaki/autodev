@@ -147,10 +147,8 @@ This is a test PRD for integration testing.
             print(f"Running command: {' '.join(cmd)}")
 
             # Start the process
-            process = subprocess.Popen(
+            process = safe_popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,  # Line buffered
             )
@@ -271,7 +269,7 @@ This is a test PRD for integration testing.
         # Clean up fake script
         try:
             os.unlink(fake_script)
-        except (OSError, FileNotFoundError) as e:
+        except (OSError, FileNotFoundError):
             # File might already be deleted or inaccessible
             pass
 

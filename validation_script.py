@@ -12,6 +12,20 @@ import os
 import re
 from pathlib import Path
 
+# Import command validation utilities
+sys.path.insert(0, str(Path(__file__).parent / "tools" / "auto_prd"))
+from command import validate_command_args, validate_cwd
+
+
+def safe_run(cmd, **kwargs):
+    """Safe wrapper for subprocess.run using validation from command.py."""
+    validate_command_args(cmd)
+    if "cwd" in kwargs:
+        validate_cwd(Path(kwargs["cwd"]))
+    else:
+        validate_cwd(None)
+    return subprocess.run(cmd, **kwargs)
+
 
 def get_project_root():
     """Get the project root directory dynamically."""
@@ -95,7 +109,7 @@ def test_python_test_coverage():
     print("\n=== Testing Python Test Coverage ===")
 
     # Run Python tests
-    result = subprocess.run(
+    result = safe_run(
         ["python3", "-m", "unittest", "discover", "-s", "tools/auto_prd/tests"],
         capture_output=True,
         text=True,

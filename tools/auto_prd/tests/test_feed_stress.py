@@ -137,10 +137,83 @@ def simulate_mixed_patterns():
 
 def main():
     parser = argparse.ArgumentParser(description="Stress test live feed system")
+    # Standard auto_prd arguments (ignored for stress testing)
+    parser.add_argument("--prd", help="PRD file (ignored for stress test)")
+    parser.add_argument("--repo", help="Repo path (ignored for stress test)")
+    parser.add_argument("--repo-slug", help="Repo slug (ignored for stress test)")
+    parser.add_argument("--base", help="Base branch (ignored for stress test)")
+    parser.add_argument("--branch", help="Feature branch (ignored for stress test)")
+    parser.add_argument("--codex-model", help="Codex model (ignored for stress test)")
+    parser.add_argument(
+        "--wait-minutes", type=int, help="Wait minutes (ignored for stress test)"
+    )
+    parser.add_argument(
+        "--review-poll-seconds",
+        type=int,
+        help="Review poll seconds (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--iteration-limit", type=int, help="Iteration limit (ignored for stress test)"
+    )
+    parser.add_argument("--phase", help="Phase to start from (ignored for stress test)")
+    parser.add_argument(
+        "--initial-prompt", help="Initial prompt (ignored for stress test)"
+    )
+    parser.add_argument(
+        "--sync-git",
+        action="store_true",
+        help="Sync git flag (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Dry run flag (ignored for stress test)"
+    )
+    parser.add_argument(
+        "--infinite-reviews",
+        action="store_true",
+        help="Infinite reviews flag (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--idle-grace-minutes",
+        type=int,
+        help="Idle grace minutes (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--max-local-iters",
+        type=int,
+        help="Max local iterations (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--max-pr-iters", type=int, help="Max PR iterations (ignored for stress test)"
+    )
+    parser.add_argument(
+        "--max-review-fix-iters",
+        type=int,
+        help="Max review fix iterations (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--disable-review-fix",
+        action="store_true",
+        help="Disable review fix (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--allow-unsafe",
+        action="store_true",
+        help="Allow unsafe execution (ignored for stress test)",
+    )
+    parser.add_argument(
+        "--no-git",
+        action="store_true",
+        help="No git operations (ignored for stress test)",
+    )
+
+    # Stress test specific arguments
     parser.add_argument("--log-file", type=str, help="Optional log file for debugging")
     parser.add_argument("--log-level", type=str, default="INFO", help="Log level")
     parser.add_argument(
-        "--duration", type=int, default=300, help="Total test duration in seconds"
+        "--duration",
+        type=int,
+        default=30,
+        help="Total test duration in seconds (default: 30 for testing)",
     )
 
     args = parser.parse_args()
