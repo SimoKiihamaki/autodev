@@ -78,7 +78,7 @@ print("RAPID_DONE", flush=True)
 
         self.assertIn("RAPID_DONE", result.stdout)
         self.assertEqual(
-            len(result.stdout.strip().split("\n")), 21
+            len(result.stdout.strip().splitlines()), 21
         )  # 20 lines + 1 done line
         self.assertEqual(result.returncode, 0)
 
@@ -173,7 +173,7 @@ result = subprocess.run(
 )
 
 print("SUBPROCESS_OUTPUT:", flush=True)
-for line in result.stdout.strip().split('\\n'):
+for line in result.stdout.strip().splitlines():
     print(f"  {line}", flush=True)
 
 print("SUBPROCESS_TEST_DONE", flush=True)

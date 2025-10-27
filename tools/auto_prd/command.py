@@ -386,9 +386,13 @@ def safe_popen(
     # Ensure unbuffered child Python and resolvable project imports
     repo_root = str(Path(__file__).resolve().parents[2])
     env["PYTHONUNBUFFERED"] = "1"
-    # Note: Prepending repo_root to PYTHONPATH ensures project modules can be imported
-    # but may shadow system packages. This is intentional for the auto_prd pipeline.
-    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}{env.get('PYTHONPATH', '')}"
+    # Note: Appending repo_root to PYTHONPATH allows project modules to be imported
+    # without shadowing system packages.
+    env["PYTHONPATH"] = (
+        f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}"
+        if env.get("PYTHONPATH")
+        else repo_root
+    )
     env["AUTO_PRD_ROOT"] = repo_root
 
     exe = shutil.which(cmd[0])

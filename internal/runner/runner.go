@@ -198,6 +198,9 @@ func (o Options) Run(ctx context.Context) error {
 		env = append(env, o.ExtraEnv...)
 	}
 
+	// Ensure unbuffered Python output - this must be set before Python starts
+	env = append(env, "PYTHONUNBUFFERED=1")
+
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
 	cmd := exec.Command(o.Config.PythonCommand, args...)
 	cmd.Env = env

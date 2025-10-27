@@ -113,16 +113,20 @@ func (m *model) startRunCmd() tea.Cmd {
 				if stack != "" {
 					msg = msg + "\n" + stack
 				}
+				timer := time.NewTimer(100 * time.Millisecond)
+				defer timer.Stop()
 				select {
 				case logCh <- runner.Line{Time: time.Now(), Text: msg, Err: true}:
-				case <-time.After(100 * time.Millisecond):
+				case <-timer.C:
 				}
 				err = panicErr
 			}
 			if err != nil && err != context.Canceled {
+				timer := time.NewTimer(100 * time.Millisecond)
+				defer timer.Stop()
 				select {
 				case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
-				case <-time.After(100 * time.Millisecond):
+				case <-timer.C:
 				}
 			}
 			select {
