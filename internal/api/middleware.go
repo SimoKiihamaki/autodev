@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Rate limiting constants
+const (
+	SecondsPerMinute        = 60.0
+	CleanupWindowMultiplier = 5
+	DefaultCleanupInterval  = 5 * time.Minute
+)
+
 // RateLimiter implements a simple token bucket rate limiter
 type RateLimiter struct {
 	clients map[string]*ClientLimiter
@@ -100,7 +107,7 @@ func (rl *RateLimiter) allowRequest(clientIP string) bool {
 	elapsed := now.Sub(limiter.lastSeen)
 
 	// Add tokens based on elapsed time
-	tokensToAdd := int(elapsed.Seconds() * float64(rl.rate) / 60.0)
+	tokensToAdd := int(elapsed.Seconds() * float64(rl.rate) / SecondsPerMinute)
 	if tokensToAdd > 0 {
 		limiter.tokens += tokensToAdd
 		if limiter.tokens > rl.burst {
@@ -125,7 +132,7 @@ func (rl *RateLimiter) Cleanup() {
 	rl.mu.RLock()
 	for ip, limiter := range rl.clients {
 		limiter.mu.Lock()
-		if time.Since(limiter.lastSeen) > rl.window*5 { // Remove after 5 minutes of inactivity
+		if time.Since(limiter.lastSeen) > rl.window*CleanupWindowMultiplier { // Remove after cleanup window multiplier of inactivity
 			toDelete = append(toDelete, ip)
 		}
 		limiter.mu.Unlock()

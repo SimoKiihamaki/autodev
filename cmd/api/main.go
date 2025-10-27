@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// Start rate limiter cleanup routine
-	deps.RateLimiter.CleanupRoutine(ctx, 5*time.Minute)
+	deps.RateLimiter.CleanupRoutine(ctx, api.DefaultCleanupInterval)
 
 	server := api.NewServer(cfg, deps)
 

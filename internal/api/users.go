@@ -552,8 +552,8 @@ func generateRandomPassword(length int) (string, error) {
 // replaceAll swaps the internal user list for the provided one in a deterministic order.
 // This function is used for test/dev purposes and generates secure random passwords for seeded users.
 func (r *InMemoryUserRepository) replaceAll(users []User) {
-	clone := make([]UserWithPassword, len(users))
-	for i, user := range users {
+	clone := make([]UserWithPassword, 0, len(users))
+	for _, user := range users {
 		// Generate a secure random password for each seeded user
 		defaultPassword, err := generateRandomPassword(16)
 		if err != nil {
@@ -564,14 +564,15 @@ func (r *InMemoryUserRepository) replaceAll(users []User) {
 		// Hash the generated password using bcrypt
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(defaultPassword), bcrypt.DefaultCost)
 		if err != nil {
-			// If hashing fails, use a placeholder that will fail authentication
-			hashedPassword = []byte("hash-failed-invalid-password")
+			// If hashing fails, skip this user and log the error
+			fmt.Printf("Error hashing password for user %s: %v\n", user.ID, err)
+			continue
 		}
 
-		clone[i] = UserWithPassword{
+		clone = append(clone, UserWithPassword{
 			User:     user,
 			Password: string(hashedPassword),
-		}
+		})
 	}
 
 	sort.Slice(clone, func(i, j int) bool {

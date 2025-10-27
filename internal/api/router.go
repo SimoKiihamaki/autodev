@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,7 +29,7 @@ func newRouter(deps Dependencies) http.Handler {
 		// Default rate limit: 60 requests per minute with burst of 10
 		deps.RateLimiter = NewRateLimiter(60, 10)
 		// Start cleanup routine
-		deps.RateLimiter.CleanupRoutine(context.Background(), 5*time.Minute)
+		deps.RateLimiter.CleanupRoutine(context.Background(), DefaultCleanupInterval)
 	}
 
 	r := chi.NewRouter()
