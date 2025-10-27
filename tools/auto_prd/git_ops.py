@@ -150,30 +150,6 @@ def git_push_branch(repo_root: Path, branch: str) -> None:
     run_cmd(["git", "push", "-u", "origin", branch], cwd=repo_root)
 
 
-def _print_codex_effective_config(repo_root: Path) -> None:
-    """Attempt to dump the effective Codex config using whichever syntax the CLI accepts."""
-    commands = [
-        ["codex", "config", "show", "--effective"],
-        ["codex", "config", "--effective"],
-    ]
-    for args in commands:
-        try:
-            out, err, rc = run_cmd(args, cwd=repo_root, check=False)
-        except FileNotFoundError:
-            return
-        payload = out.strip() or err.strip()
-        if rc == 0:
-            if payload:
-                print(payload)
-            return
-        lowered = (payload or "").lower()
-        if "unexpected argument" in lowered:
-            continue
-        logger.warning("codex config diagnostics failed via %s: %s", " ".join(args), payload or f"exit code {rc}")
-        return
-    print("codex config diagnostics skipped (CLI rejected show/--effective flags).")
-
-
 def print_codex_diagnostics(repo_root: Path) -> None:
     from .agents import codex_exec
 
@@ -193,8 +169,6 @@ def print_codex_diagnostics(repo_root: Path) -> None:
         codex_available = False
     except (subprocess.CalledProcessError, OSError, ValueError):
         logger.exception("codex --version failed")
-    if codex_available:
-        _print_codex_effective_config(repo_root)
 
     if not codex_available:
         return

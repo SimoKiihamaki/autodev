@@ -58,7 +58,7 @@ def open_or_get_pr(
 ) -> Optional[int]:
     pr_title_raw = f"Implement: {prd_path.name}"
     pr_body_raw = (
-        f"Implements tasks from `{prd_path}` via automated executor (Codex/Claude) + CodeRabbit iterative loop."
+        f"Implements tasks from {prd_path} via automated executor (Codex/Claude) + CodeRabbit iterative loop."
     )
     pr_title = scrub_cli_text(pr_title_raw)
     pr_body = scrub_cli_text(pr_body_raw)
