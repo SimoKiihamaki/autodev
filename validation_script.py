@@ -61,6 +61,8 @@ def test_python_logging_flush():
         sys.stdout = original_stdout
         temp_path = f.name
 
+    # File is now properly closed and flushed after exiting the context manager
+
     # Read the content
     with open(temp_path, "r") as f:
         content = f.read()
