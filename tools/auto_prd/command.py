@@ -24,6 +24,7 @@ from .constants import (
     require_zsh,
 )
 from .logging_utils import decode_output, logger, truncate_for_log
+from .utils import scrub_cli_text
 
 
 REDACT_EQ_PATTERN = re.compile(r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$")
@@ -249,7 +250,7 @@ def ensure_claude_debug_dir() -> Path:
 
 
 def run_cmd(
-    cmd: list[str],
+    cmd: Sequence[str],
     *,
     cwd: Optional[Path] = None,
     check: bool = True,
@@ -258,15 +259,28 @@ def run_cmd(
     extra_env: Optional[dict] = None,
     stdin: Optional[str] = None,
 ) -> tuple[str, str, int]:
-    validate_command_args(cmd)
+    if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
+        raise ValueError("cmd must be a non-empty sequence of strings")
+
+    sanitized_cmd: list[str] = []
+    for arg in cmd:
+        if not isinstance(arg, str):
+            raise TypeError("command arguments must be strings")
+        cleaned = scrub_cli_text(arg)
+        sanitized_cmd.append(cleaned)
+
+    if list(cmd) != sanitized_cmd:
+        logger.debug("Sanitized command arguments before validation: %s", sanitized_cmd)
+
+    validate_command_args(sanitized_cmd)
     validate_cwd(cwd)
     validate_stdin(stdin)
     validate_extra_env(extra_env)
-    exe = shutil.which(cmd[0])
+    exe = shutil.which(sanitized_cmd[0])
     if not exe:
-        raise FileNotFoundError(f"Command not found: {cmd[0]}")
+        raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
     env = env_with_zsh(extra_env)
-    cmd_display = shlex.join(sanitize_args(cmd))
+    cmd_display = shlex.join(sanitize_args(sanitized_cmd))
     logger.info("Running command: %s", cmd_display)
     if cwd:
         logger.debug("Command cwd: %s", cwd)
@@ -279,7 +293,7 @@ def run_cmd(
     start_time = time.monotonic()
     try:
         proc = subprocess.run(
-            cmd,
+            sanitized_cmd,
             cwd=str(cwd) if cwd else None,
             check=False,
             capture_output=capture,
@@ -311,7 +325,7 @@ def run_cmd(
         level = logging.ERROR if check else logging.WARNING
         logger.log(level, "Command exited with code %s after %.2fs: %s", proc.returncode, duration, cmd_display)
     if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout_bytes, stderr=stderr_bytes)
+        raise subprocess.CalledProcessError(proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes)
     return stdout_text, stderr_text, proc.returncode
 
 

@@ -80,3 +80,37 @@ func TestHandleIterationHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestConsumeRunSummaryStripsLogPrefix(t *testing.T) {
+	t.Parallel()
+
+	m := model{}
+	line := "2025-10-27 13:14:40,704 INFO auto_prd.print: === Iteration 2/5: Build ==="
+	m.consumeRunSummary(line)
+
+	if m.runIterCurrent != 2 {
+		t.Fatalf("runIterCurrent=%d, want 2", m.runIterCurrent)
+	}
+	if m.runIterTotal != 5 {
+		t.Fatalf("runIterTotal=%d, want 5", m.runIterTotal)
+	}
+	if m.runIterLabel != "Build" {
+		t.Fatalf("runIterLabel=%q, want Build", m.runIterLabel)
+	}
+	if m.runPhase != "Iteration 2/5" {
+		t.Fatalf("runPhase=%q, want Iteration 2/5", m.runPhase)
+	}
+	if m.runCurrent != "Build" {
+		t.Fatalf("runCurrent=%q, want Build", m.runCurrent)
+	}
+
+	m2 := model{}
+	arrow := "2025-10-27 13:14:47,615 INFO auto_prd.print: → Launching implementation pass"
+	m2.consumeRunSummary(arrow)
+	if m2.runCurrent != "Launching implementation pass" {
+		t.Fatalf("runCurrent=%q, want Launching implementation pass", m2.runCurrent)
+	}
+	if m2.runPhase != "Running" {
+		t.Fatalf("runPhase=%q, want Running", m2.runPhase)
+	}
+}

@@ -22,6 +22,7 @@ const (
 var (
 	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
 	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?(?::\s*(.+?))?\s*=+$`)
+	rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+$`)
 )
 
 func (m *model) resetRunDashboard() {
@@ -114,6 +115,10 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 
 func (m *model) consumeRunSummary(rawLine string) {
 	text := strings.TrimSpace(rawLine)
+	if text == "" {
+		return
+	}
+	text = trimAutomationLogPrefix(text)
 	if text == "" {
 		return
 	}
@@ -232,4 +237,16 @@ func (m *model) handleStatusPhrases(text string) {
 	case strings.HasPrefix(lower, "final tasks_left"):
 		m.setRunCurrent(text)
 	}
+}
+
+func trimAutomationLogPrefix(text string) string {
+	idx := strings.Index(text, ": ")
+	if idx == -1 {
+		return text
+	}
+	prefix := strings.TrimSpace(text[:idx])
+	if rePythonLogPrefix.MatchString(prefix) {
+		return strings.TrimSpace(text[idx+2:])
+	}
+	return text
 }
