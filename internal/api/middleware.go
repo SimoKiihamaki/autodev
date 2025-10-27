@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -43,10 +44,12 @@ func NewRateLimiter(requestsPerMinute, burst int) *RateLimiter {
 
 // getClientIP extracts the real client IP from request headers, considering trusted proxies
 func getClientIP(r *http.Request) string {
-	// Start with the direct connection IP
 	clientIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(clientIP); err == nil && host != "" {
+		clientIP = host
+	}
 
-	// Check X-Forwarded-For header first (can contain multiple IPs, leftmost is original client)
+	// Use X-Forwarded-For only when behind trusted proxies (TODO: inject allowlist)
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		// Split on commas and trim whitespace, then take the first (leftmost) IP
 		ips := strings.Split(forwarded, ",")
@@ -61,8 +64,7 @@ func getClientIP(r *http.Request) string {
 		clientIP = strings.TrimSpace(realIP)
 	}
 
-	// Note: In production, you should validate the IP format and maintain a list
-	// of trusted proxy IPs to prevent IP spoofing via X-Forwarded-For header
+	// TODO: Validate IP format and enforce trusted proxy CIDRs before trusting headers.
 	return clientIP
 }
 

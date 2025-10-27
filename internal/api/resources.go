@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -199,6 +200,12 @@ func (r *InMemoryResourceRepository) CreateResource(_ context.Context, req Creat
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Normalize and validate
+	req.Name = strings.TrimSpace(req.Name)
+	req.Description = strings.TrimSpace(req.Description)
+	if ve := validateCreateResourceRequest(req); len(ve) > 0 {
+		return Resource{}, ve
+	}
 	now := time.Now().UTC()
 
 	resource := Resource{
@@ -245,20 +252,32 @@ func (r *InMemoryResourceRepository) UpdateResource(_ context.Context, id string
 
 	for i, resource := range r.resources {
 		if resource.ID == id {
-			// Check if the user owns this resource
+			// Enforce ownership without leaking existence
 			if resource.OwnerID != ownerID {
-				return Resource{}, errors.New("access denied: you don't own this resource")
+				return Resource{}, fmt.Errorf("resource with ID %s not found", id)
 			}
 
 			updated := resource
 			updated.UpdatedAt = time.Now().UTC()
 
+			// Normalize and validate
+			norm := UpdateResourceRequest{}
 			if req.Name != nil {
-				updated.Name = *req.Name
+				n := strings.TrimSpace(*req.Name)
+				norm.Name = &n
 			}
-
 			if req.Description != nil {
-				updated.Description = *req.Description
+				d := strings.TrimSpace(*req.Description)
+				norm.Description = &d
+			}
+			if ve := validateUpdateResourceRequest(norm); len(ve) > 0 {
+				return Resource{}, ve
+			}
+			if norm.Name != nil {
+				updated.Name = *norm.Name
+			}
+			if norm.Description != nil {
+				updated.Description = *norm.Description
 			}
 
 			r.resources[i] = updated
@@ -280,9 +299,9 @@ func (r *InMemoryResourceRepository) DeleteResource(_ context.Context, id string
 
 	for i, resource := range r.resources {
 		if resource.ID == id {
-			// Check if the user owns this resource
+			// Enforce ownership without leaking existence
 			if resource.OwnerID != ownerID {
-				return errors.New("access denied: you don't own this resource")
+				return fmt.Errorf("resource with ID %s not found", id)
 			}
 
 			// Remove resource from slice

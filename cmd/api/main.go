@@ -12,6 +12,10 @@ import (
 )
 
 func main() {
+	// Setup cancellable context first (used by background routines)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	cfg := api.Config{Addr: ":8080"}
 
 	// Initialize config with JWT secret
@@ -20,17 +24,14 @@ func main() {
 		log.Fatalf("Failed to initialize API config: %v", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	deps := api.Dependencies{
 		UserRepo:     api.NewInMemoryUserRepository(nil, apiConfig),
 		ResourceRepo: api.NewInMemoryResourceRepository(),
 		RateLimiter:  api.NewRateLimiter(60, 10), // 60 requests per minute, burst of 10
 	}
 
-	// Start rate limiter cleanup routine
-	deps.RateLimiter.CleanupRoutine(ctx, api.DefaultCleanupInterval)
+	// Tie limiter lifecycle to process signals
+	deps.RateLimiter.CleanupRoutine(ctx, 5*time.Minute)
 
 	server := api.NewServer(cfg, deps)
 
