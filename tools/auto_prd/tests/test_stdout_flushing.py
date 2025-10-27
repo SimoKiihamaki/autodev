@@ -14,12 +14,20 @@ import os
 from pathlib import Path
 from dataclasses import dataclass
 
-from ..command import (
-    run_cmd,
-    safe_popen,
-    register_safe_cwd,
-)
-from . import safe_cleanup
+try:
+    from tools.auto_prd.command import (
+        run_cmd,
+        safe_popen,
+        register_safe_cwd,
+    )
+    from tools.auto_prd.tests import safe_cleanup
+except ImportError:
+    from ..command import (
+        run_cmd,
+        safe_popen,
+        register_safe_cwd,
+    )
+    from . import safe_cleanup
 
 
 @dataclass

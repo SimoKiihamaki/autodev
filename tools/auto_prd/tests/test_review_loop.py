@@ -3,8 +3,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from ..gh_ops import should_stop_review_after_push
-from .. import review_loop
+try:
+    from tools.auto_prd.gh_ops import should_stop_review_after_push
+    from tools.auto_prd import review_loop
+except ImportError:
+    from ..gh_ops import should_stop_review_after_push
+    from .. import review_loop
 
 
 class ShouldStopReviewAfterPushTests(unittest.TestCase):

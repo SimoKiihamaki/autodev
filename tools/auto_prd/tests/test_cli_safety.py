@@ -5,15 +5,26 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from ..command import (
-    CLAUDE_DEBUG_LOG_NAME,
-    ensure_claude_debug_dir,
-    run_cmd,
-    validate_command_args,
-    register_safe_cwd,
-)
-from ..utils import scrub_cli_text
-from ..pr_flow import open_or_get_pr
+try:
+    from tools.auto_prd.command import (
+        CLAUDE_DEBUG_LOG_NAME,
+        ensure_claude_debug_dir,
+        run_cmd,
+        validate_command_args,
+        register_safe_cwd,
+    )
+    from tools.auto_prd.utils import scrub_cli_text
+    from tools.auto_prd.pr_flow import open_or_get_pr
+except ImportError:
+    from ..command import (
+        CLAUDE_DEBUG_LOG_NAME,
+        ensure_claude_debug_dir,
+        run_cmd,
+        validate_command_args,
+        register_safe_cwd,
+    )
+    from ..utils import scrub_cli_text
+    from ..pr_flow import open_or_get_pr
 
 
 class ScrubCliTextTests(unittest.TestCase):

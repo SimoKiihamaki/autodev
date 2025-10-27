@@ -10,7 +10,10 @@ import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 
-from ..command import safe_popen, run_cmd, register_safe_cwd
+try:
+    from tools.auto_prd.command import safe_popen, run_cmd, register_safe_cwd
+except ImportError:
+    from ..command import safe_popen, run_cmd, register_safe_cwd
 
 
 @dataclass

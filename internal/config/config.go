@@ -24,6 +24,9 @@ type Timings struct {
 	MaxLocalIters     int `yaml:"max_local_iters"`
 }
 
+// BatchProcessing configures how log messages are batched for performance.
+// BatchTimeoutMs: 5 provides responsive UI while minimizing CPU wake-ups for better power efficiency.
+// MaxBatchSize: 25 balances throughput with memory overhead by limiting concurrent messages.
 type BatchProcessing struct {
 	MaxBatchSize   int `yaml:"max_batch_size"`
 	BatchTimeoutMs int `yaml:"batch_timeout_ms"`
@@ -89,7 +92,7 @@ func Defaults() Config {
 		},
 		BatchProcessing: BatchProcessing{
 			MaxBatchSize:   25,
-			BatchTimeoutMs: 1,
+			BatchTimeoutMs: 5,
 		},
 		PhaseExecutors: PhaseExec{},
 		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},

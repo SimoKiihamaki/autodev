@@ -12,12 +12,20 @@ import os
 import shutil
 from pathlib import Path
 
-from ..command import (
-    run_cmd,
-    safe_popen,
-    register_safe_cwd,
-)
-from . import safe_cleanup, get_project_root
+try:
+    from tools.auto_prd.command import (
+        run_cmd,
+        safe_popen,
+        register_safe_cwd,
+    )
+    from tools.auto_prd.tests import safe_cleanup, get_project_root
+except ImportError:
+    from ..command import (
+        run_cmd,
+        safe_popen,
+        register_safe_cwd,
+    )
+    from . import safe_cleanup, get_project_root
 
 
 def create_fake_python_script():

@@ -10,13 +10,22 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ..logging_utils import (
-    install_print_logger,
-    uninstall_print_logger,
-    print_flush,
-    PRINT_HOOK_INSTALLED,
-    ORIGINAL_PRINT,
-)
+try:
+    from tools.auto_prd.logging_utils import (
+        install_print_logger,
+        uninstall_print_logger,
+        print_flush,
+        PRINT_HOOK_INSTALLED,
+        ORIGINAL_PRINT,
+    )
+except ImportError:
+    from ..logging_utils import (
+        install_print_logger,
+        uninstall_print_logger,
+        print_flush,
+        PRINT_HOOK_INSTALLED,
+        ORIGINAL_PRINT,
+    )
 
 
 class IncrementalLogFlushingTests(unittest.TestCase):
