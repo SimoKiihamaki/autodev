@@ -4,14 +4,33 @@ Unittest-compatible tests for stdout/stderr flushing behavior.
 """
 
 import unittest
-import subprocess
 import sys
 import time
+import subprocess
 from pathlib import Path
+from dataclasses import dataclass
+
+from ..command import safe_popen, run_cmd, register_safe_cwd
+
+
+@dataclass
+class CmdResult:
+    """Result object for command execution."""
+
+    stdout: str
+    stderr: str
+    returncode: int
 
 
 class TestStdoutFlushing(unittest.TestCase):
     """Test stdout/stderr flushing behavior."""
+
+    def setUp(self):
+        """Register the test directory as safe for command execution."""
+        register_safe_cwd(Path(__file__).parent)
+        # Also register Python executable directory as safe
+        python_path = Path(sys.executable).parent
+        register_safe_cwd(python_path)
 
     def test_basic_flushing(self):
         """Test that basic print with flush=True works immediately."""
@@ -24,10 +43,8 @@ time.sleep(0.1)
 print("END_TEST", flush=True)
 """
 
-        process = subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        process = safe_popen(
+            ["python3", "-c", script],
             text=True,
             bufsize=1,
         )
@@ -49,12 +66,12 @@ for i in range(20):
 print("RAPID_DONE", flush=True)
 """
 
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
+        stdout, stderr, returncode = run_cmd(
+            ["python3", "-c", script],
             timeout=10,
+            sanitize_args=False,
         )
+        result = CmdResult(stdout, stderr, returncode)
 
         self.assertIn("RAPID_DONE", result.stdout)
         self.assertEqual(
@@ -74,10 +91,8 @@ print("STDERR_2", file=sys.stderr, flush=True)
 print("MIXED_DONE", flush=True)
 """
 
-        process = subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        process = safe_popen(
+            ["python3", "-c", script],
             text=True,
             bufsize=1,
         )
@@ -104,12 +119,12 @@ print(large_content, flush=True)
 print("LARGE_END", flush=True)
 """
 
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
+        stdout, stderr, returncode = run_cmd(
+            ["python3", "-c", script],
             timeout=10,
+            sanitize_args=False,
         )
+        result = CmdResult(stdout, stderr, returncode)
 
         self.assertIn("LARGE_START", result.stdout)
         self.assertIn("LARGE_END", result.stdout)
@@ -126,10 +141,8 @@ time.sleep(0.1)
 print("NO_FLUSH_END")
 """
 
-        process = subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        process = safe_popen(
+            ["python3", "-c", script],
             text=True,
             bufsize=1,  # Line buffered
         )
@@ -163,12 +176,12 @@ for line in result.stdout.strip().split('\\n'):
 print("SUBPROCESS_TEST_DONE", flush=True)
 """
 
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
+        stdout, stderr, returncode = run_cmd(
+            ["python3", "-c", script],
             timeout=10,
+            sanitize_args=False,
         )
+        result = CmdResult(stdout, stderr, returncode)
 
         self.assertIn("SUBPROCESS_TEST_START", result.stdout)
         self.assertIn("SUBPROCESS_TEST_DONE", result.stdout)
@@ -197,12 +210,12 @@ logging.info("Log message 2")
 print("LOGGING_TEST_END", flush=True)
 """
 
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
+        stdout, stderr, returncode = run_cmd(
+            ["python3", "-c", script],
             timeout=10,
+            sanitize_args=False,
         )
+        result = CmdResult(stdout, stderr, returncode)
 
         self.assertIn("LOGGING_TEST_START", result.stdout)
         self.assertIn("LOGGING_TEST_END", result.stdout)

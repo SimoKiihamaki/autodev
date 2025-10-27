@@ -16,9 +16,8 @@ from dataclasses import dataclass
 
 from ..command import (
     run_cmd,
-    validate_command_args,
-    validate_cwd,
-    env_with_zsh,
+    safe_popen,
+    register_safe_cwd,
 )
 
 
@@ -29,22 +28,6 @@ class CmdResult:
     stdout: str
     stderr: str
     returncode: int
-
-
-def safe_popen(cmd, *, text=True, bufsize=1):
-    """Safe wrapper for subprocess.Popen using validation from command.py."""
-    validate_command_args(cmd)
-    validate_cwd(None)
-
-    env = env_with_zsh()
-    return subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=text,
-        bufsize=bufsize,
-        env=env,
-    )
 
 
 class OutputCapture:
@@ -153,6 +136,23 @@ def create_flush_test_script():
     script_content = '''#!/usr/bin/env python3
 import sys
 import time
+import tempfile
+import os
+from dataclasses import dataclass
+
+@dataclass
+class CmdResult:
+    """Result object for command execution."""
+    stdout: str
+    stderr: str
+    returncode: int
+
+# Mock run_cmd for the subprocess test - use subprocess directly
+def run_cmd(cmd, timeout=None, sanitize_args=True):
+    """Mock run_cmd for the subprocess test."""
+    import subprocess
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return result.stdout, result.stderr, result.returncode
 
 def test_basic_flushing():
     """Test basic print with flush=True."""
@@ -211,24 +211,29 @@ def test_subprocess_output():
     """Test output from subprocess calls."""
     print("=== STARTING SUBPROCESS TEST ===", flush=True)
 
-    # Test a simple subprocess
-    stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", "for i in range(3): print(f'Subprocess line {i+1}')"],
-        sanitize_args=False,
-    )
+    # Test a simple subprocess using a temporary script file to avoid sanitize_args=False
+    script_code = "for i in range(3): print(f'Subprocess line {i+1}')"
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp_script:
+        tmp_script.write(script_code)
+        tmp_script_path = tmp_script.name
+    try:
+        stdout, stderr, returncode = run_cmd(
+            ["python3", tmp_script_path],
+        )
+        result = CmdResult(stdout, stderr, returncode)
 
-    result = CmdResult(stdout, stderr, returncode)
-
-    print("Subprocess stdout:", flush=True)
-    for line in result.stdout.strip().split('\\n'):
-        print(f"  {line}", flush=True)
-
-    if result.stderr:
-        print("Subprocess stderr:", flush=True)
-        for line in result.stderr.strip().split('\\n'):
+        print("Subprocess stdout:", flush=True)
+        for line in result.stdout.strip().split('\\n'):
             print(f"  {line}", flush=True)
 
-    print("=== SUBPROCESS TEST COMPLETED ===", flush=True)
+        if result.stderr:
+            print("Subprocess stderr:", flush=True)
+            for line in result.stderr.strip().split('\\n'):
+                print(f"  {line}", flush=True)
+
+        print("=== SUBPROCESS TEST COMPLETED ===", flush=True)
+    finally:
+        os.unlink(tmp_script_path)
 
 if __name__ == "__main__":
     import subprocess
@@ -268,12 +273,14 @@ if __name__ == "__main__":
 def test_real_time_output_capture():
     """Test that output appears in real-time without unexpected buffering."""
     print("Testing real-time output capture...")
+    # Register test directory as safe
+    register_safe_cwd(Path(__file__).parent)
 
     script_path = create_flush_test_script()
 
     try:
         # Start the test script
-        process = safe_popen([sys.executable, script_path])
+        process = safe_popen(["python3", script_path])
 
         # Start capturing output
         capturer = OutputCapture(process)
@@ -378,7 +385,7 @@ print("RAPID_TEST_DONE", flush=True)
 """
 
     stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", rapid_script], timeout=10, sanitize_args=False
+        ["python3", "-c", rapid_script], timeout=10, sanitize_args=False
     )
 
     result = CmdResult(stdout, stderr, returncode)
@@ -399,7 +406,7 @@ for i in range(5):
 print("MIXED_TEST_DONE", flush=True)
 """
 
-    process = safe_popen([sys.executable, "-c", mixed_script])
+    process = safe_popen(["python3", "-c", mixed_script])
 
     capturer = OutputCapture(process)
     capturer.start_capture()
@@ -421,7 +428,7 @@ print("LARGE_TEST_DONE", flush=True)
 """
 
     stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", large_script], timeout=10, sanitize_args=False
+        ["python3", "-c", large_script], timeout=10, sanitize_args=False
     )
 
     result = CmdResult(stdout, stderr, returncode)
@@ -461,7 +468,7 @@ except ImportError as e:
 """
 
     stdout, stderr, returncode = run_cmd(
-        [sys.executable, "-c", test_script],
+        ["python3", "-c", test_script],
         cwd=Path(__file__).parent.parent,
         timeout=10,
         sanitize_args=False,

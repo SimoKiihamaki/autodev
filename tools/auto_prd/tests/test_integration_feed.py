@@ -14,26 +14,9 @@ from pathlib import Path
 
 from ..command import (
     run_cmd,
-    validate_command_args,
-    validate_cwd,
-    env_with_zsh,
+    safe_popen,
+    register_safe_cwd,
 )
-
-
-def safe_popen(cmd, *, text=True, bufsize=1):
-    """Safe wrapper for subprocess.Popen using validation from command.py."""
-    validate_command_args(cmd)
-    validate_cwd(None)
-
-    env = env_with_zsh()
-    return subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=text,
-        bufsize=bufsize,
-        env=env,
-    )
 
 
 def get_project_root():
@@ -100,6 +83,8 @@ print("Automation process finished successfully.", flush=True)
 
 def test_go_runner_log_capture():
     """Test that the Go runner captures logs incrementally."""
+    # Register test directory as safe
+    register_safe_cwd(Path(__file__).parent)
 
     # Create fake Python script
     fake_script = create_fake_python_script()
@@ -209,6 +194,13 @@ This is a test PRD for integration testing.
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    try:
+                        process.wait(timeout=1)
+                    except Exception as wait_error:
+                        print(
+                            f"Warning: Failed to wait for process after kill: {wait_error}",
+                            file=sys.stderr,
+                        )
 
             # Analyze captured output
             print(f"\nCaptured {len(output_lines)} lines of output")
@@ -292,6 +284,8 @@ def test_simple_log_streaming():
     """Simple test of log streaming with a basic command."""
     print("\n" + "=" * 50)
     print("Testing simple log streaming...")
+    # Register test directory as safe
+    register_safe_cwd(Path(__file__).parent)
 
     # Create temporary script file instead of using -c to avoid validation issues
     tiny_script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
@@ -316,7 +310,7 @@ def test_simple_log_streaming():
         raise RuntimeError("python3 executable not found for test")
 
     try:
-        process = safe_popen(cmd, cwd=get_project_root())
+        process = safe_popen(cmd, extra_env={"PWD": str(get_project_root())})
 
         # Use non-blocking readers with threading and queue
         import threading
@@ -374,6 +368,13 @@ def test_simple_log_streaming():
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
+                try:
+                    process.wait(timeout=1)
+                except Exception as wait_error:
+                    print(
+                        f"Warning: Failed to wait for process after kill: {wait_error}",
+                        file=sys.stderr,
+                    )
 
         expected_lines = 6  # 5 progress + 1 completion
         actual_lines = len([line for line in output_lines if line.strip()])

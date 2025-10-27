@@ -10,6 +10,7 @@ from ..command import (
     ensure_claude_debug_dir,
     run_cmd,
     validate_command_args,
+    register_safe_cwd,
 )
 from ..utils import scrub_cli_text
 from ..pr_flow import open_or_get_pr
@@ -42,6 +43,7 @@ class ValidateCommandArgsTests(unittest.TestCase):
 class EnsureClaudeDebugDirTests(unittest.TestCase):
     def setUp(self) -> None:
         self._env_backup = os.environ.copy()
+        register_safe_cwd(Path(__file__).parent)
 
     def tearDown(self) -> None:
         os.environ.clear()
@@ -86,11 +88,14 @@ class RequireCmdClaudeTests(unittest.TestCase):
 
 
 class RunCmdTests(unittest.TestCase):
+    def setUp(self):
+        register_safe_cwd(Path(__file__).parent)
+
     @mock.patch("tools.auto_prd.command.subprocess.run")
     @mock.patch("tools.auto_prd.command.env_with_zsh", return_value={})
     @mock.patch("tools.auto_prd.command.shutil.which", return_value="/usr/bin/gh")
     def test_auto_sanitizes_arguments(
-        self, mock_which, _mock_env_with_zsh, mock_run
+        self, _mock_which, _mock_env_with_zsh, mock_run
     ) -> None:
         mock_run.return_value = subprocess.CompletedProcess(
             args=["gh"],
@@ -113,6 +118,9 @@ class RunCmdTests(unittest.TestCase):
 
 
 class OpenOrGetPrTests(unittest.TestCase):
+    def setUp(self):
+        register_safe_cwd(Path(__file__).parent)
+
     def test_pr_arguments_passed_to_gh_are_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
