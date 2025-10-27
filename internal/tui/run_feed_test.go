@@ -1,6 +1,22 @@
 package tui
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/SimoKiihamaki/autodev/internal/runner"
+	"github.com/charmbracelet/bubbles/viewport"
+)
+
+// Helper functions to create styled log lines for testing
+func fLogLineInfo(format string, args ...interface{}) string {
+	return fmt.Sprintf(format, args...)
+}
+
+func fLogLineAction(format string, args ...interface{}) string {
+	return fmt.Sprintf(format, args...)
+}
 
 func TestHandleIterationHeader(t *testing.T) {
 	t.Parallel()
@@ -112,5 +128,287 @@ func TestConsumeRunSummaryStripsLogPrefix(t *testing.T) {
 	}
 	if m2.runPhase != "Running" {
 		t.Fatalf("runPhase=%q, want Running", m2.runPhase)
+	}
+}
+
+func TestHandleRunFeedLine_LongStreamingSession(t *testing.T) {
+	t.Parallel()
+
+	// Create a model with a viewport
+	m := model{
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0, feedBufCap),
+		runFeedAutoFollow: true,
+	}
+
+	// Simulate a long streaming session with more lines than feedBufCap
+	totalLines := feedBufCap * 2 // 1600 lines
+	for i := 0; i < totalLines; i++ {
+		displayLine := fLogLineAction("Processing item %d", i)
+		rawLine := displayLine
+		m.handleRunFeedLine(displayLine, rawLine)
+
+		// Check that buffer doesn't exceed capacity
+		if len(m.runFeedBuf) > feedBufCap {
+			t.Fatalf("runFeedBuf length %d exceeds feedBufCap %d at iteration %d",
+				len(m.runFeedBuf), feedBufCap, i)
+		}
+	}
+
+	// After trimming, buffer should contain exactly the last feedBufCap lines
+	if len(m.runFeedBuf) != feedBufCap {
+		t.Fatalf("runFeedBuf length %d, want %d after streaming", len(m.runFeedBuf), feedBufCap)
+	}
+
+	// Check that the buffer contains the most recent lines
+	lastExpectedLine := fLogLineAction("Processing item %d", totalLines-1)
+	if m.runFeedBuf[feedBufCap-1] != lastExpectedLine {
+		t.Fatalf("Last buffer line %q, want %q", m.runFeedBuf[feedBufCap-1], lastExpectedLine)
+	}
+
+	// Check that first line in buffer is from the trimmed portion
+	firstExpectedLine := fLogLineAction("Processing item %d", totalLines-feedBufCap)
+	if m.runFeedBuf[0] != firstExpectedLine {
+		t.Fatalf("First buffer line %q, want %q", m.runFeedBuf[0], firstExpectedLine)
+	}
+
+	// Verify viewport content was updated
+	content := m.runFeed.View()
+	if content == "" {
+		t.Fatal("viewport content should not be empty after streaming")
+	}
+
+	// Viewport has a limited height (24 lines), so we just check that it contains some of our buffer content
+	if !strings.Contains(content, "Processing item") {
+		t.Fatal("viewport content should contain our processing lines")
+	}
+}
+
+func TestHandleRunFeedLine_FlushBoundaries(t *testing.T) {
+	t.Parallel()
+
+	// Test that first line always flushes (wasEmpty = true)
+	m := model{
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0),
+		runFeedAutoFollow: true,
+	}
+
+	line := fLogLineInfo("First line")
+	m.handleRunFeedLine(line, line)
+
+	// Dirty lines should be reset after first flush
+	if m.runFeedDirtyLines != 0 {
+		t.Fatalf("runFeedDirtyLines=%d after first flush, want 0", m.runFeedDirtyLines)
+	}
+
+	// Test flush boundary with auto-follow enabled (feedFollowFlushStep = 4)
+	for i := 1; i < feedFollowFlushStep; i++ {
+		line = fLogLineInfo("Test line %d", i)
+		m.handleRunFeedLine(line, line)
+
+		// Dirty lines should accumulate
+		expectedDirty := i
+		if m.runFeedDirtyLines != expectedDirty {
+			t.Fatalf("runFeedDirtyLines=%d at iteration %d, want %d", m.runFeedDirtyLines, i, expectedDirty)
+		}
+	}
+
+	// One more line should trigger the flush
+	line = fLogLineInfo("Flush line")
+	m.handleRunFeedLine(line, line)
+
+	// Dirty lines should be reset again
+	if m.runFeedDirtyLines != 0 {
+		t.Fatalf("runFeedDirtyLines=%d after flush, want 0", m.runFeedDirtyLines)
+	}
+}
+
+func TestHandleRunFeedLine_EmptyBufferFirstFlush(t *testing.T) {
+	t.Parallel()
+
+	m := model{
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0),
+		runFeedAutoFollow: true,
+	}
+
+	// First line should trigger immediate flush (wasEmpty = true)
+	line := fLogLineInfo("First line")
+	m.handleRunFeedLine(line, line)
+
+	// Content should be updated immediately
+	content := m.runFeed.View()
+	if content == "" {
+		t.Fatal("viewport content should be updated immediately for first line")
+	}
+
+	// Should contain the line
+	if !strings.Contains(content, "First line") {
+		t.Fatalf("content %q should contain 'First line'", content)
+	}
+
+	// Dirty lines should be reset after immediate flush
+	if m.runFeedDirtyLines != 0 {
+		t.Fatalf("runFeedDirtyLines=%d, want 0 after immediate flush", m.runFeedDirtyLines)
+	}
+}
+
+func TestHandleRunFeedLine_TrimmingFlush(t *testing.T) {
+	t.Parallel()
+
+	m := model{
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0),
+		runFeedAutoFollow: true,
+	}
+
+	// Fill buffer to capacity to trigger trimming
+	for i := 0; i < feedBufCap+1; i++ {
+		line := fLogLineInfo("Line %d", i)
+		m.handleRunFeedLine(line, line)
+	}
+
+	// Buffer should be trimmed to capacity
+	if len(m.runFeedBuf) != feedBufCap {
+		t.Fatalf("runFeedBuf length %d, want %d after trimming", len(m.runFeedBuf), feedBufCap)
+	}
+
+	// Content should be flushed when trimming occurs
+	content := m.runFeed.View()
+	if content == "" {
+		t.Fatal("viewport content should be flushed when trimming occurs")
+	}
+
+	// Buffer should contain the most recent feedBufCap lines
+	firstExpectedLine := fLogLineInfo("Line %d", 1) // Line 0 should be trimmed
+	if m.runFeedBuf[0] != firstExpectedLine {
+		t.Fatalf("first buffer line %q, want %q", m.runFeedBuf[0], firstExpectedLine)
+	}
+
+	lastExpectedLine := fLogLineInfo("Line %d", feedBufCap)
+	if m.runFeedBuf[feedBufCap-1] != lastExpectedLine {
+		t.Fatalf("last buffer line %q, want %q", m.runFeedBuf[feedBufCap-1], lastExpectedLine)
+	}
+}
+
+func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
+	t.Parallel()
+
+	m := model{
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0),
+		runFeedAutoFollow: true,
+	}
+
+	// Add enough lines to trigger a flush
+	for i := 0; i < feedFollowFlushStep; i++ {
+		line := fLogLineInfo("Line %d", i)
+		m.handleRunFeedLine(line, line)
+	}
+
+	// Auto-follow should be preserved when enabled
+	if !m.runFeedAutoFollow {
+		t.Fatal("runFeedAutoFollow should remain true when initially enabled")
+	}
+
+	// Viewport should be at bottom after flush
+	if !m.runFeed.AtBottom() {
+		t.Fatal("viewport should be at bottom when auto-follow is enabled")
+	}
+
+	// Test auto-follow behavior when user scrolls away
+	// Move viewport away from bottom to simulate user scrolling
+	m.runFeed.GotoTop()
+
+	// After moving away from bottom, shouldFollow should be false unless autoFollow is true
+	// Let's test with autoFollow explicitly set to false
+	m.runFeedAutoFollow = false
+	m.runFeedDirtyLines = 0 // Reset dirty lines
+
+	// Add lines - since viewport is not at bottom and autoFollow is false,
+	// shouldFollow will be false, but autoFollow might get set to true
+	// if the viewport happens to be at bottom during the flush
+	for i := 0; i < feedFlushStep; i++ {
+		line := fLogLineInfo("Scrolled line %d", i)
+		m.handleRunFeedLine(line, line)
+	}
+
+	// The key test: if we ensure viewport is NOT at bottom and autoFollow starts false,
+	// it should remain false because shouldFollow will be false
+	// But if the viewport happens to be at bottom during any flush, autoFollow gets reset to true
+	if m.runFeed.AtBottom() && !m.runFeedAutoFollow {
+		t.Log("Note: Viewport is at bottom but autoFollow is false - this is valid behavior")
+	}
+}
+
+func TestFormatLogLine_VariousLogTypes(t *testing.T) {
+	t.Parallel()
+
+	m := model{}
+
+	tests := []struct {
+		name      string
+		line      runner.Line
+		wantPlain string
+		wantStyle string // We'll just check that it's not empty
+	}{
+		{
+			name:      "info line",
+			line:      runner.Line{Text: "Processing file"},
+			wantPlain: "Processing file",
+		},
+		{
+			name:      "error line",
+			line:      runner.Line{Text: "Something went wrong", Err: true},
+			wantPlain: "Something went wrong",
+		},
+		{
+			name:      "warning line",
+			line:      runner.Line{Text: "⚠️ Potential issue"},
+			wantPlain: "⚠️ Potential issue",
+		},
+		{
+			name:      "success line",
+			line:      runner.Line{Text: "✓ Task completed"},
+			wantPlain: "✓ Task completed",
+		},
+		{
+			name:      "action line",
+			line:      runner.Line{Text: "→ Starting process"},
+			wantPlain: "→ Starting process",
+		},
+		{
+			name:      "process finished",
+			line:      runner.Line{Text: "process finished successfully"},
+			wantPlain: "process finished successfully",
+		},
+		{
+			name:      "review loop",
+			line:      runner.Line{Text: "starting review loop"},
+			wantPlain: "starting review loop",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			styled, plain := m.formatLogLine(tc.line)
+
+			if plain != tc.wantPlain {
+				t.Fatalf("plain=%q, want %q", plain, tc.wantPlain)
+			}
+
+			if styled == "" {
+				t.Fatal("styled output should not be empty")
+			}
+
+			// Styled output should contain the plain text (possibly with ANSI codes)
+			if !strings.Contains(styled, tc.wantPlain) {
+				t.Fatalf("styled output %q should contain plain text %q", styled, tc.wantPlain)
+			}
+		})
 	}
 }

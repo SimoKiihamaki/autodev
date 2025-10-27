@@ -35,7 +35,9 @@ def resolve_log_level(level_name: str) -> int:
     if isinstance(level_value, int):
         return level_value
     valid_levels = ", ".join(ACCEPTED_LOG_LEVELS)
-    raise ValueError(f"Invalid log level: {level_name}. Valid levels are: {valid_levels}")
+    raise ValueError(
+        f"Invalid log level: {level_name}. Valid levels are: {valid_levels}"
+    )
 
 
 def setup_file_logging(log_path: Path, level_name: str) -> None:
@@ -56,12 +58,18 @@ def setup_file_logging(log_path: Path, level_name: str) -> None:
             paths_to_remove.add(str(CURRENT_LOG_PATH))
         for handler in list(root_logger.handlers):
             base_filename = getattr(handler, "baseFilename", None)
-            if base_filename and base_filename in paths_to_remove and isinstance(handler, logging.FileHandler):
+            if (
+                base_filename
+                and base_filename in paths_to_remove
+                and isinstance(handler, logging.FileHandler)
+            ):
                 root_logger.removeHandler(handler)
                 try:
                     handler.close()
                 except Exception:  # pragma: no cover - defensive close
-                    logger.debug("Failed to close previous log handler for %s", base_filename)
+                    logger.debug(
+                        "Failed to close previous log handler for %s", base_filename
+                    )
 
         root_logger.setLevel(numeric_level)
 
@@ -111,12 +119,16 @@ def install_print_logger() -> None:
                 try:
                     is_stderr = stream.fileno() == sys.stderr.fileno()
                 except (AttributeError, ValueError, io.UnsupportedOperation):
-                    is_stderr = stream is sys.stderr or stream is getattr(sys, "__stderr__", None)
+                    is_stderr = stream is sys.stderr or stream is getattr(
+                        sys, "__stderr__", None
+                    )
                 target_level = logging.WARNING if is_stderr else logging.INFO
                 log_message = message[:-1] if message.endswith("\n") else message
                 if log_message:
                     # Logging already appends its own newline, so trim the print newline to avoid doubles.
                     print_logger.log(target_level, log_message)
+            # Ensure immediate output when piped by defaulting to flush=True
+            kwargs.setdefault("flush", True)
             ORIGINAL_PRINT(*args, **kwargs)
 
         builtins.print = tee_print
@@ -142,3 +154,9 @@ def decode_output(data: bytes) -> str:
     if not data:
         return ""
     return data.decode("utf-8", errors="replace")
+
+
+def print_flush(*args, **kwargs) -> None:
+    """Print with explicit flushing to ensure immediate output when piped."""
+    kwargs["flush"] = True
+    ORIGINAL_PRINT(*args, **kwargs)

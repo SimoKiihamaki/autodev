@@ -71,7 +71,9 @@ def run(args) -> None:
         if args.phases is None:
             selected_phases = set(VALID_PHASES)
         else:
-            selected_phases = {p.strip().lower() for p in args.phases.split(",") if p.strip()}
+            selected_phases = {
+                p.strip().lower() for p in args.phases.split(",") if p.strip()
+            }
             invalid = selected_phases.difference(VALID_PHASES)
             if invalid:
                 raise SystemExit(
@@ -115,16 +117,24 @@ def run(args) -> None:
         base_branch_exists = git_branch_exists(repo_root, base_branch)
         if not base_branch_exists:
             if repo_default_branch and repo_default_branch != base_branch:
-                print(f"Base branch '{base_branch}' not found; using '{repo_default_branch}' instead.")
+                print(
+                    f"Base branch '{base_branch}' not found; using '{repo_default_branch}' instead."
+                )
                 base_branch = repo_default_branch
                 base_branch_exists = git_branch_exists(repo_root, base_branch)
         if not base_branch_exists:
             current_branch = git_current_branch(repo_root)
-            print(f"Base branch '{base_branch}' still not found; falling back to current branch '{current_branch}'.")
+            print(
+                f"Base branch '{base_branch}' still not found; falling back to current branch '{current_branch}'."
+            )
             base_branch = current_branch
 
-        active_phases_with_commit_risk = selected_phases.intersection(PHASES_WITH_COMMIT_RISK)
-        perform_auto_pr_commit = include("pr") and not include("local") and not args.dry_run
+        active_phases_with_commit_risk = selected_phases.intersection(
+            PHASES_WITH_COMMIT_RISK
+        )
+        perform_auto_pr_commit = (
+            include("pr") and not include("local") and not args.dry_run
+        )
         stash_selector: Optional[str] = None
         branch_pushed = False
         if not args.dry_run:
@@ -137,7 +147,9 @@ def run(args) -> None:
                         f"   Active phases with commit risk: {', '.join(sorted(active_phases_with_commit_risk))}"
                     )
                     if perform_auto_pr_commit:
-                        print("   Autodev will stash, commit, and push these changes for the PR phase.")
+                        print(
+                            "   Autodev will stash, commit, and push these changes for the PR phase."
+                        )
                     else:
                         print("   Consider committing or stashing changes first.")
                     print("\nUncommitted changes:")
@@ -155,13 +167,19 @@ def run(args) -> None:
                         "\n".join(f"  {entry}" for entry in dirty_entries),
                     )
                 if perform_auto_pr_commit and should_checkout_base:
-                    print("Stashing working tree before preparing PR branch…")
+                    print(
+                        "Stashing working tree before preparing PR branch…", flush=True
+                    )
                     stash_message = f"autodev-pr-stash-{now_stamp()}"
                     stash_selector = git_stash_worktree(repo_root, stash_message)
                     if stash_selector is None:
-                        raise SystemExit("Failed to stash working tree prior to PR preparation.")
+                        raise SystemExit(
+                            "Failed to stash working tree prior to PR preparation."
+                        )
                 elif perform_auto_pr_commit:
-                    print("Proceeding with dirty working tree (no stash needed when branching from current HEAD).")
+                    print(
+                        "Proceeding with dirty working tree (no stash needed when branching from current HEAD)."
+                    )
 
         if needs_branch_setup:
             try:
@@ -180,25 +198,40 @@ def run(args) -> None:
                             run_cmd(["git", "pull", "--ff-only"], cwd=repo_root)
                     else:
                         if args.sync_git:
-                            print(f"Cannot synchronize; base branch '{base_branch}' is unavailable.")
-                        print(f"Base branch '{base_branch}' unavailable; staying on '{current_branch}'.")
+                            print(
+                                f"Cannot synchronize; base branch '{base_branch}' is unavailable."
+                            )
+                        print(
+                            f"Base branch '{base_branch}' unavailable; staying on '{current_branch}'."
+                        )
 
                 if base_branch_exists:
-                    print(f"Creating/checking out working branch '{new_branch}' from '{base_branch}'…")
-                    run_cmd(["git", "checkout", "-B", new_branch, base_branch], cwd=repo_root)
+                    print(
+                        f"Creating/checking out working branch '{new_branch}' from '{base_branch}'…"
+                    )
+                    run_cmd(
+                        ["git", "checkout", "-B", new_branch, base_branch],
+                        cwd=repo_root,
+                    )
                 else:
-                    print(f"Base branch '{base_branch}' missing; staying on existing branch '{new_branch}'.")
+                    print(
+                        f"Base branch '{base_branch}' missing; staying on existing branch '{new_branch}'."
+                    )
                     run_cmd(["git", "checkout", "-B", new_branch], cwd=repo_root)
                 new_branch = git_current_branch(repo_root)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to prepare working branch {new_branch}: {details}") from exc
+                raise SystemExit(
+                    f"Failed to prepare working branch {new_branch}: {details}"
+                ) from exc
         else:
             print(f"Continuing on current branch: {new_branch}")
 
         if stash_selector:
             try:
-                print(f"Restoring stashed changes ({stash_selector}) onto branch '{new_branch}'…")
+                print(
+                    f"Restoring stashed changes ({stash_selector}) onto branch '{new_branch}'…"
+                )
                 git_stash_pop(repo_root, stash_selector)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
@@ -212,14 +245,20 @@ def run(args) -> None:
                 git_stage_all(repo_root)
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to stage changes before PR commit: {details}") from exc
+                raise SystemExit(
+                    f"Failed to stage changes before PR commit: {details}"
+                ) from exc
             if git_has_staged_changes(repo_root):
-                commit_message = f"chore: autodev snapshot {slugify(prd_path.stem)} {now_stamp()}"
+                commit_message = (
+                    f"chore: autodev snapshot {slugify(prd_path.stem)} {now_stamp()}"
+                )
                 try:
                     git_commit(repo_root, commit_message)
                 except subprocess.CalledProcessError as exc:
                     details = extract_called_process_error_details(exc)
-                    raise SystemExit(f"Failed to commit staged changes: {details}") from exc
+                    raise SystemExit(
+                        f"Failed to commit staged changes: {details}"
+                    ) from exc
                 print(f"Committed changes with message: {commit_message}")
             else:
                 print("No staged changes detected before PR; skipping commit.")
@@ -229,7 +268,9 @@ def run(args) -> None:
                 print(f"Pushed branch '{new_branch}' to origin.")
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
-                raise SystemExit(f"Failed to push branch '{new_branch}': {details}") from exc
+                raise SystemExit(
+                    f"Failed to push branch '{new_branch}': {details}"
+                ) from exc
 
         if args.allow_unsafe_execution:
             print_codex_diagnostics(repo_root)
@@ -272,7 +313,9 @@ def run(args) -> None:
                 ):
                     pr_number = None
                 if pr_number is None:
-                    print("No open PR associated with the current branch; review/fix loop will be skipped.")
+                    print(
+                        "No open PR associated with the current branch; review/fix loop will be skipped."
+                    )
         if include("review_fix"):
             review_fix_loop(
                 pr_number=pr_number,
