@@ -147,9 +147,11 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         SystemExit: If command contains unsafe characters or binary is not allowed
 
     Note:
-        Validates against UNSAFE_ARG_CHARS which contains shell metacharacters:
+        Validates against UNSAFE_ARG_CHARS, which contains shell metacharacters:
         {'|', ';', '>', '<', '`'} that could enable shell injection.
-        Backticks are allowed because subprocess runs with shell=False.
+        Backticks ('`') are technically included in UNSAFE_ARG_CHARS, but are explicitly
+        permitted by the validation logic because subprocess is always run with shell=False,
+        so backticks are not interpreted by the shell and do not pose a risk in this context.
     """
     if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
         raise ValueError("cmd must be a non-empty sequence of strings")
@@ -296,8 +298,7 @@ def ensure_claude_debug_dir() -> Path:
     if existing:
         try:
             normalized_existing = normalize(existing)
-            if normalized_existing is not None:
-                candidate_dict[normalized_existing] = None
+            candidate_dict[normalized_existing] = None
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to defaults.",
