@@ -13,7 +13,10 @@ import (
 
 func main() {
 	cfg := api.Config{Addr: ":8080"}
-	server := api.NewServer(cfg, api.Dependencies{})
+	deps := api.Dependencies{
+		UserRepo: api.NewInMemoryUserRepository(nil),
+	}
+	server := api.NewServer(cfg, deps)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

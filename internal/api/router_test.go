@@ -7,7 +7,9 @@ import (
 )
 
 func TestHealthEndpoint(t *testing.T) {
-	router := newRouter(Dependencies{})
+	router := newRouter(Dependencies{
+		UserRepo: NewInMemoryUserRepository(nil),
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()

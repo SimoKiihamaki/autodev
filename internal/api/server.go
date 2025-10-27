@@ -16,7 +16,9 @@ type Config struct {
 }
 
 // Dependencies enumerates the collaborators required by the router.
-type Dependencies struct{}
+type Dependencies struct {
+	UserRepo UserRepository
+}
 
 // Server wraps the configured HTTP server instance.
 type Server struct {

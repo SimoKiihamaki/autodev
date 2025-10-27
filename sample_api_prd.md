@@ -47,7 +47,7 @@ Implement a comprehensive REST API service with CRUD operations, authentication,
 ## Tasks
 
 - [x] Bootstrap Go HTTP server with routing, configuration, and `/healthz` endpoint.
-- [ ] Create in-memory user repository and wire GET `/api/users` with pagination support.
+- [x] Create in-memory user repository and wire GET `/api/users` with pagination support.
 - [ ] Implement POST `/api/users` with payload validation and structured error responses.
 - [ ] Implement GET `/api/users/{id}` with not-found handling.
 - [ ] Implement PUT `/api/users/{id}` with update validation and optimistic locking placeholder.
