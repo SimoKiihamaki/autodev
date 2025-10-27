@@ -177,6 +177,9 @@ def ensure_claude_debug_dir() -> Path:
     def normalize(path_like: Path | str) -> Path:
         raw = os.fspath(path_like)
         # Expand environment variables after coercing to string so values like $TMPDIR resolve correctly.
+        # Note: expandvars must run before expanduser; the latter leaves placeholders such as
+        # ``~${USER}/foo`` untouched inside the user segment, so expanding variables first
+        # produces a path expanduser can resolve properly.
         raw = os.path.expandvars(raw)
         has_trailing_sep = raw.endswith(os.sep)
         if os.altsep:
