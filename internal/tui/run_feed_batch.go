@@ -1,20 +1,21 @@
 package tui
 
 import (
+	"cmp"
 	"time"
 )
 
-// max returns the maximum of two integers
+// max returns the maximum of two integers using the standard library cmp package
 func max(a, b int) int {
-	if a > b {
+	if cmp.Compare(a, b) > 0 {
 		return a
 	}
 	return b
 }
 
-// min returns the minimum of two integers
+// min returns the minimum of two integers using the standard library cmp package
 func min(a, b int) int {
-	if a < b {
+	if cmp.Compare(a, b) < 0 {
 		return a
 	}
 	return b

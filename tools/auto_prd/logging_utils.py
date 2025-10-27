@@ -166,7 +166,9 @@ def install_print_logger() -> None:
                     # Logging already appends its own newline, so trim the print newline to avoid doubles.
                     print_logger.log(target_level, log_message)
 
-            # Force flush=True for all output to prevent buffering stalls
+            # Force flush=True for all output to prevent buffering stalls.
+            # Python switches to block buffering for stdout when output is piped (as opposed to line buffering for terminals),
+            # so setting flush=True ensures immediate output regardless of buffering mode.
             kwargs["flush"] = True
 
             # Call original print

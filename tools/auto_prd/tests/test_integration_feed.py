@@ -269,8 +269,9 @@ def test_simple_log_streaming():
     register_safe_cwd(Path(__file__).parent)
 
     # Create temporary script file instead of using -c to avoid validation issues
-    tiny_script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
-    try:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False
+    ) as tiny_script:
         tiny_script.write(
             "import time\n"
             "for i in range(5):\n"
@@ -278,12 +279,7 @@ def test_simple_log_streaming():
             "    time.sleep(0.2)\n"
             "print('Process completed', flush=True)\n"
         )
-        tiny_script.close()
         cmd = ["python3", tiny_script.name]
-    except Exception:
-        tiny_script.close()
-        os.unlink(tiny_script.name)
-        raise
 
     # Safety check: ensure python3 executable exists
     python_exe = shutil.which("python3")

@@ -388,10 +388,8 @@ def safe_popen(
     env["PYTHONUNBUFFERED"] = "1"
     # Note: Appending repo_root to PYTHONPATH allows project modules to be imported
     # without shadowing system packages.
-    env["PYTHONPATH"] = (
-        f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}"
-        if env.get("PYTHONPATH")
-        else repo_root
+    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
+        os.pathsep
     )
     env["AUTO_PRD_ROOT"] = repo_root
 
