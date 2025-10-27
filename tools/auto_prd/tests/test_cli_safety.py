@@ -7,6 +7,16 @@ from unittest import mock
 
 from .test_helpers import safe_import
 
+
+def get_expected_repo_root() -> Path:
+    """Get the expected repository root directory for test purposes.
+
+    Returns:
+        Path to the repository root directory (3 levels up from the test file)
+    """
+    return Path(__file__).resolve().parents[3]
+
+
 CLAUDE_DEBUG_LOG_NAME = safe_import(
     "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
 )
@@ -65,9 +75,7 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             with mock.patch.dict(os.environ, {"CLAUDE_CODE_DEBUG_LOGS_DIR": tmpdir}):
                 path = ensure_claude_debug_dir()
-                expected = (
-                    Path(__file__).resolve().parents[3] / ".claude-debug"
-                ).resolve()
+                expected = (get_expected_repo_root() / ".claude-debug").resolve()
                 self.assertTrue(
                     path.is_file(), msg="expected Claude debug path to become a file"
                 )
@@ -84,9 +92,7 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
                 with mock.patch.dict(os.environ, clear=True):
                     path = ensure_claude_debug_dir()
                     self.assertTrue(path.exists())
-                    expected = (
-                        Path(__file__).resolve().parents[3] / ".claude-debug"
-                    ).resolve()
+                    expected = (get_expected_repo_root() / ".claude-debug").resolve()
                     self.assertEqual(path.resolve(), expected)
             finally:
                 os.chdir(original_cwd)
@@ -105,7 +111,7 @@ class RequireCmdClaudeTests(unittest.TestCase):
 
                 require_cmd("claude")
 
-            expected = (Path(__file__).resolve().parents[3] / ".claude-debug").resolve()
+            expected = (get_expected_repo_root() / ".claude-debug").resolve()
             self.assertEqual(
                 Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
             )
