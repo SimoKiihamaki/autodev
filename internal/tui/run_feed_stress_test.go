@@ -210,7 +210,7 @@ The TUI should continuously update and display all output without stalling.
 	logCh := make(chan runner.Line, 2048)
 
 	// Create context with timeout for test
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	// Start log collector

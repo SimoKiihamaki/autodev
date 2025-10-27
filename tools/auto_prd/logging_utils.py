@@ -99,6 +99,41 @@ def format_print_message(*args, **kwargs) -> str:
     return f"{message}{end}"
 
 
+def ensure_line_buffering() -> None:
+    """Ensure stdout/stderr are line-buffered when piped to prevent stalls."""
+    import os
+
+    # Set PYTHONUNBUFFERED early for maximum effect
+    os.environ["PYTHONUNBUFFERED"] = "1"
+
+    # Check if stdout is connected to a terminal
+    if not sys.stdout.isatty():
+        # stdout is piped, ensure line buffering
+        try:
+            # Reopen stdout with line buffering (Python 3.7+)
+            sys.stdout.reconfigure(line_buffering=True)
+        except (AttributeError, io.UnsupportedOperation):
+            # Python < 3.7 fallback: already set PYTHONUNBUFFERED above
+            pass
+
+    if not sys.stderr.isatty():
+        # stderr is piped, ensure line buffering
+        try:
+            sys.stderr.reconfigure(line_buffering=True)
+        except (AttributeError, io.UnsupportedOperation):
+            # Python < 3.7 fallback: already set PYTHONUNBUFFERED above
+            pass
+
+
+def initialize_output_buffering() -> None:
+    """
+    Initialize output buffering fixes as early as possible.
+    This function should be called at application startup to prevent
+    any stdout buffering issues when the process is piped.
+    """
+    ensure_line_buffering()
+
+
 def install_print_logger() -> None:
     global PRINT_HOOK_INSTALLED
     if PRINT_HOOK_INSTALLED:
@@ -107,6 +142,9 @@ def install_print_logger() -> None:
     with PRINT_HOOK_LOCK:
         if PRINT_HOOK_INSTALLED:
             return
+
+        # Ensure line buffering first
+        ensure_line_buffering()
 
         print_logger = logging.getLogger(PRINT_LOGGER_NAME)
         print_logger.setLevel(logging.INFO)
@@ -127,9 +165,21 @@ def install_print_logger() -> None:
                 if log_message:
                     # Logging already appends its own newline, so trim the print newline to avoid doubles.
                     print_logger.log(target_level, log_message)
-            # Ensure immediate output when piped by defaulting to flush=True
-            kwargs.setdefault("flush", True)
+
+            # Force flush=True for all output to prevent buffering stalls
+            kwargs["flush"] = True
+
+            # Call original print
             ORIGINAL_PRINT(*args, **kwargs)
+
+            # Additional explicit flush of the target stream for maximum reliability
+            try:
+                stream = kwargs.get("file") or sys.stdout
+                if hasattr(stream, "flush"):
+                    stream.flush()
+            except Exception:
+                # Ignore flush errors - print output already went through
+                pass
 
         builtins.print = tee_print
         PRINT_HOOK_INSTALLED = True
