@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+// contextKey is a custom type for context keys to prevent collisions
+type contextKey string
+
+// Typed context keys for user authentication
+const (
+	UserIDKey    contextKey = "user_id"
+	UserEmailKey contextKey = "user_email"
+	UsernameKey  contextKey = "user_username"
+)
+
 // AuthMiddleware creates a JWT authentication middleware
 func AuthMiddleware(userRepo UserRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -31,9 +41,9 @@ func AuthMiddleware(userRepo UserRepository) func(http.Handler) http.Handler {
 			}
 
 			// Add user context to the request
-			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-			ctx = context.WithValue(ctx, "user_email", claims.Email)
-			ctx = context.WithValue(ctx, "user_username", claims.Username)
+			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
+			ctx = context.WithValue(ctx, UsernameKey, claims.Username)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -64,9 +74,9 @@ func OptionalAuthMiddleware(userRepo UserRepository) func(http.Handler) http.Han
 			}
 
 			// Add user context to the request
-			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-			ctx = context.WithValue(ctx, "user_email", claims.Email)
-			ctx = context.WithValue(ctx, "user_username", claims.Username)
+			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
+			ctx = context.WithValue(ctx, UsernameKey, claims.Username)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -75,18 +85,18 @@ func OptionalAuthMiddleware(userRepo UserRepository) func(http.Handler) http.Han
 
 // GetUserIDFromContext extracts the user ID from the request context
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value("user_id").(string)
+	userID, ok := ctx.Value(UserIDKey).(string)
 	return userID, ok
 }
 
 // GetUserEmailFromContext extracts the user email from the request context
 func GetUserEmailFromContext(ctx context.Context) (string, bool) {
-	userEmail, ok := ctx.Value("user_email").(string)
+	userEmail, ok := ctx.Value(UserEmailKey).(string)
 	return userEmail, ok
 }
 
 // GetUserUsernameFromContext extracts the username from the request context
 func GetUserUsernameFromContext(ctx context.Context) (string, bool) {
-	username, ok := ctx.Value("user_username").(string)
+	username, ok := ctx.Value(UsernameKey).(string)
 	return username, ok
 }

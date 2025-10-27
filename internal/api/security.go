@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sync"
 	"unicode/utf8"
 )
 
@@ -69,21 +68,10 @@ var (
 		regexp.MustCompile(`(?i)<input[^>]*>`),
 		regexp.MustCompile(`(?i)<button[^>]*>.*?</button>`),
 
-		// SQL injection patterns (basic)
-		regexp.MustCompile(`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute)\s`),
-		regexp.MustCompile(`(?i)(--|#|/\*|\*/)`), // SQL comments
-
 		// Expression patterns
 		regexp.MustCompile(`(?i)expression\s*\(`),
 	}
-
-	compilePatternOnce sync.Once
 )
-
-// initDangerousPatterns initializes the dangerous patterns (called via sync.Once)
-func initDangerousPatterns() {
-	// Patterns are already compiled at package level via init()
-}
 
 // sanitizeInput removes potentially harmful characters from input
 func sanitizeInput(input string) string {

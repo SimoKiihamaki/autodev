@@ -120,15 +120,25 @@ func (rl *RateLimiter) allowRequest(clientIP string) bool {
 
 // Cleanup removes old entries from the rate limiter map
 func (rl *RateLimiter) Cleanup() {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
+	// First, collect IPs to delete without holding rl.mu and limiter.mu at the same time
+	var toDelete []string
+	rl.mu.RLock()
 	for ip, limiter := range rl.clients {
 		limiter.mu.Lock()
 		if time.Since(limiter.lastSeen) > rl.window*5 { // Remove after 5 minutes of inactivity
-			delete(rl.clients, ip)
+			toDelete = append(toDelete, ip)
 		}
 		limiter.mu.Unlock()
+	}
+	rl.mu.RUnlock()
+
+	// Now, delete the collected IPs under write lock
+	if len(toDelete) > 0 {
+		rl.mu.Lock()
+		for _, ip := range toDelete {
+			delete(rl.clients, ip)
+		}
+		rl.mu.Unlock()
 	}
 }
 

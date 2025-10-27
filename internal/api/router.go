@@ -174,10 +174,9 @@ func createUserHandler(repo UserRepository) http.HandlerFunc {
 			return
 		}
 
-		// Sanitize input
+		// Sanitize input (but not password - passwords should be validated, not modified)
 		req.Email = sanitizeInput(req.Email)
 		req.Username = sanitizeInput(req.Username)
-		req.Password = sanitizeInput(req.Password)
 
 		if validationErrors := validateCreateUserRequest(req); len(validationErrors) > 0 {
 			writeValidationErrors(w, validationErrors)
@@ -303,9 +302,8 @@ func loginHandler(repo UserRepository) http.HandlerFunc {
 			return
 		}
 
-		// Sanitize input
+		// Sanitize input (but not password - passwords should be validated, not modified)
 		req.Email = sanitizeInput(req.Email)
-		req.Password = sanitizeInput(req.Password)
 
 		// Basic validation
 		if req.Email == "" || req.Password == "" {

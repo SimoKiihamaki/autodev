@@ -20,15 +20,19 @@ func main() {
 		log.Fatalf("Failed to initialize API config: %v", err)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	deps := api.Dependencies{
 		UserRepo:     api.NewInMemoryUserRepository(nil, apiConfig),
 		ResourceRepo: api.NewInMemoryResourceRepository(),
 		RateLimiter:  api.NewRateLimiter(60, 10), // 60 requests per minute, burst of 10
 	}
-	server := api.NewServer(cfg, deps)
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	// Start rate limiter cleanup routine
+	deps.RateLimiter.CleanupRoutine(ctx, 5*time.Minute)
+
+	server := api.NewServer(cfg, deps)
 
 	go func() {
 		log.Printf("starting api server on %s", server.Addr())
