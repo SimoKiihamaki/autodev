@@ -23,9 +23,6 @@ CLAUDE_DEBUG_LOG_NAME = safe_import(
 ensure_claude_debug_dir = safe_import(
     "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
 )
-get_claude_debug_path = safe_import(
-    "tools.auto_prd.command", "..command", "get_claude_debug_path"
-)
 run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
 validate_command_args = safe_import(
     "tools.auto_prd.command", "..command", "validate_command_args"
