@@ -19,6 +19,7 @@ from ..command import (
     safe_popen,
     register_safe_cwd,
 )
+from . import safe_cleanup
 
 
 @dataclass
@@ -233,7 +234,7 @@ def test_subprocess_output():
 
         print("=== SUBPROCESS TEST COMPLETED ===", flush=True)
     finally:
-        os.unlink(tmp_script_path)
+        safe_cleanup(tmp_script_path, "temporary script")
 
 if __name__ == "__main__":
     import subprocess
@@ -361,14 +362,7 @@ def test_real_time_output_capture():
                 # Process might already be dead
                 print(f"Warning: Failed to kill process {kill_error}", file=sys.stderr)
 
-        try:
-            os.unlink(script_path)
-        except (OSError, FileNotFoundError) as e:
-            # File might already be deleted
-            print(
-                f"Warning: Failed to clean up script file {script_path}: {e}",
-                file=sys.stderr,
-            )
+        safe_cleanup(script_path, "script file")
 
 
 def test_buffering_edge_cases():

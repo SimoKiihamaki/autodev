@@ -17,6 +17,7 @@ from ..command import (
     safe_popen,
     register_safe_cwd,
 )
+from . import safe_cleanup
 
 
 def get_project_root():
@@ -257,27 +258,11 @@ This is a test PRD for integration testing.
 
         finally:
             # Clean up PRD file
-            try:
-                os.unlink(prd_path)
-            except FileNotFoundError:
-                # PRD file might already be deleted
-                print(
-                    f"Warning: PRD file {prd_path} not found during cleanup",
-                    file=sys.stderr,
-                )
-            except OSError as e:
-                print(f"Warning: Failed to clean up PRD file {prd_path}: {e}")
+            safe_cleanup(prd_path, "PRD file")
 
     finally:
         # Clean up fake script
-        try:
-            os.unlink(fake_script)
-        except (OSError, FileNotFoundError) as e:
-            # File might already be deleted or inaccessible
-            print(
-                f"Warning: Failed to clean up fake script {fake_script}: {e}",
-                file=sys.stderr,
-            )
+        safe_cleanup(fake_script, "fake script")
 
 
 def test_simple_log_streaming():
@@ -392,10 +377,7 @@ def test_simple_log_streaming():
 
     finally:
         # Clean up temporary script file
-        try:
-            os.unlink(tiny_script.name)
-        except (OSError, FileNotFoundError):
-            pass
+        safe_cleanup(tiny_script.name, "temporary script")
 
 
 if __name__ == "__main__":

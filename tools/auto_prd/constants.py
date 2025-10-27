@@ -38,8 +38,8 @@ COMMAND_ALLOWLIST = {
     "gh",
     "zsh",
     "claude",
-    "python",
-    "python3",
+    # "python",  # Removed for security: only allow specific scripts by full path
+    # "python3", # Removed for security: only allow specific scripts by full path
 }
 ZSH_PATH: str | None = None
 UNSAFE_ARG_CHARS = set("|;><`")

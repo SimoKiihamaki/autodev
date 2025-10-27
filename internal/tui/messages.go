@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	maxBatchSize = 25 // Maximum lines to process in one batch
+	maxBatchSize   = 25 // Maximum lines to process in one batch
+	batchTimeoutMs = 1  // Timeout in milliseconds to wait for more lines
 )
 
 type runStartMsg struct{}
@@ -53,7 +54,7 @@ func (m model) readLogsBatch() tea.Cmd {
 				}
 				lines = append(lines, line)
 
-			case <-time.After(1 * time.Millisecond):
+			case <-time.After(batchTimeoutMs * time.Millisecond):
 				// Channel is empty, return what we have
 				if len(lines) > 0 {
 					return logBatchMsg{lines: lines}

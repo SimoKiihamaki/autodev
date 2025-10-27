@@ -177,9 +177,9 @@ def install_print_logger() -> None:
                 stream = kwargs.get("file") or sys.stdout
                 if hasattr(stream, "flush"):
                     stream.flush()
-            except Exception:
-                # Ignore flush errors - print output already went through
-                pass
+            except Exception as exc:
+                # Log flush errors at debug level for troubleshooting
+                logger.debug("Failed to flush stream: %s", exc)
 
         builtins.print = tee_print
         PRINT_HOOK_INSTALLED = True

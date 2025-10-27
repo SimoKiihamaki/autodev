@@ -82,6 +82,117 @@ func TestBatchLogReaderEmptyChannel(t *testing.T) {
 	}
 }
 
+// TestBatchLogReaderChannelClosure tests error handling when channel is closed
+func TestBatchLogReaderChannelClosure(t *testing.T) {
+	t.Parallel()
+
+	// Create a model with a log channel
+	logCh := make(chan runner.Line, 100)
+	m := model{logCh: logCh}
+
+	// Send some test lines before closing
+	testLines := []runner.Line{
+		{Text: "Before close 1", Time: time.Now()},
+		{Text: "Before close 2", Time: time.Now()},
+	}
+
+	for _, line := range testLines {
+		logCh <- line
+	}
+
+	// Close the channel to simulate process termination
+	close(logCh)
+
+	// Create batch reader command
+	cmd := m.readLogsBatch()
+	if cmd == nil {
+		t.Fatal("Expected non-nil command from readLogsBatch")
+	}
+
+	// Execute the command - should read remaining lines then return nil
+	msg := cmd()
+	if msg == nil {
+		t.Fatal("Expected non-nil message with remaining lines before channel closure")
+	}
+
+	batchMsg, ok := msg.(logBatchMsg)
+	if !ok {
+		t.Fatalf("Expected logBatchMsg, got %T", msg)
+	}
+
+	// Should have received the lines that were sent before closure
+	if len(batchMsg.lines) != len(testLines) {
+		t.Errorf("Expected %d lines before closure, got %d", len(testLines), len(batchMsg.lines))
+	}
+
+	// Verify line content
+	for i, line := range batchMsg.lines {
+		if line.Text != testLines[i].Text {
+			t.Errorf("Line %d: expected %q, got %q", i, testLines[i].Text, line.Text)
+		}
+	}
+
+	// Subsequent reads should return nil since channel is closed
+	cmd2 := m.readLogsBatch()
+	if cmd2 == nil {
+		t.Fatal("Expected non-nil command from readLogsBatch even with closed channel")
+	}
+
+	msg2 := cmd2()
+	if msg2 != nil {
+		t.Errorf("Expected nil message from closed channel, got %T", msg2)
+	}
+}
+
+// TestBatchLogReaderPartialBatch tests timing characteristics with partial batches
+func TestBatchLogReaderPartialBatch(t *testing.T) {
+	t.Parallel()
+
+	// Create a model with a log channel
+	logCh := make(chan runner.Line, 100)
+	m := model{logCh: logCh}
+
+	// Send fewer lines than maxBatchSize
+	testLines := []runner.Line{
+		{Text: "Partial line 1", Time: time.Now()},
+		{Text: "Partial line 2", Time: time.Now()},
+	}
+
+	for _, line := range testLines {
+		logCh <- line
+	}
+
+	// Create batch reader command
+	cmd := m.readLogsBatch()
+	if cmd == nil {
+		t.Fatal("Expected non-nil command from readLogsBatch")
+	}
+
+	// Execute the command - should return lines quickly due to timeout
+	start := time.Now()
+	msg := cmd()
+	elapsed := time.Since(start)
+
+	if msg == nil {
+		t.Fatal("Expected non-nil message from partial batch")
+	}
+
+	// Should complete quickly due to timeout mechanism (allow some margin for execution)
+	if elapsed > 10*time.Millisecond {
+		t.Logf("Note: Partial batch took %v (expected fast due to timeout)", elapsed)
+	}
+
+	batchMsg, ok := msg.(logBatchMsg)
+	if !ok {
+		t.Fatalf("Expected logBatchMsg, got %T", msg)
+	}
+
+	// Should have received the available lines
+	if len(batchMsg.lines) != len(testLines) {
+		t.Errorf("Expected %d lines in partial batch, got %d", len(testLines), len(batchMsg.lines))
+	}
+}
+
 // TestHandleLogBatch tests batch processing of log lines
 func TestHandleLogBatch(t *testing.T) {
 	t.Parallel()

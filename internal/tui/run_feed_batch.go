@@ -6,11 +6,11 @@ import (
 
 // Constants for batch processing
 const (
-	batchTimeoutMs   = 1    // Timeout in milliseconds to wait for more lines
-	highVolumeRate   = 10.0 // Lines per second considered high volume
-	lowVolumeRate    = 2.0  // Lines per second considered low volume
-	diagnosticCount  = 50   // Number of recent diagnostics to keep
-	stallThresholdMs = 100  // Processing time threshold for stall detection
+	minAdaptiveFlushStep = 2    // Minimum flush threshold for high-volume scenarios
+	highVolumeRate       = 10.0 // Lines per second considered high volume
+	lowVolumeRate        = 2.0  // Lines per second considered low volume
+	diagnosticCount      = 50   // Number of recent diagnostics to keep
+	stallThresholdMs     = 100  // Processing time threshold for stall detection
 )
 
 // feedDiagnostic captures performance metrics for troubleshooting
@@ -61,7 +61,7 @@ func (afc *adaptiveFlushController) updateSample(lineCount int) {
 		switch {
 		case afc.outputRate > highVolumeRate:
 			// High volume: flush more frequently
-			afc.adaptiveStep = max(2, feedFollowFlushStep/2)
+			afc.adaptiveStep = max(minAdaptiveFlushStep, feedFollowFlushStep/2)
 		case afc.outputRate < lowVolumeRate:
 			// Low volume: flush less frequently
 			afc.adaptiveStep = min(feedFollowFlushStep*2, feedFlushStep)
