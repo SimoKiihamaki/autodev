@@ -172,10 +172,9 @@ def print_codex_diagnostics(repo_root: Path) -> None:
     except (subprocess.CalledProcessError, OSError, ValueError):
         logger.exception("codex --version failed")
 
-    if not codex_available:
-        return
-    if os.environ.get(SAFE_ENV_VAR) != "1":
-        print(f"codex /status skipped (set {SAFE_ENV_VAR}=1 to enable).")
+    if not codex_available or os.environ.get(SAFE_ENV_VAR) != "1":
+        if codex_available:
+            print(f"codex /status skipped (set {SAFE_ENV_VAR}=1 to enable).")
         return
     try:
         status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)

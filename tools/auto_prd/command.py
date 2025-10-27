@@ -162,11 +162,21 @@ def env_with_zsh(extra: dict | None = None) -> dict[str, str]:
 
 
 def ensure_claude_debug_dir() -> Path:
-    """Point CLAUDE_CODE_DEBUG_LOGS_DIR at a writable *file* instead of a directory."""
+    """Ensure CLAUDE_CODE_DEBUG_LOGS_DIR points at a writable debug log file.
+
+    Preference order:
+        1. User-specified path from CLAUDE_CODE_DEBUG_LOGS_DIR.
+        2. Repo-local ``.claude-debug`` file under the current working directory.
+        3. A file inside the system temp directory.
+
+    Each candidate attempts directory creation and file touch; failures fall through to
+    the next option. As a last resort the repo-local path is returned even if touching
+    the file fails. The selected path is stored back into CLAUDE_CODE_DEBUG_LOGS_DIR.
+    """
 
     def normalize(path_like: Path | str) -> Path:
         raw = os.fspath(path_like)
-        # Expand environment variables before coercing to Path so values like $TMPDIR resolve correctly.
+        # Expand environment variables after coercing to string so values like $TMPDIR resolve correctly.
         raw = os.path.expandvars(raw)
         has_trailing_sep = raw.endswith(os.sep)
         if os.altsep:
