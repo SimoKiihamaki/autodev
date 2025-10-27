@@ -162,9 +162,6 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         if not unsafe_chars:
             continue
         if unsafe_chars.issubset({"`"}):
-            # Note: Allowing backticks is safe here because subprocess.run() and subprocess.Popen()
-            # are called with shell=False, so arguments are passed directly to commands without
-            # shell interpretation where backticks could be executed.
             logger.debug(
                 "Allowing argument containing backticks after relaxed validation: %r",
                 arg,
@@ -281,11 +278,7 @@ def ensure_claude_debug_dir() -> Path:
         return path / CLAUDE_DEBUG_LOG_NAME
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
-    repo_root_candidate: Path | None = None
-    try:
-        repo_root_candidate = normalize(get_claude_debug_path())
-    except (ValueError, RuntimeError, OSError) as exc:
-        logger.debug("Unable to normalize repo root Claude debug path: %s", exc)
+    repo_root_candidate = normalize(get_claude_debug_path())
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
     temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
