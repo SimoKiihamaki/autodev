@@ -19,6 +19,7 @@ try:
         register_safe_cwd,
     )
     from tools.auto_prd.tests import safe_cleanup, get_project_root
+    from tools.auto_prd.tests.test_helpers import safe_import, try_send_with_timeout
 except ImportError:
     from ..command import (
         run_cmd,
@@ -26,6 +27,7 @@ except ImportError:
         register_safe_cwd,
     )
     from . import safe_cleanup, get_project_root
+    from .test_helpers import safe_import, try_send_with_timeout
 
 
 def create_fake_python_script():
@@ -187,7 +189,11 @@ This is a test PRD for integration testing.
             t1.join(timeout=1.0)
             t2.join(timeout=1.0)
             if t1.is_alive() or t2.is_alive():
-                print("Warning: Reader threads did not finish cleanly", file=sys.stderr)
+                assert (
+                    False
+                ), "Reader threads did not finish cleanly: t1 alive = {}, t2 alive = {}".format(
+                    t1.is_alive(), t2.is_alive()
+                )
 
             # Clean up any hanging process
             if process.poll() is None:
@@ -340,7 +346,11 @@ def test_simple_log_streaming():
         t1.join(timeout=1.0)
         t2.join(timeout=1.0)
         if t1.is_alive() or t2.is_alive():
-            print("Warning: Reader threads did not finish cleanly", file=sys.stderr)
+            assert (
+                False
+            ), "Reader threads did not finish cleanly: t1 alive = {}, t2 alive = {}".format(
+                t1.is_alive(), t2.is_alive()
+            )
 
         # Clean up any hanging process
         if process.poll() is None:
