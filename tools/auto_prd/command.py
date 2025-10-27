@@ -136,6 +136,21 @@ def is_within(path: Path, root: Path) -> bool:
 
 
 def validate_command_args(cmd: Sequence[str]) -> None:
+    """Validate command arguments for safety.
+
+    Args:
+        cmd: Command sequence to validate
+
+    Raises:
+        ValueError: If cmd is not a non-empty sequence of strings
+        TypeError: If command arguments are not strings
+        SystemExit: If command contains unsafe characters or binary is not allowed
+
+    Note:
+        Validates against UNSAFE_ARG_CHARS which contains shell metacharacters:
+        {'|', ';', '>', '<', '`'} that could enable shell injection.
+        Backticks are allowed because subprocess runs with shell=False.
+    """
     if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
         raise ValueError("cmd must be a non-empty sequence of strings")
     for arg in cmd:
@@ -275,23 +290,23 @@ def ensure_claude_debug_dir() -> Path:
     # Use dict.fromkeys to maintain insertion order while preventing duplicates
     candidate_dict: dict[Path, None] = {}
 
-    def append_candidate(path: Path | None) -> None:
-        if path is None:
-            return
-        candidate_dict[path] = None
+    if repo_root_candidate is not None:
+        candidate_dict[repo_root_candidate] = None
 
-    append_candidate(repo_root_candidate)
     if existing:
         try:
-            append_candidate(normalize(existing))
+            normalized_existing = normalize(existing)
+            if normalized_existing is not None:
+                candidate_dict[normalized_existing] = None
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to defaults.",
                 existing,
                 exc,
             )
-    append_candidate(repo_candidate)
-    append_candidate(temp_candidate)
+
+    candidate_dict[repo_candidate] = None
+    candidate_dict[temp_candidate] = None
 
     candidates = list(candidate_dict.keys())
     for candidate in candidates:
