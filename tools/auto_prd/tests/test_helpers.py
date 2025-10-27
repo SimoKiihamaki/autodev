@@ -66,7 +66,7 @@ def try_send_with_timeout(queue_func, item, timeout=0.1):
     try:
         queue_func(item, timeout=timeout)
         return True
-    except:
+    except Exception:
         # Handle queue full or timeout
         return False
 

@@ -1,25 +1,8 @@
 package tui
 
 import (
-	"cmp"
 	"time"
 )
-
-// max returns the maximum of two integers using the standard library cmp package
-func max(a, b int) int {
-	if cmp.Compare(a, b) > 0 {
-		return a
-	}
-	return b
-}
-
-// min returns the minimum of two integers using the standard library cmp package
-func min(a, b int) int {
-	if cmp.Compare(a, b) < 0 {
-		return a
-	}
-	return b
-}
 
 // Constants for batch processing
 const (
@@ -111,17 +94,16 @@ func (afc *adaptiveFlushController) recordFlush() {
 type batchEnabledModel struct {
 	model               // Embed the original model
 	diagnostics         []feedDiagnostic
-	flushController     *adaptiveFlushController
 	lastBatchProcess    time.Time
 	totalLinesProcessed int64
 }
 
 // newBatchEnabledModel creates a model with batch processing capabilities
 func newBatchEnabledModel(baseModel model) *batchEnabledModel {
+	// Reuse baseModel.flushController to keep a single source of truth.
 	return &batchEnabledModel{
-		model:           baseModel,
-		diagnostics:     make([]feedDiagnostic, 0, diagnosticCount),
-		flushController: newAdaptiveFlushController(),
+		model:       baseModel,
+		diagnostics: make([]feedDiagnostic, 0, diagnosticCount),
 	}
 }
 
