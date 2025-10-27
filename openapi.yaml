@@ -1,0 +1,448 @@
+openapi: 3.0.3
+info:
+  title: Autodev Sample API
+  description: A comprehensive REST API service with CRUD operations, authentication, and data validation
+  version: 1.0.0
+  contact:
+    name: Autodev Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API service
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/users:
+    get:
+      summary: List users with pagination
+      description: Retrieves a paginated list of users
+      tags:
+        - Users
+      parameters:
+        - name: page
+          in: query
+          description: Page number (default: 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Number of items per page (default: 20, max: 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of users retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new user
+      description: Creates a new user with the provided details
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: User with email or username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/users/{id}:
+    get:
+      summary: Get user by ID
+      description: Retrieves a specific user by their ID
+      tags:
+        - Users
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update user
+      description: Updates an existing user's information
+      tags:
+        - Users
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: User with email or username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete user
+      description: Deletes a user by their ID (idempotent operation)
+      tags:
+        - Users
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deleted successfully (or didn't exist)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      summary: User login
+      description: Authenticates a user and returns a JWT token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/logout:
+    post:
+      summary: User logout
+      description: Logs out a user (client-side token deletion)
+      tags:
+        - Authentication
+      responses:
+        '204':
+          description: Logout successful
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique user identifier
+          example: user-1
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        username:
+          type: string
+          description: User's username (alphanumeric, underscores, and hyphens)
+          example: username
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was created
+          example: '2024-01-01T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was last updated
+          example: '2024-01-01T12:00:00Z'
+      required:
+        - id
+        - email
+        - username
+        - created_at
+        - updated_at
+
+    CreateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: newuser@example.com
+          maxLength: 254
+        username:
+          type: string
+          description: User's username (alphanumeric, underscores, and hyphens)
+          example: newuser
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+        password:
+          type: string
+          description: User's password
+          example: password123
+          minLength: 6
+          format: password
+      required:
+        - email
+        - username
+        - password
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: New email address
+          example: updated@example.com
+          maxLength: 254
+        username:
+          type: string
+          description: New username (alphanumeric, underscores, and hyphens)
+          example: updateduser
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          description: User's password
+          example: password123
+          format: password
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT authentication token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - token
+        - user
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        page_size:
+          type: integer
+          description: Number of items per page
+          example: 20
+        total_items:
+          type: integer
+          description: Total number of items
+          example: 100
+        total_pages:
+          type: integer
+          description: Total number of pages
+          example: 5
+      required:
+        - page
+        - page_size
+        - total_items
+        - total_pages
+
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: email
+        message:
+          type: string
+          description: Validation error message
+          example: email is required
+      required:
+        - field
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          oneOf:
+            - type: string
+              description: Error message
+              example: validation failed
+            - type: object
+              properties:
+                error:
+                  type: string
+                  description: Error type
+                  example: validation failed
+                fields:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ValidationError'
+                  description: List of validation errors
+      required:
+        - error
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: user with ID user-123 not found
+      required:
+        - error
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Users
+    description: User management endpoints
+  - name: Authentication
+    description: Authentication endpoints

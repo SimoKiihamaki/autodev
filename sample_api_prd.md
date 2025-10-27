@@ -48,9 +48,9 @@ Implement a comprehensive REST API service with CRUD operations, authentication,
 
 - [x] Bootstrap Go HTTP server with routing, configuration, and `/healthz` endpoint.
 - [x] Create in-memory user repository and wire GET `/api/users` with pagination support.
-- [ ] Implement POST `/api/users` with payload validation and structured error responses.
-- [ ] Implement GET `/api/users/{id}` with not-found handling.
-- [ ] Implement PUT `/api/users/{id}` with update validation and optimistic locking placeholder.
-- [ ] Implement DELETE `/api/users/{id}` with idempotent behavior.
-- [ ] Add JWT-based authentication flows for login/logout endpoints.
-- [ ] Document the API with OpenAPI 3.0 and include request/response schemas.
+- [x] Implement POST `/api/users` with payload validation and structured error responses.
+- [x] Implement GET `/api/users/{id}` with not-found handling.
+- [x] Implement PUT `/api/users/{id}` with update validation and optimistic locking placeholder.
+- [x] Implement DELETE `/api/users/{id}` with idempotent behavior.
+- [x] Add JWT-based authentication flows for login/logout endpoints.
+- [x] Document the API with OpenAPI 3.0 and include request/response schemas.

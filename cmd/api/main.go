@@ -13,8 +13,15 @@ import (
 
 func main() {
 	cfg := api.Config{Addr: ":8080"}
+
+	// Initialize config with JWT secret
+	apiConfig, err := api.NewUserConfig()
+	if err != nil {
+		log.Fatalf("Failed to initialize API config: %v", err)
+	}
+
 	deps := api.Dependencies{
-		UserRepo: api.NewInMemoryUserRepository(nil),
+		UserRepo: api.NewInMemoryUserRepository(nil, apiConfig),
 	}
 	server := api.NewServer(cfg, deps)
 
