@@ -140,8 +140,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
 {LOCAL_QA_REMINDER}
 """
                 print("→ Launching fix pass with", runner_name, "based on CodeRabbit feedback…")
-                fix_kwargs = runner_kwargs.copy()
-                fix_output = runner(fix_prompt, **fix_kwargs)
+                fix_output = runner(fix_prompt, **runner_kwargs)
                 print("✓ Codex fix pass completed.")
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:
