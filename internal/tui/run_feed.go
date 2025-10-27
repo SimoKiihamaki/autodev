@@ -268,14 +268,14 @@ func trimAutomationLogPrefix(text string) string {
 		return text
 	}
 
-	prefix := strings.TrimSpace(text[:idx]) + ":"
+	prefix := text[:idx+2]
 
 	// Fast heuristic: prefix starts with 4 digits and contains a log level
 	if startsWithFourDigits(prefix) && containsLogLevel(prefix) {
 
 		// Lazy compile regex only when heuristic passes
 		pythonLogPrefixOnce.Do(func() {
-			rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+:$`)
+			rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+: $`)
 		})
 
 		// Use compiled regex for exact match only when heuristic passes
