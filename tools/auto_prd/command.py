@@ -105,10 +105,18 @@ def validate_command_args(cmd: Sequence[str]) -> None:
     for arg in cmd:
         if not isinstance(arg, str):
             raise TypeError("command arguments must be strings")
-        if any(char in arg for char in UNSAFE_ARG_CHARS):
-            raise ValueError(
-                f"cmd argument contains unsafe shell metacharacters: {arg!r}"
+        unsafe_chars = {char for char in arg if char in UNSAFE_ARG_CHARS}
+        if not unsafe_chars:
+            continue
+        if unsafe_chars.issubset({"`"}):
+            logger.debug(
+                "Allowing argument containing backticks after relaxed validation: %r",
+                arg,
             )
+            continue
+        raise ValueError(
+            f"cmd argument contains unsafe shell metacharacters: {arg!r}"
+        )
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
@@ -219,20 +227,36 @@ def ensure_claude_debug_dir() -> Path:
         return path / CLAUDE_DEBUG_LOG_NAME
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
+    forced_candidate: Path | None = None
+    try:
+        forced_candidate = normalize(
+            Path(__file__).resolve().parents[2] / ".claude-debug"
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        logger.debug("Unable to normalize forced Claude debug path: %s", exc)
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
     temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
     candidates: list[Path] = []
+
+    def append_candidate(path: Path | None) -> None:
+        if path is None:
+            return
+        if path not in candidates:
+            candidates.append(path)
+
+    append_candidate(forced_candidate)
     if existing:
         try:
-            candidates.append(normalize(existing))
+            append_candidate(normalize(existing))
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to defaults.",
                 existing,
                 exc,
             )
-    candidates.extend([repo_candidate, temp_candidate])
+    append_candidate(repo_candidate)
+    append_candidate(temp_candidate)
 
     for candidate in candidates:
         file_candidate = (
@@ -251,16 +275,17 @@ def ensure_claude_debug_dir() -> Path:
         return file_candidate
 
     # As a last resort, force the repo-local path even if touch failed earlier.
+    fallback = forced_candidate or repo_candidate
     try:
-        repo_candidate.parent.mkdir(parents=True, exist_ok=True)
+        fallback.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
     try:
-        repo_candidate.touch(exist_ok=True)
+        fallback.touch(exist_ok=True)
     except OSError:
-        logger.debug("Failed to touch fallback Claude debug log at %s", repo_candidate)
-    os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(repo_candidate)
-    return repo_candidate
+        logger.debug("Failed to touch fallback Claude debug log at %s", fallback)
+    os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(fallback)
+    return fallback
 
 
 def run_cmd(

@@ -19,6 +19,9 @@ def require_cmd(name: str) -> None:
         raise RuntimeError(MISSING_CMD_ERR % name) from None
 
     if name == "claude":
+        logger.debug(
+            "Ensuring Claude debug log path is prepared before verifying 'claude' CLI"
+        )
         ensure_claude_debug_dir()
 
     version_checks = [[name, "--version"], [name, "version"], [name, "--help"]]
