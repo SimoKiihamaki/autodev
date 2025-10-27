@@ -311,7 +311,7 @@ def ensure_claude_debug_dir() -> Path:
         return file_candidate
 
     # As a last resort, force the repo-local path even if touch failed earlier.
-    fallback = forced_candidate or repo_candidate
+    fallback = repo_candidate
     try:
         fallback.parent.mkdir(parents=True, exist_ok=True)
     except OSError:

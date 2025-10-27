@@ -61,9 +61,6 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
     def setUp(self) -> None:
         register_safe_cwd(Path(__file__).parent)
 
-    def tearDown(self) -> None:
-        pass
-
     def test_converts_directory_env_value_into_log_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             with mock.patch.dict(os.environ, {"CLAUDE_CODE_DEBUG_LOGS_DIR": tmpdir}):
