@@ -66,12 +66,19 @@ VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 ACCEPTED_LOG_LEVELS = (*VALID_LOG_LEVELS, "WARN")
 
 RATE_LIMIT_STATUS = {"403", "429"}
-REVIEW_BOT_LOGINS = {
+CODERABBIT_REVIEW_LOGINS = {
     login.lower()
     for login in {
         "coderabbitai",
+        "coderabbitai[bot]",
         "coderabbit",
         "coderabbit-ai",
+    }
+}
+
+COPILOT_REVIEW_LOGINS = {
+    login.lower()
+    for login in {
         "copilot",
         "copilot-pull-request-reviewer",
         "copilot-pull-request-reviewer[bot]",
@@ -79,6 +86,8 @@ REVIEW_BOT_LOGINS = {
         "github-copilot[bot]",
     }
 }
+
+REVIEW_BOT_LOGINS = CODERABBIT_REVIEW_LOGINS | COPILOT_REVIEW_LOGINS
 REVIEW_FALLBACK_MENTION = "@reviewer"
 
 _ZSH_LOCK = threading.Lock()
