@@ -43,6 +43,41 @@ SENSITIVE_KEYS = {
 CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
 
 
+def find_repo_root(start_path: Optional[Path] = None) -> Path:
+    """Find the repository root by searching for a .git directory.
+
+    Args:
+        start_path: Path to start searching from, defaults to the file's location
+
+    Returns:
+        Path to the repository root directory
+
+    Raises:
+        RuntimeError: If .git directory is not found in parent hierarchy
+    """
+    if start_path is None:
+        start_path = Path(__file__).resolve()
+
+    current = start_path
+    while current != current.parent:
+        if (current / ".git").is_dir():
+            return current
+        current = current.parent
+
+    # Fallback: if we can't find .git, use the current directory
+    return Path.cwd()
+
+
+def get_claude_debug_path() -> Path:
+    """Get the expected path to the .claude-debug file in the repo root.
+
+    Returns:
+        Path to the .claude-debug file
+    """
+    repo_root = find_repo_root()
+    return repo_root / ".claude-debug"
+
+
 def sanitize_args(args: Sequence[str]) -> list[str]:
     sanitized: list[str] = []
     skip_next = False
@@ -114,9 +149,7 @@ def validate_command_args(cmd: Sequence[str]) -> None:
                 arg,
             )
             continue
-        raise ValueError(
-            f"cmd argument contains unsafe shell metacharacters: {arg!r}"
-        )
+        raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
@@ -229,21 +262,19 @@ def ensure_claude_debug_dir() -> Path:
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     forced_candidate: Path | None = None
     try:
-        forced_candidate = normalize(
-            Path(__file__).resolve().parents[2] / ".claude-debug"
-        )
+        forced_candidate = normalize(get_claude_debug_path())
     except (ValueError, RuntimeError, OSError) as exc:
         logger.debug("Unable to normalize forced Claude debug path: %s", exc)
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
     temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
-    candidates: list[Path] = []
+    # Use dict.fromkeys to maintain insertion order while preventing duplicates
+    candidate_dict: dict[Path, None] = {}
 
     def append_candidate(path: Path | None) -> None:
         if path is None:
             return
-        if path not in candidates:
-            candidates.append(path)
+        candidate_dict[path] = None
 
     append_candidate(forced_candidate)
     if existing:
@@ -258,6 +289,7 @@ def ensure_claude_debug_dir() -> Path:
     append_candidate(repo_candidate)
     append_candidate(temp_candidate)
 
+    candidates = list(candidate_dict.keys())
     for candidate in candidates:
         file_candidate = (
             candidate / CLAUDE_DEBUG_LOG_NAME if candidate.is_dir() else candidate

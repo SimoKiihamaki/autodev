@@ -13,6 +13,9 @@ CLAUDE_DEBUG_LOG_NAME = safe_import(
 ensure_claude_debug_dir = safe_import(
     "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
 )
+get_claude_debug_path = safe_import(
+    "tools.auto_prd.command", "..command", "get_claude_debug_path"
+)
 run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
 validate_command_args = safe_import(
     "tools.auto_prd.command", "..command", "validate_command_args"
@@ -38,9 +41,7 @@ class ScrubCliTextTests(unittest.TestCase):
 class ValidateCommandArgsTests(unittest.TestCase):
     def test_rejects_unsafe_arguments(self) -> None:
         with self.assertRaises(ValueError):
-            validate_command_args(
-                ["gh", "pr", "create", "--body", "contains | pipe"]
-            )
+            validate_command_args(["gh", "pr", "create", "--body", "contains | pipe"])
 
     def test_allows_backticks(self) -> None:
         try:
@@ -69,14 +70,14 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = tmpdir
             path = ensure_claude_debug_dir()
-            expected = (
-                Path(__file__).resolve().parents[3] / ".claude-debug"
-            ).resolve()
+            expected = get_claude_debug_path().resolve()
             self.assertTrue(
                 path.is_file(), msg="expected Claude debug path to become a file"
             )
             self.assertEqual(path.resolve(), expected)
-            self.assertEqual(Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected)
+            self.assertEqual(
+                Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
+            )
 
     def test_creates_repo_local_file_when_variable_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,9 +110,7 @@ class RequireCmdClaudeTests(unittest.TestCase):
 
                 require_cmd("claude")
 
-            expected = (
-                Path(__file__).resolve().parents[3] / ".claude-debug"
-            ).resolve()
+            expected = get_claude_debug_path().resolve()
             self.assertEqual(
                 Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
             )
