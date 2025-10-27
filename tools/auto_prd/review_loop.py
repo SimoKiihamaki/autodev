@@ -9,7 +9,7 @@ from typing import Optional
 
 from .agents import codex_exec
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
-from .gh_ops import acknowledge_review_items, get_unresolved_feedback, trigger_copilot
+from .gh_ops import acknowledge_review_items, get_unresolved_feedback, should_stop_review_after_push, trigger_copilot
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
@@ -107,6 +107,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             last_activity = time.monotonic()
             sleep_with_jitter(float(poll))
             continue
+
+        if should_stop_review_after_push(owner_repo, pr_number, current_head, repo_root):
+            print("Automatic reviewers report no new findings; stopping.")
+            break
 
         if idle_grace_seconds == 0:
             print("No unresolved feedback; stopping.")

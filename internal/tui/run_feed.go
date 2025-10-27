@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 )
@@ -17,6 +18,11 @@ const (
 	iterIndexUnknown     = -1 // iteration index provided but failed to parse
 	iterTotalUnspecified = 0  // iteration total omitted entirely in the feed line
 	iterTotalUnknown     = -1 // iteration total provided but failed to parse; distinct from unspecified
+)
+
+var (
+	pythonLogPrefixOnce sync.Once
+	rePythonLogPrefix   *regexp.Regexp
 )
 
 var (
@@ -114,6 +120,10 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 
 func (m *model) consumeRunSummary(rawLine string) {
 	text := strings.TrimSpace(rawLine)
+	if text == "" {
+		return
+	}
+	text = trimAutomationLogPrefix(text)
 	if text == "" {
 		return
 	}
@@ -232,4 +242,47 @@ func (m *model) handleStatusPhrases(text string) {
 	case strings.HasPrefix(lower, "final tasks_left"):
 		m.setRunCurrent(text)
 	}
+}
+
+// Helper to check if prefix contains a log level
+func containsLogLevel(prefix string) bool {
+	return strings.Contains(prefix, "INFO") ||
+		strings.Contains(prefix, "WARNING") ||
+		strings.Contains(prefix, "ERROR") ||
+		strings.Contains(prefix, "DEBUG")
+}
+
+// Helper to check if a byte is a digit
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+// startsWithFourDigits checks if the string starts with exactly four digits
+func startsWithFourDigits(s string) bool {
+	return len(s) >= 4 && isDigit(s[0]) && isDigit(s[1]) && isDigit(s[2]) && isDigit(s[3])
+}
+
+func trimAutomationLogPrefix(text string) string {
+	idx := strings.Index(text, ": ")
+	if idx == -1 {
+		return text
+	}
+
+	prefix := text[:idx+2]
+
+	// Fast heuristic: prefix starts with 4 digits and contains a log level
+	if startsWithFourDigits(prefix) && containsLogLevel(prefix) {
+
+		// Lazy compile regex only when heuristic passes
+		pythonLogPrefixOnce.Do(func() {
+			rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+: $`)
+		})
+
+		// Use compiled regex for exact match only when heuristic passes
+		if rePythonLogPrefix.MatchString(prefix) {
+			return strings.TrimSpace(text[idx+2:])
+		}
+	}
+
+	return text
 }

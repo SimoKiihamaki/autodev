@@ -210,6 +210,4 @@ func (m *model) handlePRDTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		m.prdList, cmd = m.prdList.Update(msg)
 		return *m, cmd
 	}
-
-	return *m, nil
 }

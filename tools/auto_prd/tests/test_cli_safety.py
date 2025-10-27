@@ -1,10 +1,11 @@
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from tools.auto_prd.command import CLAUDE_DEBUG_LOG_NAME, ensure_claude_debug_dir, validate_command_args
+from tools.auto_prd.command import CLAUDE_DEBUG_LOG_NAME, ensure_claude_debug_dir, run_cmd, validate_command_args
 from tools.auto_prd.utils import scrub_cli_text
 from tools.auto_prd.pr_flow import open_or_get_pr
 
@@ -69,6 +70,29 @@ class RequireCmdClaudeTests(unittest.TestCase):
 
             require_cmd("claude")
             ensure_mock.assert_called_once()
+
+
+class RunCmdTests(unittest.TestCase):
+    @mock.patch("tools.auto_prd.command.subprocess.run")
+    @mock.patch("tools.auto_prd.command.env_with_zsh", return_value={})
+    @mock.patch("tools.auto_prd.command.shutil.which", return_value="/usr/bin/gh")
+    def test_auto_sanitizes_arguments(self, mock_which, _mock_env_with_zsh, mock_run) -> None:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["gh"],
+            returncode=0,
+            stdout=b"",
+            stderr=b"",
+        )
+
+        stdout, stderr, code = run_cmd(["gh", "pr", "create", "--body", "contains `code`"])
+
+        self.assertEqual(stdout, "")
+        self.assertEqual(stderr, "")
+        self.assertEqual(code, 0)
+        executed_cmd = mock_run.call_args[0][0]
+        body_index = executed_cmd.index("--body") + 1
+        self.assertEqual(executed_cmd[body_index], "contains 'code'")
+        self.assertNotIn("`", executed_cmd[body_index])
 
 
 class OpenOrGetPrTests(unittest.TestCase):

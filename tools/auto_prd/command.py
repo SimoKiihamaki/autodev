@@ -24,9 +24,12 @@ from .constants import (
     require_zsh,
 )
 from .logging_utils import decode_output, logger, truncate_for_log
+from .utils import scrub_cli_text
 
 
-REDACT_EQ_PATTERN = re.compile(r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$")
+REDACT_EQ_PATTERN = re.compile(
+    r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$"
+)
 SENSITIVE_KEYS = {
     "token",
     "password",
@@ -52,7 +55,9 @@ def sanitize_args(args: Sequence[str]) -> list[str]:
         if arg in ("-c", "-lc") and idx + 1 < len(args):
             sanitized.append(arg)
             sanitized.append("<REDACTED_SCRIPT>")
-            logger.debug("Sanitizing inline shell script from logs to avoid leaking sensitive input")
+            logger.debug(
+                "Sanitizing inline shell script from logs to avoid leaking sensitive input"
+            )
             skip_next = True
             continue
 
@@ -101,7 +106,9 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         if not isinstance(arg, str):
             raise TypeError("command arguments must be strings")
         if any(char in arg for char in UNSAFE_ARG_CHARS):
-            raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
+            raise ValueError(
+                f"cmd argument contains unsafe shell metacharacters: {arg!r}"
+            )
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
@@ -139,9 +146,13 @@ def validate_extra_env(extra_env: Optional[dict]) -> None:
         return
     for key, value in extra_env.items():
         if not isinstance(key, str) or not isinstance(value, str):
-            raise SystemExit(f"Environment variable keys and values must be strings: {key}={value!r}")
+            raise SystemExit(
+                f"Environment variable keys and values must be strings: {key}={value!r}"
+            )
         if "\n" in key or "\n" in value:
-            raise SystemExit(f"Environment variable keys and values must not contain newlines: {key}={value!r}")
+            raise SystemExit(
+                f"Environment variable keys and values must not contain newlines: {key}={value!r}"
+            )
 
 
 def verify_unsafe_execution_ready() -> None:
@@ -224,13 +235,17 @@ def ensure_claude_debug_dir() -> Path:
     candidates.extend([repo_candidate, temp_candidate])
 
     for candidate in candidates:
-        file_candidate = candidate / CLAUDE_DEBUG_LOG_NAME if candidate.is_dir() else candidate
+        file_candidate = (
+            candidate / CLAUDE_DEBUG_LOG_NAME if candidate.is_dir() else candidate
+        )
         parent = file_candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
             file_candidate.touch(exist_ok=True)
         except OSError as exc:
-            logger.debug("Unable to prepare Claude debug log at %s: %s", file_candidate, exc)
+            logger.debug(
+                "Unable to prepare Claude debug log at %s: %s", file_candidate, exc
+            )
             continue
         os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(file_candidate)
         return file_candidate
@@ -249,7 +264,7 @@ def ensure_claude_debug_dir() -> Path:
 
 
 def run_cmd(
-    cmd: list[str],
+    cmd: Sequence[str],
     *,
     cwd: Optional[Path] = None,
     check: bool = True,
@@ -257,16 +272,40 @@ def run_cmd(
     timeout: Optional[int] = None,
     extra_env: Optional[dict] = None,
     stdin: Optional[str] = None,
+    sanitize_args: bool = True,
 ) -> tuple[str, str, int]:
-    validate_command_args(cmd)
+    # Automatically sanitize all command arguments via scrub_cli_text when sanitize_args=True.
+    # This replaces backticks, quotes, and other shell-sensitive characters to prevent shell injection.
+    # Set sanitize_args=False to preserve special characters that may be intentional (e.g., JSON payloads, regex patterns).
+    # Note: The original vs. sanitized diff is logged at debug level to aid debugging.
+    sanitized_cmd: list[str] = (
+        [scrub_cli_text(arg) for arg in cmd] if sanitize_args else list(cmd)
+    )
+
+    if sanitize_args and list(cmd) != sanitized_cmd:
+        # Log the diff between original and sanitized arguments for debugging.
+        diffs = [
+            f"arg[{i}]: {orig!r} -> {san!r}"
+            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd))
+            if orig != san
+        ]
+        if diffs:
+            logger.debug(
+                "Sanitized command arguments before validation: %s", sanitized_cmd
+            )
+            logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
+    elif not sanitize_args:
+        logger.debug("Argument sanitization disabled (sanitize_args=False)")
+
+    validate_command_args(sanitized_cmd)
     validate_cwd(cwd)
     validate_stdin(stdin)
     validate_extra_env(extra_env)
-    exe = shutil.which(cmd[0])
+    exe = shutil.which(sanitized_cmd[0])
     if not exe:
-        raise FileNotFoundError(f"Command not found: {cmd[0]}")
+        raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
     env = env_with_zsh(extra_env)
-    cmd_display = shlex.join(sanitize_args(cmd))
+    cmd_display = shlex.join(sanitized_cmd)
     logger.info("Running command: %s", cmd_display)
     if cwd:
         logger.debug("Command cwd: %s", cwd)
@@ -279,7 +318,7 @@ def run_cmd(
     start_time = time.monotonic()
     try:
         proc = subprocess.run(
-            cmd,
+            sanitized_cmd,
             cwd=str(cwd) if cwd else None,
             check=False,
             capture_output=capture,
@@ -290,7 +329,9 @@ def run_cmd(
         )
     except Exception:
         duration = time.monotonic() - start_time
-        logger.exception("Command execution error after %.2fs: %s", duration, cmd_display)
+        logger.exception(
+            "Command execution error after %.2fs: %s", duration, cmd_display
+        )
         raise
     duration = time.monotonic() - start_time
     stdout_bytes = proc.stdout or b""
@@ -309,9 +350,17 @@ def run_cmd(
         logger.info("Command succeeded in %.2fs: %s", duration, cmd_display)
     else:
         level = logging.ERROR if check else logging.WARNING
-        logger.log(level, "Command exited with code %s after %.2fs: %s", proc.returncode, duration, cmd_display)
+        logger.log(
+            level,
+            "Command exited with code %s after %.2fs: %s",
+            proc.returncode,
+            duration,
+            cmd_display,
+        )
     if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout_bytes, stderr=stderr_bytes)
+        raise subprocess.CalledProcessError(
+            proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes
+        )
     return stdout_text, stderr_text, proc.returncode
 
 

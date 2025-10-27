@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import subprocess
 from pathlib import Path
 from typing import Optional, Set
 
 from .command import run_cmd
-from .constants import REVIEW_BOT_LOGINS, REVIEW_FALLBACK_MENTION
+from .constants import (
+    CODERABBIT_REVIEW_LOGINS,
+    COPILOT_REVIEW_LOGINS,
+    REVIEW_BOT_LOGINS,
+    REVIEW_FALLBACK_MENTION,
+)
 from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
 
@@ -60,6 +66,54 @@ query($owner:String!,$name:String!,$number:Int!,$cursor:String){
         pageInfo{
           hasNextPage
           endCursor
+        }
+      }
+    }
+  }
+}
+"""
+
+COMMIT_STATUS_ROLLUP_QUERY = """
+query($owner:String!,$name:String!,$oid:GitObjectID!){
+  repository(owner:$owner,name:$name){
+    object(oid:$oid){
+      ... on Commit{
+        statusCheckRollup{
+          contexts(last:50){
+            nodes{
+              __typename
+              ... on CheckRun{
+                name
+                conclusion
+              }
+              ... on StatusContext{
+                context
+                state
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+PR_ACTIVITY_SNAPSHOT_QUERY = """
+query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      issueComments(last:50){
+        nodes{
+          author{login}
+          createdAt
+        }
+      }
+      reviews(last:50){
+        nodes{
+          author{login}
+          submittedAt
+          body
         }
       }
     }
@@ -278,6 +332,137 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
                 )
                 logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
     return processed_ids
+
+
+def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text)
+    except ValueError:
+        logger.debug("Unable to parse datetime value: %s", value)
+        return None
+
+
+def _commit_timestamp(repo_root: Path, commit_sha: str) -> Optional[datetime]:
+    try:
+        stdout, _stderr, _code = run_cmd(
+            ["git", "show", "-s", "--format=%cI", commit_sha],
+            cwd=repo_root,
+        )
+    except subprocess.CalledProcessError as exc:
+        logger.warning("Failed to read commit timestamp for %s: %s", commit_sha, extract_called_process_error_details(exc))
+        return None
+    return _parse_iso8601(stdout.strip())
+
+
+def _collect_commit_status_contexts(owner_repo: str, commit_sha: str) -> list[dict]:
+    owner, name = _parse_owner_repo(owner_repo)
+    try:
+        data = gh_graphql(COMMIT_STATUS_ROLLUP_QUERY, {"owner": owner, "name": name, "oid": commit_sha})
+    except subprocess.CalledProcessError as exc:
+        logger.warning("Failed to fetch status rollup for %s: %s", commit_sha, extract_called_process_error_details(exc))
+        return []
+    nodes = (((data.get("data") or {}).get("repository") or {}).get("object") or {}).get("statusCheckRollup") or {}
+    contexts = (nodes.get("contexts") or {}).get("nodes") or []
+    results: list[dict] = []
+    for raw in contexts:
+        if not isinstance(raw, dict):
+            continue
+        entry = {"__typename": raw.get("__typename")}
+        if entry["__typename"] == "CheckRun":
+            entry["name"] = raw.get("name")
+            entry["state"] = raw.get("conclusion")
+        elif entry["__typename"] == "StatusContext":
+            entry["name"] = raw.get("context")
+            entry["state"] = raw.get("state")
+        else:
+            entry["name"] = raw.get("name")
+            entry["state"] = raw.get("state")
+        results.append(entry)
+    return results
+
+
+def _recent_pr_activity(owner_repo: str, pr_number: int) -> tuple[list[dict], list[dict]]:
+    owner, name = _parse_owner_repo(owner_repo)
+    try:
+        data = gh_graphql(PR_ACTIVITY_SNAPSHOT_QUERY, {"owner": owner, "name": name, "number": pr_number})
+    except subprocess.CalledProcessError as exc:
+        logger.warning(
+            "Failed to fetch PR activity snapshot for #%s: %s",
+            pr_number,
+            extract_called_process_error_details(exc),
+        )
+        return [], []
+    pr = (((data.get("data") or {}).get("repository") or {}).get("pullRequest")) or {}
+    comments = ((pr.get("issueComments") or {}).get("nodes") or [])
+    reviews = ((pr.get("reviews") or {}).get("nodes") or [])
+    return comments, reviews
+
+
+def should_stop_review_after_push(owner_repo: str, pr_number: int, commit_sha: Optional[str], repo_root: Path) -> bool:
+    if not commit_sha:
+        return False
+    commit_time = _commit_timestamp(repo_root, commit_sha)
+    if not commit_time:
+        return False
+
+    contexts = _collect_commit_status_contexts(owner_repo, commit_sha)
+    coderabbit_success = False
+    for ctx in contexts:
+        name = (ctx.get("name") or "").strip().lower()
+        state = (ctx.get("state") or "").strip().upper()
+        if not name:
+            continue
+        if "coderabbit" in name and state == "SUCCESS":
+            coderabbit_success = True
+            break
+    if not coderabbit_success:
+        return False
+
+    comments, reviews = _recent_pr_activity(owner_repo, pr_number)
+    coderabbit_activity_detected = False
+    for comment in comments:
+        login = (((comment.get("author") or {}).get("login")) or "").strip().lower()
+        if login not in CODERABBIT_REVIEW_LOGINS:
+            continue
+        timestamp = _parse_iso8601(comment.get("createdAt"))
+        if timestamp and timestamp >= commit_time:
+            coderabbit_activity_detected = True
+            break
+    if coderabbit_activity_detected:
+        return False
+
+    copilot_ok = False
+    for review in reviews:
+        login = (((review.get("author") or {}).get("login")) or "").strip().lower()
+        if login in CODERABBIT_REVIEW_LOGINS:
+            timestamp = _parse_iso8601(review.get("submittedAt"))
+            if timestamp and timestamp >= commit_time:
+                coderabbit_activity_detected = True
+                break
+            continue
+        if login not in COPILOT_REVIEW_LOGINS:
+            continue
+        timestamp = _parse_iso8601(review.get("submittedAt"))
+        if not timestamp or timestamp < commit_time:
+            continue
+        body = (review.get("body") or "").strip()
+        if body.endswith("generated no new comments."):
+            copilot_ok = True
+    if coderabbit_activity_detected or not copilot_ok:
+        return False
+
+    logger.info(
+        "Stopping review loop for PR #%s: CodeRabbit succeeded without new comments and Copilot confirmed no new findings.",
+        pr_number,
+    )
+    return True
 
 
 def post_final_comment(pr_number: Optional[int], owner_repo: str, prd_path: Path, repo_root: Path, dry_run: bool = False) -> None:
