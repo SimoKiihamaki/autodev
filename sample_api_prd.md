@@ -54,3 +54,8 @@ Implement a comprehensive REST API service with CRUD operations, authentication,
 - [x] Implement DELETE `/api/users/{id}` with idempotent behavior.
 - [x] Add JWT-based authentication flows for login/logout endpoints.
 - [x] Document the API with OpenAPI 3.0 and include request/response schemas.
+- [x] Implement rate limiting and throttling middleware.
+- [x] Add input sanitization and security headers.
+- [x] Implement resource management endpoints (/api/resources) with CRUD operations.
+- [x] Add authentication middleware to protect sensitive endpoints.
+- [x] Update OpenAPI documentation with security schemes and resource endpoints.

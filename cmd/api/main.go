@@ -21,7 +21,9 @@ func main() {
 	}
 
 	deps := api.Dependencies{
-		UserRepo: api.NewInMemoryUserRepository(nil, apiConfig),
+		UserRepo:     api.NewInMemoryUserRepository(nil, apiConfig),
+		ResourceRepo: api.NewInMemoryResourceRepository(),
+		RateLimiter:  api.NewRateLimiter(60, 10), // 60 requests per minute, burst of 10
 	}
 	server := api.NewServer(cfg, deps)
 

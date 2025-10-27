@@ -17,6 +17,38 @@ func setupTestRepoRouter(users []User) *InMemoryUserRepository {
 	return NewInMemoryUserRepository(users, config)
 }
 
+// getTestJWTToken creates a test user and returns a JWT token
+func getTestJWTToken(router http.Handler) string {
+	// Create test user first
+	createReq := CreateUserRequest{
+		Email:    "test@example.com",
+		Username: "testuser",
+		Password: "password123",
+	}
+
+	bodyBytes, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	// Now login to get token
+	loginReq := LoginRequest{
+		Email:    "test@example.com",
+		Password: "password123",
+	}
+
+	loginBodyBytes, _ := json.Marshal(loginReq)
+	loginReqHTTP := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBodyBytes))
+	loginReqHTTP.Header.Set("Content-Type", "application/json")
+	loginRR := httptest.NewRecorder()
+	router.ServeHTTP(loginRR, loginReqHTTP)
+
+	var response LoginResponse
+	_ = json.NewDecoder(loginRR.Body).Decode(&response)
+	return response.Token
+}
+
 func TestHealthEndpoint(t *testing.T) {
 	router := newRouter(Dependencies{
 		UserRepo: setupTestRepoRouter(nil),
@@ -168,6 +200,9 @@ func TestUpdateUserHandler_Valid(t *testing.T) {
 	repo := setupTestRepoRouter(sampleUsers())
 	router := newRouter(Dependencies{UserRepo: repo})
 
+	// Get JWT token for authentication
+	token := getTestJWTToken(router)
+
 	body := UpdateUserRequest{
 		Email: stringPtr("updated@example.com"),
 	}
@@ -175,6 +210,7 @@ func TestUpdateUserHandler_Valid(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPut, "/api/users/user-1", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -197,6 +233,9 @@ func TestUpdateUserHandler_NotFound(t *testing.T) {
 	repo := setupTestRepoRouter(sampleUsers())
 	router := newRouter(Dependencies{UserRepo: repo})
 
+	// Get JWT token for authentication
+	token := getTestJWTToken(router)
+
 	body := UpdateUserRequest{
 		Email: stringPtr("updated@example.com"),
 	}
@@ -204,6 +243,7 @@ func TestUpdateUserHandler_NotFound(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPut, "/api/users/nonexistent", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -217,7 +257,11 @@ func TestDeleteUserHandler_Success(t *testing.T) {
 	repo := setupTestRepoRouter(sampleUsers())
 	router := newRouter(Dependencies{UserRepo: repo})
 
+	// Get JWT token for authentication
+	token := getTestJWTToken(router)
+
 	req := httptest.NewRequest(http.MethodDelete, "/api/users/user-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -235,7 +279,11 @@ func TestDeleteUserHandler_NotFound(t *testing.T) {
 	repo := setupTestRepoRouter(sampleUsers())
 	router := newRouter(Dependencies{UserRepo: repo})
 
+	// Get JWT token for authentication
+	token := getTestJWTToken(router)
+
 	req := httptest.NewRequest(http.MethodDelete, "/api/users/nonexistent", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)

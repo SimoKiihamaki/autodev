@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -532,12 +534,35 @@ func (r *InMemoryUserRepository) ValidateJWTToken(tokenString string) (*JWTClaim
 	return nil, errors.New("invalid token")
 }
 
+// generateRandomPassword creates a cryptographically secure random password
+func generateRandomPassword(length int) (string, error) {
+	if length < 8 {
+		length = 16 // Default to 16 characters if too short
+	}
+
+	bytes := make([]byte, length)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(bytes)[:length], nil
+}
+
 // replaceAll swaps the internal user list for the provided one in a deterministic order.
+// This function is used for test/dev purposes and generates secure random passwords for seeded users.
 func (r *InMemoryUserRepository) replaceAll(users []User) {
 	clone := make([]UserWithPassword, len(users))
 	for i, user := range users {
-		// Hash the default password using bcrypt
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("default-password"), bcrypt.DefaultCost)
+		// Generate a secure random password for each seeded user
+		defaultPassword, err := generateRandomPassword(16)
+		if err != nil {
+			// If random generation fails, use a timestamp-based fallback
+			defaultPassword = fmt.Sprintf("temp-%d", time.Now().UnixNano())
+		}
+
+		// Hash the generated password using bcrypt
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(defaultPassword), bcrypt.DefaultCost)
 		if err != nil {
 			// If hashing fails, use a placeholder that will fail authentication
 			hashedPassword = []byte("hash-failed-invalid-password")
