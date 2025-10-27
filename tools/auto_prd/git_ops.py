@@ -181,7 +181,5 @@ def print_codex_diagnostics(repo_root: Path) -> None:
         status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
         if status_out.strip():
             print(status_out.strip())
-    except SystemExit:
-        print(f"codex /status skipped (missing {SAFE_ENV_VAR}).")
     except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError):
         logger.exception("codex /status failed")

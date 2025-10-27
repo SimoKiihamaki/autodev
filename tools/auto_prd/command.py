@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
-import random
 import re
 import shlex
 import shutil
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Optional
@@ -163,7 +161,7 @@ def env_with_zsh(extra: dict | None = None) -> dict[str, str]:
     return env
 
 
-def ensure_claude_debug_dir() -> Optional[Path]:
+def ensure_claude_debug_dir() -> Path:
     """Point CLAUDE_CODE_DEBUG_LOGS_DIR at a writable *file* instead of a directory."""
 
     def normalize(path_like: Path | str) -> Path:
@@ -195,7 +193,7 @@ def ensure_claude_debug_dir() -> Optional[Path]:
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
-    temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs" / CLAUDE_DEBUG_LOG_NAME)
+    temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
     candidates: list[Path] = []
     if existing:
@@ -214,7 +212,6 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         try:
             parent.mkdir(parents=True, exist_ok=True)
             candidate.touch(exist_ok=True)
-            os.utime(candidate, None)
         except OSError as exc:
             logger.debug("Unable to prepare Claude debug log at %s: %s", candidate, exc)
             continue
