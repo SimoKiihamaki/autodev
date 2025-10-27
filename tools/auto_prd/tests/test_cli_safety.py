@@ -70,7 +70,7 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = tmpdir
             path = ensure_claude_debug_dir()
-            expected = get_claude_debug_path().resolve()
+            expected = (Path(__file__).resolve().parents[3] / ".claude-debug").resolve()
             self.assertTrue(
                 path.is_file(), msg="expected Claude debug path to become a file"
             )
@@ -110,7 +110,7 @@ class RequireCmdClaudeTests(unittest.TestCase):
 
                 require_cmd("claude")
 
-            expected = get_claude_debug_path().resolve()
+            expected = (Path(__file__).resolve().parents[3] / ".claude-debug").resolve()
             self.assertEqual(
                 Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
             )

@@ -64,8 +64,10 @@ def find_repo_root(start_path: Optional[Path] = None) -> Path:
             return current
         current = current.parent
 
-    # Fallback: if we can't find .git, use the current directory
-    return Path.cwd()
+    # If we can't find .git, raise an error as documented
+    raise RuntimeError(
+        "Could not find .git directory in any parent of {}".format(start_path)
+    )
 
 
 def get_claude_debug_path() -> Path:
