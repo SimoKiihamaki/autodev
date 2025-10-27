@@ -20,6 +20,10 @@ const (
 )
 
 var (
+	rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+:$`)
+)
+
+var (
 	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
 	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?(?::\s*(.+?))?\s*=+$`)
 )
@@ -256,7 +260,6 @@ func trimAutomationLogPrefix(text string) string {
 		(strings.Contains(prefix, "INFO") || strings.Contains(prefix, "WARNING") || strings.Contains(prefix, "ERROR") || strings.Contains(prefix, "DEBUG")) {
 
 		// Use compiled regex for exact match only when heuristic passes
-		rePythonLogPrefix := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+:$`)
 		if rePythonLogPrefix.MatchString(prefix) {
 			return strings.TrimSpace(text[idx+2:])
 		}
