@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .agents import coderabbit_has_findings, coderabbit_prompt_only
+from .agents import codex_exec, coderabbit_has_findings, coderabbit_prompt_only
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
 from .policy import policy_runner
@@ -75,14 +75,16 @@ At the end, print: TASKS_LEFT=<N>
 """
         runner, runner_name = policy_runner(None, i=i, phase="implement")
         print("→ Launching implementation pass with", runner_name, "…")
-        impl_output = runner(
-            impl_prompt,
-            repo_root,
-            model=codex_model,
-            enable_search=True,
-            allow_unsafe_execution=allow_unsafe_execution,
-            dry_run=dry_run,
-        )
+        runner_kwargs = {
+            "repo_root": repo_root,
+            "enable_search": True,
+            "allow_unsafe_execution": allow_unsafe_execution,
+            "dry_run": dry_run,
+        }
+        if runner is codex_exec:
+            runner_kwargs["model"] = codex_model
+
+        impl_output = runner(impl_prompt, **runner_kwargs)
         print("✓ Codex implementation pass completed.")
         readonly_indicator = detect_readonly_block(impl_output)
         if readonly_indicator:
@@ -138,14 +140,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
 {LOCAL_QA_REMINDER}
 """
                 print("→ Launching fix pass with", runner_name, "based on CodeRabbit feedback…")
-                fix_output = runner(
-                    fix_prompt,
-                    repo_root,
-                    model=codex_model,
-                    enable_search=True,
-                    allow_unsafe_execution=allow_unsafe_execution,
-                    dry_run=dry_run,
-                )
+                fix_output = runner(fix_prompt, **runner_kwargs)
                 print("✓ Codex fix pass completed.")
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:

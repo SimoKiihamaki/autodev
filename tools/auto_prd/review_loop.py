@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .agents import codex_exec
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
 from .gh_ops import acknowledge_review_items, get_unresolved_feedback, trigger_copilot
 from .git_ops import git_head_sha
@@ -83,13 +84,19 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
             review_runner, _ = policy_runner(None, phase="review_fix")
 
+            runner_kwargs = {
+                "repo_root": repo_root,
+                "enable_search": True,
+                "allow_unsafe_execution": allow_unsafe_execution,
+                "dry_run": dry_run,
+            }
+            if review_runner is codex_exec:
+                runner_kwargs["model"] = codex_model
+
             try:
                 review_runner(
                     fix_prompt,
-                    repo_root,
-                    model=codex_model,
-                    enable_search=True,
-                    allow_unsafe_execution=allow_unsafe_execution,
+                    **runner_kwargs,
                 )
             except Exception:  # pragma: no cover - best-effort resilience
                 logger.exception("Review runner failed")

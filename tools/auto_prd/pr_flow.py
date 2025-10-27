@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from .agents import codex_exec
 from .command import run_cmd
 from .gh_ops import get_pr_number_for_head
 from .git_ops import git_push_branch
@@ -81,13 +82,16 @@ Prepare and push a PR for this branch:
     if not skip_runner:
         pr_runner, _ = policy_runner(get_executor_policy(), phase="pr")
 
-        result = pr_runner(
-            push_prompt,
-            repo_root,
-            model=codex_model,
-            enable_search=True,
-            allow_unsafe_execution=allow_unsafe_execution,
-        )
+        runner_kwargs = {
+            "repo_root": repo_root,
+            "enable_search": True,
+            "allow_unsafe_execution": allow_unsafe_execution,
+            "dry_run": dry_run,
+        }
+        if pr_runner is codex_exec:
+            runner_kwargs["model"] = codex_model
+
+        result = pr_runner(push_prompt, **runner_kwargs)
         if "PR_OPENED=YES" in (result or ""):
             push_performed = True
     else:
