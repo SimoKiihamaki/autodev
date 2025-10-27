@@ -273,10 +273,23 @@ def run_cmd(
     extra_env: Optional[dict] = None,
     stdin: Optional[str] = None,
 ) -> tuple[str, str, int]:
+    # Automatically sanitize all command arguments via scrub_cli_text.
+    # This replaces backticks, quotes, and other shell-sensitive characters to prevent shell injection.
+    # Note: The original vs. sanitized diff is logged at debug level to aid debugging.
     sanitized_cmd: list[str] = [scrub_cli_text(arg) for arg in cmd]
 
     if list(cmd) != sanitized_cmd:
-        logger.debug("Sanitized command arguments before validation: %s", sanitized_cmd)
+        # Log the diff between original and sanitized arguments for debugging.
+        diffs = [
+            f"arg[{i}]: {orig!r} -> {san!r}"
+            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd))
+            if orig != san
+        ]
+        if diffs:
+            logger.debug(
+                "Sanitized command arguments before validation: %s", sanitized_cmd
+            )
+            logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
 
     validate_command_args(sanitized_cmd)
     validate_cwd(cwd)

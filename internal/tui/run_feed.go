@@ -22,7 +22,6 @@ const (
 var (
 	reSectionHeader   = regexp.MustCompile(`^=+\s*(.+?)\s*=+$`)
 	reIterationHeader = regexp.MustCompile(`^=+\s*Iteration\s+(\d+)(?:/(\d+))?(?::\s*(.+?))?\s*=+$`)
-	rePythonLogPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+$`)
 )
 
 func (m *model) resetRunDashboard() {
@@ -244,9 +243,24 @@ func trimAutomationLogPrefix(text string) string {
 	if idx == -1 {
 		return text
 	}
-	prefix := strings.TrimSpace(text[:idx])
-	if rePythonLogPrefix.MatchString(prefix) {
-		return strings.TrimSpace(text[idx+2:])
+
+	// Helper to check if a byte is a digit
+	isDigit := func(b byte) bool {
+		return b >= '0' && b <= '9'
 	}
+
+	prefix := strings.TrimSpace(text[:idx]) + ":"
+
+	// Fast heuristic: prefix starts with 4 digits and contains a log level
+	if len(prefix) >= 4 && isDigit(prefix[0]) && isDigit(prefix[1]) && isDigit(prefix[2]) && isDigit(prefix[3]) &&
+		(strings.Contains(prefix, "INFO") || strings.Contains(prefix, "WARNING") || strings.Contains(prefix, "ERROR") || strings.Contains(prefix, "DEBUG")) {
+
+		// Use compiled regex for exact match only when heuristic passes
+		rePythonLogPrefix := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+[A-Z]+\s+[A-Za-z0-9_.]+:$`)
+		if rePythonLogPrefix.MatchString(prefix) {
+			return strings.TrimSpace(text[idx+2:])
+		}
+	}
+
 	return text
 }
