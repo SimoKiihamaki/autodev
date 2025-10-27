@@ -305,7 +305,7 @@ def run_cmd(
     if not exe:
         raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
     env = env_with_zsh(extra_env)
-    cmd_display = shlex.join(sanitize_args(sanitized_cmd))
+    cmd_display = shlex.join(sanitize_args(cmd))
     logger.info("Running command: %s", cmd_display)
     if cwd:
         logger.debug("Command cwd: %s", cwd)
