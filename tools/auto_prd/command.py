@@ -224,17 +224,16 @@ def ensure_claude_debug_dir() -> Path:
     candidates.extend([repo_candidate, temp_candidate])
 
     for candidate in candidates:
-        if candidate.is_dir():
-            candidate = candidate / CLAUDE_DEBUG_LOG_NAME
-        parent = candidate.parent
+        file_candidate = candidate / CLAUDE_DEBUG_LOG_NAME if candidate.is_dir() else candidate
+        parent = file_candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
-            candidate.touch(exist_ok=True)
+            file_candidate.touch(exist_ok=True)
         except OSError as exc:
-            logger.debug("Unable to prepare Claude debug log at %s: %s", candidate, exc)
+            logger.debug("Unable to prepare Claude debug log at %s: %s", file_candidate, exc)
             continue
-        os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(candidate)
-        return candidate
+        os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(file_candidate)
+        return file_candidate
 
     # As a last resort, force the repo-local path even if touch failed earlier.
     try:
