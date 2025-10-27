@@ -1,6 +1,7 @@
 import subprocess
 import unittest
 
+from tools.auto_prd.constants import CLI_ARG_REPLACEMENTS, UNSAFE_ARG_CHARS
 from tools.auto_prd.utils import (
     extract_called_process_error_details,
     parse_tasks_left,
@@ -35,17 +36,33 @@ class ParseTasksLeftTests(unittest.TestCase):
 
 class ScrubCliTextTests(unittest.TestCase):
     def test_replaces_unsafe_characters(self) -> None:
-        sanitized = scrub_cli_text("`hello|world<foo>`")
+        sanitized = scrub_cli_text("`hello|world<foo;bar>`")
         self.assertNotIn("`", sanitized)
         self.assertNotIn("|", sanitized)
         self.assertNotIn("<", sanitized)
+        self.assertNotIn(";", sanitized)
         self.assertIn("'", sanitized)
         self.assertIn("/", sanitized)
         self.assertIn("(", sanitized)
+        self.assertIn(",", sanitized)
 
     def test_returns_original_when_safe(self) -> None:
         text = "Implement: sample.md"
         self.assertEqual(scrub_cli_text(text), text)
+
+    def test_replaces_each_unsafe_character_with_expected_mapping(self) -> None:
+        for char in UNSAFE_ARG_CHARS:
+            original = f"prefix{char}suffix"
+            sanitized = scrub_cli_text(original)
+            self.assertTrue(sanitized.startswith("prefix"), msg=f"prefix lost for {char!r}")
+            replacement = CLI_ARG_REPLACEMENTS.get(char, " ")
+            self.assertNotIn(char, sanitized)
+            self.assertIn(replacement, sanitized)
+
+    def test_handles_mixed_unsafe_sequence(self) -> None:
+        original = "a>b;c"
+        sanitized = scrub_cli_text(original)
+        self.assertEqual(sanitized, "a)b,c")
 
 
 if __name__ == "__main__":

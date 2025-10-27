@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
 from .command import run_cmd
+from .constants import SAFE_ENV_VAR
 from .logging_utils import logger
 
 
@@ -172,9 +174,14 @@ def print_codex_diagnostics(repo_root: Path) -> None:
 
     if not codex_available:
         return
+    if os.environ.get(SAFE_ENV_VAR) != "1":
+        print(f"codex /status skipped (set {SAFE_ENV_VAR}=1 to enable).")
+        return
     try:
         status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
         if status_out.strip():
             print(status_out.strip())
+    except SystemExit:
+        print(f"codex /status skipped (missing {SAFE_ENV_VAR}).")
     except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError, PermissionError):
         logger.exception("codex /status failed")

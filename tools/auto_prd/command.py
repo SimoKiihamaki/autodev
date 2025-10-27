@@ -39,6 +39,8 @@ SENSITIVE_KEYS = {
     "access_token",
 }
 
+CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
+
 
 def sanitize_args(args: Sequence[str]) -> list[str]:
     sanitized: list[str] = []
@@ -166,20 +168,34 @@ def ensure_claude_debug_dir() -> Optional[Path]:
 
     def normalize(path_like: Path | str) -> Path:
         raw = os.fspath(path_like)
+        # Expand environment variables before coercing to Path so values like $TMPDIR resolve correctly.
+        raw = os.path.expandvars(raw)
         has_trailing_sep = raw.endswith(os.sep)
         if os.altsep:
             has_trailing_sep = has_trailing_sep or raw.endswith(os.altsep)
-        path = Path(path_like).expanduser()
-        if has_trailing_sep or path.is_dir():
-            return path / "claude_code_debug.log"
+        path = Path(raw).expanduser()
+        try:
+            exists = path.exists()
+        except OSError:
+            exists = False
+        if has_trailing_sep or (exists and path.is_dir()):
+            return path / CLAUDE_DEBUG_LOG_NAME
+        if exists and path.is_file():
+            return path
         if path.suffix:
             return path
-        return path / "claude_code_debug.log"
+        parent = path.parent
+        try:
+            parent_exists = parent.exists() and parent.is_dir()
+        except OSError:
+            parent_exists = False
+        if parent_exists:
+            return path
+        return path / CLAUDE_DEBUG_LOG_NAME
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
-    default_log_name = "claude_code_debug.log"
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
-    temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs" / default_log_name)
+    temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs" / CLAUDE_DEBUG_LOG_NAME)
 
     candidates: list[Path] = []
     if existing:
@@ -197,8 +213,8 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         parent = candidate.parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
-            with open(candidate, "a", encoding="utf-8"):
-                os.utime(candidate, None)
+            candidate.touch(exist_ok=True)
+            os.utime(candidate, None)
         except OSError as exc:
             logger.debug("Unable to prepare Claude debug log at %s: %s", candidate, exc)
             continue
@@ -210,6 +226,10 @@ def ensure_claude_debug_dir() -> Optional[Path]:
         repo_candidate.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
+    try:
+        repo_candidate.touch(exist_ok=True)
+    except OSError:
+        logger.debug("Failed to touch fallback Claude debug log at %s", repo_candidate)
     os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(repo_candidate)
     return repo_candidate
 
