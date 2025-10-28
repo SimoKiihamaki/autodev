@@ -15,6 +15,12 @@ Shows live logs from the underlying Python process.
 - Finds the Python automation script relative to the binary when the default path is missing.
 - Persists each run’s logs to `~/.config/aprd/logs/` for post-run debugging.
 
+## Live Feed at a Glance
+
+- Streams the Python automation output into both the Logs tab and the Live Feed as batches of freshly read lines.
+- Relies on the runner’s non-blocking channel to keep the UI responsive while always persisting a full log file.
+- Read the [Live Feed guide](docs/live-feed.md) for the detailed architecture and logging expectations.
+
 ## Requirements
 
 - Go 1.21+
@@ -54,35 +60,26 @@ In **Settings**, set the executor for each phase:
 If left empty, the global **Executor policy** applies.
 This is implemented via env vars: `AUTO_PRD_EXECUTOR_IMPLEMENT|FIX|PR|REVIEW_FIX`.
 
-## Troubleshooting
+## Troubleshooting Live Feed
 
-### Live feed appears to "stall" during long operations
+- **UI quiet but log file growing**: The reader loop likely stopped rescheduling. Reopen the TUI or restart the run to reset `readLogsBatch()`.
+- **UI and log file both quiet**: The script is not emitting output—ensure it runs with `PYTHONUNBUFFERED=1` or `python -u`.
+- **Still unsure?** Confirm the automation script is printing the expected markers described in the [Live Feed guide](docs/live-feed.md).
 
-**Symptom**: The live feed in the Logs tab stops updating for minutes, even though work is continuing.
+### Common delays
 
-**Cause**: This is normal behavior during long-running operations (like Codex execution). The Python process may be working on a task that takes several minutes, during which no new log lines are generated.
+The live feed in the Logs tab may pause for minutes during long operations while the Python process works without emitting new lines. Typical long-running steps include Codex/Claude implementation passes (2-10 minutes), CodeRabbit reviews (1-5 minutes), and Git operations during PR creation (30 seconds to 2 minutes). Review the last log entry and the active phase in the status bar before assuming the feed is stuck.
 
-**What's happening**: The feed is not actually stalled - it's just waiting for the next status update. Common long operations include:
-- Codex/Claude implementation passes (2-10 minutes)
-- CodeRabbit reviews (1-5 minutes)
-- Git operations during PR creation (30 seconds to 2 minutes)
+### If the feed seems actually stuck
 
-**Solutions**:
-1. **Wait patiently** - Most operations complete within 10 minutes
-2. **Check the current phase** - The status bar shows what phase is active
-3. **Review the last log entry** - It usually indicates what operation is in progress
-4. **Enable DEBUG mode** - Set `AUTO_PRD_DEBUG=1` in environment for more verbose output
+If the feed has not updated for more than 15 minutes, the process may have encountered an issue:
 
-### If the feed seems actually stuck (rare)
-
-If the feed hasn't updated for more than 15 minutes, the process may have encountered an issue:
-
-1. **Check the process**: Look for running `python3` or `codex` processes
-2. **Review the logs**: Full logs are saved to `~/.config/aprd/logs/`
-3. **Restart and resume**: You can often restart and use the "PR" and "ReviewFix" phases only
+1. Check for lingering `python3` or `codex` processes.
+2. Review the saved logs in `~/.config/aprd/logs/`.
+3. Restart and resume by toggling phases (for example, run only the "PR" and "ReviewFix" phases).
 
 ### Performance tips
 
-- **Use a fast executor**: `codex` is typically faster than `claude` for implementation
-- **Enable CodeRabbit**: It can catch issues early, reducing review cycles
-- **Monitor resource usage**: Large PRDs may require more memory and time
+- Use a fast executor (`codex` is typically faster than `claude` for implementation).
+- Enable CodeRabbit to catch issues early and shrink review cycles.
+- Monitor system resources when processing large PRDs.

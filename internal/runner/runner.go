@@ -162,6 +162,29 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	return args
 }
 
+func sanitizedEnviron(removeKeys ...string) []string {
+	if len(removeKeys) == 0 {
+		return os.Environ()
+	}
+	skip := make(map[string]struct{}, len(removeKeys))
+	for _, key := range removeKeys {
+		skip[key] = struct{}{}
+	}
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name := kv
+		if idx := strings.IndexByte(kv, '='); idx >= 0 {
+			name = kv[:idx]
+		}
+		if _, drop := skip[name]; drop {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 func (o Options) Run(ctx context.Context) error {
 	prd := o.PRDPath
 	tmpPath, cleanup, err := makeTempPRD(prd, o.InitialPrompt)
@@ -173,7 +196,14 @@ func (o Options) Run(ctx context.Context) error {
 	args := buildArgs(o.Config, tmpPath, o.LogFilePath, o.LogLevel)
 
 	// Build env
-	env := os.Environ()
+	env := sanitizedEnviron(
+		"AUTO_PRD_EXECUTOR_POLICY",
+		"AUTO_PRD_EXECUTOR_IMPLEMENT",
+		"AUTO_PRD_EXECUTOR_FIX",
+		"AUTO_PRD_EXECUTOR_PR",
+		"AUTO_PRD_EXECUTOR_REVIEW_FIX",
+		"AUTO_PRD_ALLOW_UNSAFE_EXECUTION",
+	)
 	if o.Config.ExecutorPolicy != "" {
 		env = append(env, "AUTO_PRD_EXECUTOR_POLICY="+o.Config.ExecutorPolicy)
 	}
