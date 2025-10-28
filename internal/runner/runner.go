@@ -173,22 +173,29 @@ func validatePythonCommand(pythonCommand string) error {
 // validatePythonCommandWithConfig checks that the PythonCommand doesn't contain potentially dangerous
 // shell metacharacters that could lead to command injection. It also validates the interpreter path
 // against allowed directories, with support for user configuration overrides.
+// This function uses an atomic approach: it splits the command first using shlex, then validates each part.
 func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) error {
-	// Define a regex pattern for shell metacharacters that could be dangerous
-	// This includes characters like ; & | ` $ () [] {} <> * ? ~ ! #
-	dangerousChars := regexp.MustCompile(`[;&|'"` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#]`)
-
-	if dangerousChars.MatchString(pythonCommand) {
-		return fmt.Errorf("PythonCommand contains potentially dangerous characters: %q", pythonCommand)
+	// First, split the command using shlex to properly handle quotes and escapes
+	parts, err := shlex.Split(pythonCommand)
+	if err != nil {
+		return fmt.Errorf("failed to parse PythonCommand %q: %w", pythonCommand, err)
 	}
 
-	// Additional check: ensure the command starts with a safe interpreter name
-	// Allow common Python interpreters like python, python3, /usr/bin/python3, etc.
-	parts := strings.Fields(pythonCommand)
 	if len(parts) == 0 {
 		return fmt.Errorf("PythonCommand is empty")
 	}
 
+	// Validate each part for dangerous characters after splitting
+	dangerousChars := regexp.MustCompile(`[;&|'"` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#\n\r]`)
+
+	for _, part := range parts {
+		if dangerousChars.MatchString(part) {
+			return fmt.Errorf("PythonCommand contains potentially dangerous characters in part %q: %q", part, pythonCommand)
+		}
+	}
+
+	// Additional check: ensure the command starts with a safe interpreter name
+	// Allow common Python interpreters like python, python3, /usr/bin/python3, etc.
 	interpreter := parts[0]
 	// Allow absolute paths or simple interpreter names without path separators
 	if strings.ContainsAny(interpreter, "/\\") {
