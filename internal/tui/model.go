@@ -50,8 +50,6 @@ func (c executorChoice) configValue() string {
 	switch c {
 	case executorClaude:
 		return string(executorClaude)
-	case executorCodex:
-		fallthrough
 	default:
 		return string(executorCodex)
 	}

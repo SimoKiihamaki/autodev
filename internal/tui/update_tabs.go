@@ -20,7 +20,7 @@ var envFlagKeyMap = map[string]string{
 func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	prev := m.focusedInput
 	m.navigateSettings(direction)
-	if m.focusedInput == prev {
+	if m.focusedInput == prev && isExecutorToggle(m.focusedInput) {
 		m.cycleExecutorChoice(m.focusedInput, cycleDir)
 	}
 }
