@@ -308,7 +308,8 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 			break
 		}
 	}
-	newIdx := ((idx+direction)%len(executorChoices) + len(executorChoices)) % len(executorChoices)
+	n := len(executorChoices)
+	newIdx := ((idx+direction)%n + n) % n
 	newChoice := executorChoices[newIdx]
 
 	switch name {
