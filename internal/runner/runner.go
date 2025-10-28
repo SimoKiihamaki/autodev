@@ -275,6 +275,9 @@ func (o Options) Run(ctx context.Context) error {
 	if len(pyParts) == 0 {
 		return fmt.Errorf("PythonCommand %q resulted in empty command", o.Config.PythonCommand)
 	}
+	if pyParts[0] == "" {
+		return fmt.Errorf("PythonCommand %q resulted in empty binary path", o.Config.PythonCommand)
+	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
