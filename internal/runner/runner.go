@@ -189,6 +189,35 @@ func validatePythonCommand(pythonCommand string) error {
 		if !filepath.IsAbs(interpreter) {
 			return fmt.Errorf("PythonCommand with path must be absolute: %q", interpreter)
 		}
+		absPath, err := filepath.EvalSymlinks(interpreter)
+		if err != nil {
+			return fmt.Errorf("Failed to resolve interpreter path: %v", err)
+		}
+		// Validate against allowed directories
+		allowedDirs := []string{"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/"}
+		allowed := false
+		for _, dir := range allowedDirs {
+			if strings.HasPrefix(absPath, dir) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("Interpreter path %q is not in allowed directories", absPath)
+		}
+	} else {
+		// No path separator: must be a bare allowed name
+		allowedNames := []string{"python", "python3", "python3.9", "python3.10", "python3.11", "python3.12", "python3.13"}
+		allowed := false
+		for _, name := range allowedNames {
+			if interpreter == name {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("Interpreter name %q is not allowed", interpreter)
+		}
 	}
 
 	return nil

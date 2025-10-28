@@ -84,6 +84,12 @@ func (m *model) startRunCmd() tea.Cmd {
 	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
 	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
 	m.logCh = make(chan runner.Line, 2048)
+
+	// Recreate log persistence channel for background writing
+	if m.logPersistCh != nil {
+		close(m.logPersistCh)
+	}
+	m.logPersistCh = make(chan runner.Line, 100) // Buffered to prevent UI blocking
 	ch := m.logCh
 	m.logBuf = nil
 	m.logs.SetContent("")
@@ -145,7 +151,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		err = opts.Run(ctx)
 	}(ctx, options, ch, m.runResult)
 
-	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogsBatch(), m.waitRunResult())
+	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogsBatch(), m.startLogWriter(), m.waitRunResult())
 }
 
 func (m *model) preflightChecks() error {
