@@ -191,15 +191,6 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		return fmt.Errorf("PythonCommand is empty")
 	}
 
-	// Additional safety check: ensure no shell metacharacters remain in any part after splitting
-	// Since exec.Command doesn't invoke a shell, this prevents accidental inclusion of problematic characters
-	dangerousChars := ";|&`$()<>{}[]?*~!#"
-	for i, part := range parts {
-		if strings.ContainsAny(part, dangerousChars) {
-			return fmt.Errorf("PythonCommand part %d contains potentially dangerous shell metacharacters: %q", i, part)
-		}
-	}
-
 	// Note: exec.Command does not invoke a shell; argument characters are not interpreted.
 	// We rely on allowlisted interpreter paths/names below instead of a blanket char filter.
 	// Additional check: ensure the command starts with a safe interpreter name

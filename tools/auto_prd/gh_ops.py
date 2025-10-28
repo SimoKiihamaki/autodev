@@ -460,7 +460,7 @@ def _recent_pr_activity(
         )
         return [], []
     pr = (((data.get("data") or {}).get("repository") or {}).get("pullRequest")) or {}
-    comments = (pr.get("issueComments") or {}).get("nodes") or []
+    comments = (pr.get("comments") or {}).get("nodes") or []
     reviews = (pr.get("reviews") or {}).get("nodes") or []
     return comments, reviews
 
