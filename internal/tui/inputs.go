@@ -25,7 +25,7 @@ var settingsGrid = map[string][2]int{
 }
 
 // wrapIndex calculates the wrapped index for circular navigation.
-// The double-modulo handles negative deltas by ensuring the result is always positive.
+// The modulo with added length ensures the result is always positive even when delta is negative.
 func wrapIndex(current, delta, length int) int {
 	return ((current+delta)%length + length) % length
 }
