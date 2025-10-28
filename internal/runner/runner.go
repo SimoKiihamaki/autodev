@@ -47,6 +47,25 @@ func isPrefixOf(prefix, path string) bool {
 	return strings.HasPrefix(cleanPath, cleanPrefix)
 }
 
+// hasUnbufferedFlag checks if the unbuffered flag is already present in the given flags
+func hasUnbufferedFlag(flags []string) bool {
+	for _, flag := range flags {
+		// Check for literal -u flag
+		if flag == "-u" {
+			return true
+		}
+		// Check if -u is in a valid short option group (e.g. -uc, -Eu, -cEu)
+		if uFlagPattern.MatchString(flag) {
+			return true
+		}
+		// Check for long form --unbuffered
+		if flag == "--unbuffered" {
+			return true
+		}
+	}
+	return false
+}
+
 type Line struct {
 	Time time.Time
 	Text string
@@ -474,25 +493,7 @@ func (o Options) Run(ctx context.Context) error {
 	pythonArgs = append(pythonArgs, pyFlags...)
 
 	// Only append "-u" if not already present in pyFlags
-	hasU := false
-	for _, flag := range pyFlags {
-		// Check for literal -u flag
-		if flag == "-u" {
-			hasU = true
-			break
-		}
-		// Check if -u is in a valid short option group (e.g., -uc, -Eu, -cEu)
-		if uFlagPattern.MatchString(flag) {
-			hasU = true
-			break
-		}
-		// Check for long form --unbuffered
-		if flag == "--unbuffered" {
-			hasU = true
-			break
-		}
-	}
-	if !hasU {
+	if !hasUnbufferedFlag(pyFlags) {
 		pythonArgs = append(pythonArgs, "-u")
 	}
 
