@@ -5,14 +5,12 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 const focusedBgColor = "240"
 
-// toggleSeparator defines the spacing between toggle options.
-// The double space is intentional to provide clear visual separation between toggle options in the TUI;
+// toggleSeparator defines the spacing between toggle groups (toggles).
+// The double space is intentional to provide clear visual separation between toggle groups in the TUI;
 // a single space does not provide enough separation for readability and aesthetics.
 const toggleSeparator = "  "
 
@@ -27,7 +25,7 @@ const (
 func generateToggleHint() string {
 	choices := make([]string, len(executorChoices))
 	for i, choice := range executorChoices {
-		choices[i] = cases.Title(language.Und, cases.NoLower).String(string(choice))
+		choices[i] = choice.displayLabel()
 	}
 	return "Enter / Space to switch " + strings.Join(choices, "/")
 }
@@ -40,9 +38,7 @@ func getGeneralKeysHelp() string {
 	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focuses first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
 }
 
-const (
-	inputFocusHelp = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
-)
+const inputFocusHelp = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
 
 func focusStyle(active bool) lipgloss.Style {
 	style := lipgloss.NewStyle()
