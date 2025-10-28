@@ -325,7 +325,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// No path separator: must be a bare allowed name
 		// Allow "python3" or "python3.x" where x is any number
 		if !allowedNamePattern.MatchString(interpreter) {
-			return fmt.Errorf("interpreter name %q is not allowed (must be python3 or python3.x)", interpreter)
+			return fmt.Errorf("interpreter name %q is not allowed (must be python, python2, python2.x, python3, or python3.x)", interpreter)
 		}
 	}
 
