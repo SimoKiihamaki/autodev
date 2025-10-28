@@ -106,7 +106,7 @@ def _coerce_text(data: Any) -> str:
     return str(data)
 
 
-def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> Tuple[str, str]:
+def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str]:
     """
     Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes.
 
@@ -117,7 +117,7 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> Tuple[str, str
     is populated, or both are present, to ensure consistent extraction of process output.
 
     Returns:
-        Tuple[str, str]: A tuple containing (stdout, stderr) as strings.
+        tuple[str, str]: A tuple containing (stdout, stderr) as strings.
     """
     stderr = _coerce_text(getattr(exc, "stderr", None))
     output_val = getattr(exc, "output", None)

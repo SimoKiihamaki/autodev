@@ -122,7 +122,7 @@ query($owner:String!,$name:String!,$number:Int!){
 """
 
 
-def _parse_owner_repo(owner_repo: str) -> Tuple[str, str]:
+def _parse_owner_repo(owner_repo: str) -> tuple[str, str]:
     stripped = (owner_repo or "").strip()
     if "/" not in stripped:
         raise ValueError(
