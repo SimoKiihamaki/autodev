@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
@@ -89,12 +88,7 @@ func (m model) startLogWriter() tea.Cmd {
 		defer logFile.Close()
 
 		for line := range ch {
-			ts := line.Time
-			if ts.IsZero() {
-				ts = time.Now()
-			}
-			text := strings.TrimRight(line.Text, "\r\n")
-			entry := fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
+			entry := formatLogEntry(line)
 			if _, err := logFile.WriteString(entry); err != nil {
 				fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
 			}

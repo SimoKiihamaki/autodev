@@ -91,12 +91,7 @@ func (m *model) persistLogLine(line runner.Line) {
 	if m.logFile == nil {
 		return
 	}
-	ts := line.Time
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	text := strings.TrimRight(line.Text, "\r\n")
-	entry := fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
+	entry := formatLogEntry(line)
 	if _, err := m.logFile.WriteString(entry); err != nil {
 		fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", m.logFilePath, err)
 		m.status = "Failed to write log file: " + err.Error()
@@ -134,4 +129,14 @@ func classifyLevel(line runner.Line) string {
 	default:
 		return "INFO"
 	}
+}
+
+// formatLogEntry formats a log line into a consistent string format for persistence
+func formatLogEntry(line runner.Line) string {
+	ts := line.Time
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	text := strings.TrimRight(line.Text, "\r\n")
+	return fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
 }
