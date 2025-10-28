@@ -84,6 +84,7 @@ for i in range(10):
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 
+loop:
 	for {
 		cmd := m.readLogsBatch()
 		if cmd == nil {
@@ -104,13 +105,13 @@ for i in range(10):
 			totalLines += len(batch.lines)
 			m.handleLogBatch(batch)
 			if batch.closed {
-				break
+				break loop
 			}
 		}
 
 		if totalLines >= 10 {
 			// Exit early if we've collected enough lines
-			break
+			break loop
 		}
 	}
 

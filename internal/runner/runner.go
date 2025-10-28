@@ -269,8 +269,11 @@ func (o Options) Run(ctx context.Context) error {
 
 	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
 	pyParts, err := shlex.Split(o.Config.PythonCommand)
-	if err != nil || len(pyParts) == 0 {
-		return fmt.Errorf("invalid PythonCommand %q: %w", o.Config.PythonCommand, err)
+	if err != nil {
+		return fmt.Errorf("failed to parse PythonCommand %q: %w", o.Config.PythonCommand, err)
+	}
+	if len(pyParts) == 0 {
+		return fmt.Errorf("PythonCommand %q resulted in empty command", o.Config.PythonCommand)
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
