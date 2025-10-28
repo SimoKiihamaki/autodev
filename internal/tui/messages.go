@@ -1,8 +1,18 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
+)
+
+const (
+	// defaultMaxBatchSize is the default number of log lines to batch together
+	defaultMaxBatchSize = 25
+
+	// logSendTimeout is the timeout for sending log lines to the UI channel
+	logSendTimeout = 100 * time.Millisecond
 )
 
 type runStartMsg struct{}
@@ -21,7 +31,7 @@ func (m model) readLogsBatch() tea.Cmd {
 	ch := m.logCh
 	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
 	if maxBatch <= 0 {
-		maxBatch = 25
+		maxBatch = defaultMaxBatchSize
 	}
 	return func() tea.Msg {
 		line, ok := <-ch

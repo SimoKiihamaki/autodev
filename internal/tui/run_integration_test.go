@@ -81,27 +81,33 @@ for i in range(10):
 	}
 
 	totalLines := 0
-	timeout := time.After(5 * time.Second)
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
 
 	for {
-		select {
-		case <-timeout:
-			t.Fatal("timed out waiting for log batches")
-		default:
-		}
-
 		cmd := m.readLogsBatch()
 		if cmd == nil {
-			continue
+			t.Fatal("readLogsBatch returned nil")
 		}
-		msg := cmd()
-		batch, ok := msg.(logBatchMsg)
-		if !ok {
-			continue
+
+		select {
+		case <-deadline.C:
+			t.Fatal("timed out waiting for log batches")
+		default:
+			msg := cmd()
+			batch, ok := msg.(logBatchMsg)
+			if !ok {
+				t.Fatalf("unexpected message type: %T", msg)
+			}
+			totalLines += len(batch.lines)
+			m.handleLogBatch(batch)
+			if batch.closed {
+				break
+			}
 		}
-		totalLines += len(batch.lines)
-		m.handleLogBatch(batch)
-		if batch.closed {
+
+		if totalLines >= 10 {
+			// Exit early if we've collected enough lines
 			break
 		}
 	}

@@ -107,12 +107,15 @@ func (m *model) startRunCmd() tea.Cmd {
 		safeSend := func(line runner.Line) {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("panic in safeSend: %v", r)
+					// Log unexpected panics but don't crash the goroutine
+					log.Printf("tui: safeSend recovered from panic: %v", r)
 				}
 			}()
 			select {
 			case logCh <- line:
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(logSendTimeout):
+				// Log when messages are dropped to aid debugging
+				log.Printf("tui: dropped log line after %v timeout (UI consumer slow)", logSendTimeout)
 			}
 		}
 
