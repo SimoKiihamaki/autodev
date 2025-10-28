@@ -7,74 +7,72 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const (
+	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
+	// Uses a longer timeout to ensure critical diagnostics are not dropped
+	criticalLogSendTimeout = 2 * time.Second
+)
+
 type runStartMsg struct{}
-type logLineMsg struct{ line runner.Line }
-type logBatchMsg struct{ lines []runner.Line }
+type logBatchMsg struct {
+	lines  []runner.Line
+	closed bool
+}
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
 
-func (m model) readLogs() tea.Cmd {
+// readLogsBatch attempts to read a batch of log lines from the log channel.
+// Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.
+func (m *model) readLogsBatch() tea.Cmd {
 	if m.logCh == nil {
 		return nil
 	}
-	ch := m.logCh
+	initialCh := m.logCh
+	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
+	if maxBatch <= 0 {
+		maxBatch = 1
+	}
 	return func() tea.Msg {
-		line, ok := <-ch
+		// No need to check m.logCh here; only use the captured initialCh
+		// If the channel was closed, this closure will simply drain initialCh
+		line, ok := <-initialCh
 		if !ok {
-			return nil
+			return logBatchMsg{closed: true}
 		}
-		return logLineMsg{line: line}
-	}
-}
 
-func (m model) readLogsBatch() tea.Cmd {
-	if m.logCh == nil {
-		return nil
-	}
-	ch := m.logCh
-	batchConfig := m.cfg.BatchProcessing
-	return func() tea.Msg {
-		var lines []runner.Line
+		lines := make([]runner.Line, 0, maxBatch)
+		lines = append(lines, line)
 
-		// Read up to maxBatchSize lines or until channel is empty
-		for i := 0; i < batchConfig.MaxBatchSize; i++ {
+		channelClosed := false
+		// Try to read additional lines without blocking
+		for len(lines) < maxBatch && !channelClosed {
 			select {
-			case line, ok := <-ch:
+			case next, ok := <-initialCh:
 				if !ok {
-					// Channel closed
-					if len(lines) > 0 {
-						return logBatchMsg{lines: lines}
-					}
-					return nil
+					channelClosed = true
+					break // exit the select statement and mark channel as closed
 				}
-				lines = append(lines, line)
-
-			case <-time.After(time.Duration(batchConfig.BatchTimeoutMs) * time.Millisecond):
-				// Channel is empty, return what we have
-				if len(lines) > 0 {
-					return logBatchMsg{lines: lines}
-				}
-				// No lines available, schedule another read
-				return nil
+				lines = append(lines, next)
+			default:
+				// No more lines immediately available
+				return logBatchMsg{lines: lines, closed: false}
 			}
 		}
 
-		// Got maxBatchSize lines
-		if len(lines) > 0 {
-			return logBatchMsg{lines: lines}
-		}
-		return nil
+		return logBatchMsg{lines: lines, closed: channelClosed}
 	}
 }
 
-func (m model) waitRunResult() tea.Cmd {
+func (m *model) waitRunResult() tea.Cmd {
 	if m.runResult == nil {
 		return nil
 	}
-	ch := m.runResult
+	initialCh := m.runResult
 	return func() tea.Msg {
-		err, ok := <-ch
+		// No need to check m.runResult here; only use the captured initialCh
+		// If the channel was closed, this closure will simply drain initialCh
+		err, ok := <-initialCh
 		if !ok {
 			return nil
 		}

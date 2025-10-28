@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, Tuple
 
 from .command import run_cmd
 from .constants import (
@@ -103,7 +103,7 @@ PR_ACTIVITY_SNAPSHOT_QUERY = """
 query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
-      issueComments(last:50){
+      comments(last:50){
         nodes{
           author{login}
           createdAt
@@ -125,10 +125,14 @@ query($owner:String!,$name:String!,$number:Int!){
 def _parse_owner_repo(owner_repo: str) -> tuple[str, str]:
     stripped = (owner_repo or "").strip()
     if "/" not in stripped:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+        raise ValueError(
+            f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'."
+        )
     owner, name = stripped.split("/", 1)
     if not owner or not name:
-        raise ValueError(f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'.")
+        raise ValueError(
+            f"Invalid owner_repo format: {owner_repo!r}. Expected 'owner/repo'."
+        )
     return owner, name
 
 
@@ -136,7 +140,9 @@ def gh_graphql(query: str, variables: dict) -> dict:
     payload = json.dumps({"query": query, "variables": variables})
 
     def action() -> dict:
-        out, _, _ = run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload, timeout=60)
+        out, _, _ = run_cmd(
+            ["gh", "api", "graphql", "--input", "-"], stdin=payload, timeout=60
+        )
         return json.loads(out)
 
     return call_with_backoff(action)
@@ -169,11 +175,15 @@ def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
 
 def branch_has_commits_since(base_branch: str, repo_root: Path) -> bool:
     """Return True when HEAD has commits newer than base_branch (compares base_branch..HEAD)."""
-    out, _, _ = run_cmd(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root)
+    out, _, _ = run_cmd(
+        ["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=repo_root
+    )
     try:
         return int(out.strip() or "0") > 0
     except ValueError:
-        logger.warning("Could not parse commit count for %s..HEAD: %r", base_branch, out.strip())
+        logger.warning(
+            "Could not parse commit count for %s..HEAD: %r", base_branch, out.strip()
+        )
         return False
 
 
@@ -194,7 +204,9 @@ def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path) -> None:
         )
 
 
-def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> list[dict]:
+def _gather_thread_comments(
+    thread_id: str, initial_block: Optional[dict]
+) -> list[dict]:
     if not thread_id:
         return []
     comments_block = initial_block or {}
@@ -202,7 +214,9 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
     page_info = comments_block.get("pageInfo") or {}
     cursor = page_info.get("endCursor")
     while page_info.get("hasNextPage"):
-        data = gh_graphql(GATHER_THREAD_COMMENTS_QUERY, {"threadId": thread_id, "cursor": cursor})
+        data = gh_graphql(
+            GATHER_THREAD_COMMENTS_QUERY, {"threadId": thread_id, "cursor": cursor}
+        )
         comments = ((data.get("data") or {}).get("node") or {}).get("comments") or {}
         extra_nodes = comments.get("nodes") or []
         results.extend(extra_nodes)
@@ -211,13 +225,20 @@ def _gather_thread_comments(thread_id: str, initial_block: Optional[dict]) -> li
     return results
 
 
-def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optional[str] = None) -> list[dict]:
+def get_unresolved_feedback(
+    owner_repo: str, pr_number: int, commit_sha: Optional[str] = None
+) -> list[dict]:
     owner, name = _parse_owner_repo(owner_repo)
     threads: list[dict] = []
     cursor: Optional[str] = None
     while True:
-        data = gh_graphql(REVIEW_THREADS_QUERY, {"owner": owner, "name": name, "number": pr_number, "cursor": cursor})
-        review_threads = (((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}
+        data = gh_graphql(
+            REVIEW_THREADS_QUERY,
+            {"owner": owner, "name": name, "number": pr_number, "cursor": cursor},
+        )
+        review_threads = (
+            ((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+        ).get("reviewThreads") or {}
         nodes = review_threads.get("nodes") or []
         threads.extend(nodes)
         page_info = review_threads.get("pageInfo") or {}
@@ -242,7 +263,9 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
                 continue
             url = comment.get("url") or ""
             commit_info = comment.get("commit") or {}
-            comment_commit = commit_info.get("oid") if isinstance(commit_info, dict) else None
+            comment_commit = (
+                commit_info.get("oid") if isinstance(commit_info, dict) else None
+            )
             if commit_sha and comment_commit and comment_commit != commit_sha:
                 continue
             db_id = comment.get("databaseId")
@@ -260,7 +283,9 @@ def get_unresolved_feedback(owner_repo: str, pr_number: int, commit_sha: Optiona
     return unresolved
 
 
-def reply_to_review_comment(owner: str, name: str, pr_number: int, comment_id: int, body: str) -> None:
+def reply_to_review_comment(
+    owner: str, name: str, pr_number: int, comment_id: int, body: str
+) -> None:
     payload = json.dumps({"body": body, "in_reply_to": comment_id})
 
     def action():
@@ -291,12 +316,19 @@ def resolve_review_thread(thread_id: str) -> None:
     )
 
     def action():
-        run_cmd(["gh", "api", "graphql", "--input", "-"], stdin=payload, capture=False, timeout=30)
+        run_cmd(
+            ["gh", "api", "graphql", "--input", "-"],
+            stdin=payload,
+            capture=False,
+            timeout=30,
+        )
 
     call_with_backoff(action)
 
 
-def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]) -> Set[int]:
+def acknowledge_review_items(
+    owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]
+) -> Set[int]:
     """Reply to review items, mutating and returning the processed ID set.
 
     Tests can pass a pre-seeded ``processed_ids`` instance to maintain
@@ -310,17 +342,25 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
         if isinstance(comment_id, int) and comment_id not in processed_ids:
             author = (item.get("author") or "").strip().lower()
             mention = f"@{author}" if author else REVIEW_FALLBACK_MENTION
-            reply_body = f"Fix applied in the latest push -- thanks for the review! {mention}"
+            reply_body = (
+                f"Fix applied in the latest push -- thanks for the review! {mention}"
+            )
             try:
                 reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
                 processed_ids.add(comment_id)
-            except (subprocess.CalledProcessError, OSError, ValueError) as exc:  # pragma: no cover - best effort
+            except (
+                subprocess.CalledProcessError,
+                OSError,
+                ValueError,
+            ) as exc:  # pragma: no cover - best effort
                 detail = (
                     extract_called_process_error_details(exc)
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
-                logger.warning("Failed to reply to review comment %s: %s", comment_id, detail)
+                logger.warning(
+                    "Failed to reply to review comment %s: %s", comment_id, detail
+                )
         if thread_id and not item.get("is_resolved"):
             try:
                 resolve_review_thread(thread_id)
@@ -330,7 +370,9 @@ def acknowledge_review_items(owner_repo: str, pr_number: int, items: list[dict],
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
-                logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
+                logger.warning(
+                    "Failed to resolve review thread %s: %s", thread_id, detail
+                )
     return processed_ids
 
 
@@ -356,7 +398,11 @@ def _commit_timestamp(repo_root: Path, commit_sha: str) -> Optional[datetime]:
             cwd=repo_root,
         )
     except subprocess.CalledProcessError as exc:
-        logger.warning("Failed to read commit timestamp for %s: %s", commit_sha, extract_called_process_error_details(exc))
+        logger.warning(
+            "Failed to read commit timestamp for %s: %s",
+            commit_sha,
+            extract_called_process_error_details(exc),
+        )
         return None
     return _parse_iso8601(stdout.strip())
 
@@ -364,11 +410,20 @@ def _commit_timestamp(repo_root: Path, commit_sha: str) -> Optional[datetime]:
 def _collect_commit_status_contexts(owner_repo: str, commit_sha: str) -> list[dict]:
     owner, name = _parse_owner_repo(owner_repo)
     try:
-        data = gh_graphql(COMMIT_STATUS_ROLLUP_QUERY, {"owner": owner, "name": name, "oid": commit_sha})
+        data = gh_graphql(
+            COMMIT_STATUS_ROLLUP_QUERY,
+            {"owner": owner, "name": name, "oid": commit_sha},
+        )
     except subprocess.CalledProcessError as exc:
-        logger.warning("Failed to fetch status rollup for %s: %s", commit_sha, extract_called_process_error_details(exc))
+        logger.warning(
+            "Failed to fetch status rollup for %s: %s",
+            commit_sha,
+            extract_called_process_error_details(exc),
+        )
         return []
-    nodes = (((data.get("data") or {}).get("repository") or {}).get("object") or {}).get("statusCheckRollup") or {}
+    nodes = (
+        ((data.get("data") or {}).get("repository") or {}).get("object") or {}
+    ).get("statusCheckRollup") or {}
     contexts = (nodes.get("contexts") or {}).get("nodes") or []
     results: list[dict] = []
     for raw in contexts:
@@ -388,10 +443,15 @@ def _collect_commit_status_contexts(owner_repo: str, commit_sha: str) -> list[di
     return results
 
 
-def _recent_pr_activity(owner_repo: str, pr_number: int) -> tuple[list[dict], list[dict]]:
+def _recent_pr_activity(
+    owner_repo: str, pr_number: int
+) -> Tuple[list[dict], list[dict]]:
     owner, name = _parse_owner_repo(owner_repo)
     try:
-        data = gh_graphql(PR_ACTIVITY_SNAPSHOT_QUERY, {"owner": owner, "name": name, "number": pr_number})
+        data = gh_graphql(
+            PR_ACTIVITY_SNAPSHOT_QUERY,
+            {"owner": owner, "name": name, "number": pr_number},
+        )
     except subprocess.CalledProcessError as exc:
         logger.warning(
             "Failed to fetch PR activity snapshot for #%s: %s",
@@ -400,12 +460,14 @@ def _recent_pr_activity(owner_repo: str, pr_number: int) -> tuple[list[dict], li
         )
         return [], []
     pr = (((data.get("data") or {}).get("repository") or {}).get("pullRequest")) or {}
-    comments = ((pr.get("issueComments") or {}).get("nodes") or [])
-    reviews = ((pr.get("reviews") or {}).get("nodes") or [])
+    comments = (pr.get("comments") or {}).get("nodes") or []
+    reviews = (pr.get("reviews") or {}).get("nodes") or []
     return comments, reviews
 
 
-def should_stop_review_after_push(owner_repo: str, pr_number: int, commit_sha: Optional[str], repo_root: Path) -> bool:
+def should_stop_review_after_push(
+    owner_repo: str, pr_number: int, commit_sha: Optional[str], repo_root: Path
+) -> bool:
     if not commit_sha:
         return False
     commit_time = _commit_timestamp(repo_root, commit_sha)
@@ -465,7 +527,13 @@ def should_stop_review_after_push(owner_repo: str, pr_number: int, commit_sha: O
     return True
 
 
-def post_final_comment(pr_number: Optional[int], owner_repo: str, prd_path: Path, repo_root: Path, dry_run: bool = False) -> None:
+def post_final_comment(
+    pr_number: Optional[int],
+    owner_repo: str,
+    prd_path: Path,
+    repo_root: Path,
+    dry_run: bool = False,
+) -> None:
     if pr_number is None:
         return
     if dry_run:

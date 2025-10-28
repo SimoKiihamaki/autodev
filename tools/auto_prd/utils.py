@@ -56,7 +56,11 @@ def scrub_cli_text(value: str) -> str:
         else:
             cleaned_chars.append(char)
     cleaned = "".join(cleaned_chars)
-    logger.debug("Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r", value, cleaned)
+    logger.debug(
+        "Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r",
+        value,
+        cleaned,
+    )
     return cleaned
 
 
@@ -86,10 +90,7 @@ def parse_tasks_left(output: str) -> Optional[int]:
 
 
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
-    stderr = getattr(exc, "stderr", None)
-    stdout = getattr(exc, "output", None)
-    if stdout is None:
-        stdout = getattr(exc, "stdout", None)
+    stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or "") + "\n" + (stdout or "")
     match = re.search(r"HTTP\s+(\d{3})", text)
     if match:
@@ -105,11 +106,32 @@ def _coerce_text(data: Any) -> str:
     return str(data)
 
 
-def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str]:
+    """
+    Extract stdout and stderr from a CalledProcessError, handling both `output` and `stdout` attributes.
+
+    In Python 3.5+, CalledProcessError.output is always an alias for stdout. However, depending on
+    how the exception was raised, different attributes may be populated:
+
+    - subprocess.run(..., capture_output=True, check=True) populates `stdout` and `stderr`.
+    - subprocess.check_output() and subprocess.check_call() populate `output` (alias for `stdout`).
+
+    This function checks both `output` and `stdout` for robustness, ensuring compatibility with
+    different subprocess invocation patterns and Python versions.
+
+    Returns:
+        tuple[str, str]: A tuple containing (stdout, stderr) as strings.
+    """
     stderr = _coerce_text(getattr(exc, "stderr", None))
-    stdout = _coerce_text(getattr(exc, "output", None))
-    if not stdout:
+    output_val = getattr(exc, "output", None)
+    stdout = _coerce_text(output_val)
+    if output_val is None:
         stdout = _coerce_text(getattr(exc, "stdout", None))
+    return stdout, stderr
+
+
+def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+    stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or stdout or "").strip()
     return text or f"exit code {exc.returncode}"
 

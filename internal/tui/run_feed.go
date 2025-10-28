@@ -13,8 +13,6 @@ import (
 
 const (
 	feedBufCap           = 800
-	feedFlushStep        = 16
-	feedFollowFlushStep  = 4
 	iterIndexUnknown     = -1 // iteration index provided but failed to parse
 	iterTotalUnspecified = 0  // iteration total omitted entirely in the feed line
 	iterTotalUnknown     = -1 // iteration total provided but failed to parse; distinct from unspecified
@@ -41,7 +39,6 @@ func (m *model) resetRunDashboard() {
 	m.runIterTotal = 0
 	m.runIterLabel = ""
 	m.runFeedAutoFollow = true
-	m.runFeedDirtyLines = 0
 }
 
 func (m *model) setRunCurrent(action string) {
@@ -61,28 +58,17 @@ func (m *model) setRunCurrent(action string) {
 }
 
 func (m *model) handleRunFeedLine(displayLine, rawLine string) {
-	wasEmpty := len(m.runFeedBuf) == 0
 	m.runFeedBuf = append(m.runFeedBuf, displayLine)
-	trimmed := false
 	if len(m.runFeedBuf) > feedBufCap {
 		tail := m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 		m.runFeedBuf = append([]string(nil), tail...)
-		trimmed = true
 	}
-	m.runFeedDirtyLines++
 	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
 
-	// Use adaptive flush controller to determine when to flush
-	flush := m.flushController.shouldFlush(m.runFeedDirtyLines, len(m.runFeedBuf), wasEmpty, trimmed)
-
-	if flush {
-		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
-		m.runFeedDirtyLines = 0
-		m.flushController.recordFlush()
-		if shouldFollow {
-			m.runFeed.GotoBottom()
-			m.runFeedAutoFollow = true
-		}
+	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
+	if shouldFollow {
+		m.runFeed.GotoBottom()
+		m.runFeedAutoFollow = true
 	}
 
 	m.consumeRunSummary(rawLine)

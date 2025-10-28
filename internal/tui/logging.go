@@ -41,77 +41,40 @@ func (m *model) prepareRunLogFile() {
 	}
 	name := fmt.Sprintf("run_%s.log", time.Now().Format("20060102_150405"))
 	path := filepath.Join(logDir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		m.status = "Failed to open log file: " + err.Error()
-		m.logFile = nil
-		m.logFilePath = ""
-		m.logStatus = "unavailable: " + err.Error()
-		return
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		m.status = "Failed to secure log file: " + err.Error()
-		m.logStatus = "unavailable: " + err.Error()
-		_ = f.Close()
-		_ = os.Remove(path)
-		m.logFile = nil
-		m.logFilePath = ""
-		return
-	}
-	m.logFile = f
 	m.logFilePath = path
 	m.logStatus = abbreviatePath(path)
-	m.writeLogHeader()
+	// Note: The log file is not opened here; only the path is prepared.
+	// File writing is handled by the Python process (via --log-file argument) to avoid concurrent file handle issues.
 }
 
+// writeLogHeader is kept as a stub for interface compatibility.
+// Header writing is now handled by the Python runner via --log-file argument
+// to avoid concurrent file handle issues between Go TUI and Python process.
 func (m *model) writeLogHeader() {
-	if m.logFile == nil {
-		return
-	}
-	ts := time.Now().Format(time.RFC3339)
+	// No-op: Header writing delegated to Python runner
+}
+
+// buildLogHeader constructs the log header content for persistence
+func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch string) []string {
 	headers := []string{
-		fmt.Sprintf("# autodev run started %s", ts),
-		fmt.Sprintf("PRD: %s", m.selectedPRD),
-		fmt.Sprintf("Repo: %s", m.cfg.RepoPath),
-		fmt.Sprintf("Executor policy: %s", m.cfg.ExecutorPolicy),
+		fmt.Sprintf("// autodev run started %s", ts.Format(time.RFC3339)),
+		fmt.Sprintf("PRD: %s", selectedPRD),
+		fmt.Sprintf("Repo: %s", cfgRepoPath),
+		fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
 	}
-	if m.cfg.Branch != "" {
-		headers = append(headers, fmt.Sprintf("Branch: %s", m.cfg.Branch))
+	if cfgBranch != "" {
+		headers = append(headers, fmt.Sprintf("Branch: %s", cfgBranch))
 	}
 	headers = append(headers, "")
-	if _, err := m.logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
-		m.status = "Failed to write log header: " + err.Error()
-		m.logStatus = "unavailable: " + err.Error()
-		m.closeLogFile("header error")
-	}
+	return headers
 }
 
-func (m *model) persistLogLine(line runner.Line) {
-	if m.logFile == nil {
-		return
-	}
-	ts := line.Time
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	text := strings.TrimRight(line.Text, "\r\n")
-	entry := fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
-	if _, err := m.logFile.WriteString(entry); err != nil {
-		m.status = "Failed to write log file: " + err.Error()
-		m.closeLogFile("write error")
-	}
-}
+// persistLogLine is no longer needed - log persistence is handled by the Python runner via --log-file
 
 func (m *model) closeLogFile(reason string) {
-	if m.logFile == nil {
-		return
-	}
-	if reason != "" {
-		_, _ = m.logFile.WriteString(fmt.Sprintf("# run %s at %s\n", reason, time.Now().Format(time.RFC3339)))
-	}
-	_ = m.logFile.Sync()
-	_ = m.logFile.Close()
-	m.logFile = nil
+	// Note: Log file persistence is handled exclusively by the Python process via --log-file argument.
+	// The Go runner and TUI do not write log lines to disk; they only manage the UI state and file path.
+	// Just update the status display
 	if m.logFilePath != "" {
 		summary := abbreviatePath(m.logFilePath)
 		if reason != "" && reason != "superseded" {
@@ -132,4 +95,14 @@ func classifyLevel(line runner.Line) string {
 	default:
 		return "INFO"
 	}
+}
+
+// formatLogEntry formats a log line into a consistent string format for persistence
+func formatLogEntry(line runner.Line) string {
+	ts := line.Time
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	text := strings.TrimRight(line.Text, "\r\n")
+	return fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
 }

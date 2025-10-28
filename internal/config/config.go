@@ -2,12 +2,28 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+)
+
+// Environment variable constants for executor configuration
+const (
+	EnvExecutorPolicy       = "AUTO_PRD_EXECUTOR_POLICY"
+	EnvExecutorImplement    = "AUTO_PRD_EXECUTOR_IMPLEMENT"
+	EnvExecutorFix          = "AUTO_PRD_EXECUTOR_FIX"
+	EnvExecutorPR           = "AUTO_PRD_EXECUTOR_PR"
+	EnvExecutorReviewFix    = "AUTO_PRD_EXECUTOR_REVIEW_FIX"
+	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
+)
+
+// Default configuration values
+const (
+	DefaultMaxBatchSize = 25
 )
 
 type Flags struct {
@@ -51,20 +67,21 @@ type Phases struct {
 }
 
 type Config struct {
-	ExecutorPolicy  string             `yaml:"executor_policy"`
-	LogLevel        string             `yaml:"log_level"`
-	PythonCommand   string             `yaml:"python_command"`
-	PythonScript    string             `yaml:"python_script"`
-	RepoPath        string             `yaml:"repo_path"`
-	BaseBranch      string             `yaml:"base_branch"`
-	Branch          string             `yaml:"branch"`
-	CodexModel      string             `yaml:"codex_model"`
-	Flags           Flags              `yaml:"flags"`
-	Timings         Timings            `yaml:"timings"`
-	BatchProcessing BatchProcessing    `yaml:"batch_processing"`
-	PhaseExecutors  PhaseExec          `yaml:"phase_executors"`
-	RunPhases       Phases             `yaml:"run_phases"`
-	PRDs            map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
+	ExecutorPolicy    string             `yaml:"executor_policy"`
+	LogLevel          string             `yaml:"log_level"`
+	PythonCommand     string             `yaml:"python_command"`
+	PythonScript      string             `yaml:"python_script"`
+	RepoPath          string             `yaml:"repo_path"`
+	BaseBranch        string             `yaml:"base_branch"`
+	Branch            string             `yaml:"branch"`
+	CodexModel        string             `yaml:"codex_model"`
+	Flags             Flags              `yaml:"flags"`
+	Timings           Timings            `yaml:"timings"`
+	BatchProcessing   BatchProcessing    `yaml:"batch_processing"`
+	PhaseExecutors    PhaseExec          `yaml:"phase_executors"`
+	RunPhases         Phases             `yaml:"run_phases"`
+	AllowedPythonDirs []string           `yaml:"allowed_python_dirs"`
+	PRDs              map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
 }
 
 // Defaults returns a sensible default config.
@@ -91,12 +108,13 @@ func Defaults() Config {
 			MaxLocalIters:     50,
 		},
 		BatchProcessing: BatchProcessing{
-			MaxBatchSize:   25,
+			MaxBatchSize:   DefaultMaxBatchSize,
 			BatchTimeoutMs: 5,
 		},
-		PhaseExecutors: PhaseExec{},
-		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},
-		PRDs:           map[string]PRDMeta{},
+		PhaseExecutors:    PhaseExec{},
+		RunPhases:         Phases{Local: true, PR: true, ReviewFix: true},
+		AllowedPythonDirs: []string{},
+		PRDs:              map[string]PRDMeta{},
 	}
 }
 
@@ -157,6 +175,11 @@ func Load() (Config, error) {
 			c.LogLevel = upper
 		}
 	}
+	// Validate and set default MaxBatchSize
+	if c.BatchProcessing.MaxBatchSize <= 0 {
+		log.Printf("Warning: max_batch_size must be > 0, got %d; using default value %d. Note: Invalid values are corrected in memory but not persisted to the config file.", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
+		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
+	}
 	return c, nil
 }
 
@@ -173,4 +196,14 @@ func Save(c Config) error {
 		return err
 	}
 	return os.WriteFile(p, b, 0o600)
+}
+
+// GetAllowedPythonDirs returns the list of allowed Python directories from the config.
+// This can be extended by users to support non-standard Python installations
+// (e.g., pyenv, conda, virtualenvs).
+func (c Config) GetAllowedPythonDirs() []string {
+	if c.AllowedPythonDirs == nil {
+		return []string{}
+	}
+	return append([]string(nil), c.AllowedPythonDirs...)
 }

@@ -48,7 +48,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
                     "data": {
                         "repository": {
                             "pullRequest": {
-                                "issueComments": {
+                                "comments": {
                                     "nodes": [
                                         {
                                             "author": {"login": "coderabbitai"},
@@ -115,7 +115,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
                     "data": {
                         "repository": {
                             "pullRequest": {
-                                "issueComments": {
+                                "comments": {
                                     "nodes": [
                                         {
                                             "author": {"login": "coderabbitai"},
@@ -172,7 +172,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
                     "data": {
                         "repository": {
                             "pullRequest": {
-                                "issueComments": {"nodes": []},
+                                "comments": {"nodes": []},
                                 "reviews": {
                                     "nodes": [
                                         {

@@ -12,6 +12,9 @@ UNSAFE_ARG_CHARS = safe_import(
 extract_called_process_error_details = safe_import(
     "tools.auto_prd.utils", "..utils", "extract_called_process_error_details"
 )
+extract_http_status = safe_import(
+    "tools.auto_prd.utils", "..utils", "extract_http_status"
+)
 parse_tasks_left = safe_import("tools.auto_prd.utils", "..utils", "parse_tasks_left")
 scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
 
@@ -31,6 +34,26 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
     def test_falls_back_to_exit_code(self) -> None:
         exc = subprocess.CalledProcessError(2, ["cmd"])
         self.assertEqual(extract_called_process_error_details(exc), "exit code 2")
+
+
+class ExtractHttpStatusTests(unittest.TestCase):
+    def test_handles_mixed_byte_streams(self) -> None:
+        exc = subprocess.CalledProcessError(
+            1,
+            ["gh", "api"],
+            output=b"HTTP 404: not found",
+            stderr="failure details",
+        )
+        self.assertEqual(extract_http_status(exc), "404")
+
+    def test_handles_empty_streams_without_type_error(self) -> None:
+        exc = subprocess.CalledProcessError(
+            1,
+            ["gh", "api"],
+            output="",
+            stderr=b"",
+        )
+        self.assertIsNone(extract_http_status(exc))
 
 
 class ParseTasksLeftTests(unittest.TestCase):

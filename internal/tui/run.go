@@ -31,6 +31,24 @@ var (
 	}
 )
 
+// safeSendCritical is used for error/panic messages that must not be dropped.
+// It safely sends a critical log line to the channel with timeout and panic recovery.
+func safeSendCritical(logCh chan runner.Line, line runner.Line) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Defensive: catch all panics, including send-on-closed-channel, to prevent process crash
+			log.Printf("tui: safeSendCritical recovered from panic: %v", r)
+		}
+	}()
+	select {
+	case logCh <- line:
+	case <-time.After(criticalLogSendTimeout):
+		// Critical messages should never be dropped, but we need a timeout to prevent blocking forever
+		// Use a much longer timeout for critical diagnostics
+		log.Printf("tui: dropped CRITICAL log line after %v timeout (UI consumer extremely slow)", criticalLogSendTimeout)
+	}
+}
+
 func (m *model) normalizeLogLevel() {
 	lvl := strings.TrimSpace(m.cfg.LogLevel)
 	if lvl == "" {
@@ -81,11 +99,12 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 	m.prepareRunLogFile()
 
+	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
+	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
 	m.logCh = make(chan runner.Line, 2048)
+
 	ch := m.logCh
-	m.logBuf = nil
-	m.logDirtyLines = 0
-	m.logs.SetContent("")
+	m.resetLogState()
 	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)
 	m.tab = tabRun
@@ -103,7 +122,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
-		defer close(logCh)
+
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
@@ -113,17 +132,11 @@ func (m *model) startRunCmd() tea.Cmd {
 				if stack != "" {
 					msg = msg + "\n" + stack
 				}
-				select {
-				case logCh <- runner.Line{Time: time.Now(), Text: msg, Err: true}:
-				case <-time.After(100 * time.Millisecond):
-				}
+				safeSendCritical(logCh, runner.Line{Time: time.Now(), Text: msg, Err: true})
 				err = panicErr
 			}
 			if err != nil && err != context.Canceled {
-				select {
-				case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
-				case <-time.After(100 * time.Millisecond):
-				}
+				safeSendCritical(logCh, runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
 			}
 			select {
 			case resultCh <- err:
