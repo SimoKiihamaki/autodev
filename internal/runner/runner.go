@@ -24,7 +24,7 @@ var bufferPool = sync.Pool{
 	},
 }
 
-// allowedNamePattern validates python interpreter names (e.g., "python", "python3", "python3.9")
+// allowedNamePattern validates python interpreter names (e.g., "python", "python2", "python2.7", "python3", "python3.9")
 var allowedNamePattern = regexp.MustCompile(`^python(\d)?(\.\d+)?$`)
 
 type Line struct {
@@ -557,8 +557,8 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			// Warning: Log lines may be dropped if the channel is full. Log persistence is handled by the TUI's background writer,
-			// which also uses a non-blocking channel and may drop lines when full. Data loss is possible if the consumer is too slow.
+			// Warning: Log lines may be dropped here if the channel is full. However, the TUI's background writer persists all lines it receives,
+			// using a blocking channel send to ensure the full log file is always written. Data loss is only possible if this channel is not drained.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}

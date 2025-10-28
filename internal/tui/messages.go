@@ -1,9 +1,6 @@
 package tui
 
 import (
-	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
@@ -31,14 +28,21 @@ type runFinishMsg struct{ err error }
 
 // readLogsBatch attempts to read a batch of log lines from the log channel.
 // Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.
-func (m model) readLogsBatch() tea.Cmd {
+func (m *model) readLogsBatch() tea.Cmd {
 	if m.logCh == nil {
 		return nil
 	}
-	ch := m.logCh
+	initialCh := m.logCh
 	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
+	if maxBatch <= 0 {
+		maxBatch = 1
+	}
 	return func() tea.Msg {
-		line, ok := <-ch
+		// Drop if channel was swapped; prevents cross-run mixing
+		if m.logCh == nil || initialCh != m.logCh {
+			return logBatchMsg{closed: true}
+		}
+		line, ok := <-initialCh
 		if !ok {
 			return logBatchMsg{closed: true}
 		}
@@ -50,7 +54,7 @@ func (m model) readLogsBatch() tea.Cmd {
 		// Try to read additional lines without blocking
 		for len(lines) < maxBatch && !channelClosed {
 			select {
-			case next, ok := <-ch:
+			case next, ok := <-initialCh:
 				if !ok {
 					channelClosed = true
 					break // exit the loop immediately when the channel is closed
@@ -66,13 +70,17 @@ func (m model) readLogsBatch() tea.Cmd {
 	}
 }
 
-func (m model) waitRunResult() tea.Cmd {
+func (m *model) waitRunResult() tea.Cmd {
 	if m.runResult == nil {
 		return nil
 	}
-	ch := m.runResult
+	initialCh := m.runResult
 	return func() tea.Msg {
-		err, ok := <-ch
+		// Drop if channel was swapped; prevents cross-run mixing
+		if m.runResult == nil || initialCh != m.runResult {
+			return nil
+		}
+		err, ok := <-initialCh
 		if !ok {
 			return nil
 		}
@@ -80,46 +88,19 @@ func (m model) waitRunResult() tea.Cmd {
 	}
 }
 
-// startLogWriter starts a background goroutine to handle log persistence
+// startLogWriter starts a background goroutine to handle log persistence channel drainage
 func (m model) startLogWriter() tea.Cmd {
 	if m.logPersistCh == nil {
 		return nil
 	}
 	ch := m.logPersistCh
-	logFilePath := m.logFilePath
-	selectedPRD := m.selectedPRD
-	cfgRepoPath := m.cfg.RepoPath
-	cfgExecutorPolicy := m.cfg.ExecutorPolicy
-	cfgBranch := m.cfg.Branch
 	return func() tea.Msg {
-		// This runs in background and writes directly to disk
-		// Open the log file independently for background writing
-		logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to open log file (%s): %v\n", logFilePath, err)
-			return nil // If we can't open the file, skip logging
+		// This runs in background and drains the log persistence channel
+		// The Python runner handles the actual file writing via --log-file flag
+		// We just need to drain the channel to prevent blocking
+		for range ch {
+			// Discard log lines as they're already being written by the runner
 		}
-		defer logFile.Close()
-		defer close(ch)
-
-		// Write log header
-		headers := buildLogHeader(time.Now(), selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch)
-		if _, err := logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
-			fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
-		}
-
-		for line := range ch {
-			entry := formatLogEntry(line)
-			if _, err := logFile.WriteString(entry); err != nil {
-				fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
-			}
-		}
-
-		// Write footer when channel closes
-		if _, err := logFile.WriteString(fmt.Sprintf("# run completed at %s\n", time.Now().Format(time.RFC3339))); err != nil {
-			fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
-		}
-
 		return nil
 	}
 }
