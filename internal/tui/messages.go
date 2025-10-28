@@ -87,6 +87,7 @@ func (m model) startLogWriter() tea.Cmd {
 		// Open the log file independently for background writing
 		logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open log file (%s): %v\n", logFilePath, err)
 			return nil // If we can't open the file, skip logging
 		}
 		defer logFile.Close()
