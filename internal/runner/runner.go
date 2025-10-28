@@ -203,6 +203,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		if err != nil {
 			return fmt.Errorf("failed to resolve interpreter path: %v", err)
 		}
+		// At this point, absPath holds the resolved symlink target. All validation below is performed on this resolved path.
 		// Validate resolved path against allowed directories (after symlink resolution)
 		// NOTE: This is a hardcoded list of common Python installation paths.
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
@@ -358,26 +359,6 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 		}
 	}
 	return newEnv
-}
-
-// extractOutputFromException extracts stdout and stderr from a subprocess exception.
-// Returns a tuple (stdout, stderr) extracted from exc. In Go, unlike Python,
-// stdout/stderr must be captured via pipes before command execution, so this
-// function provides a placeholder for consistency with the Python implementation.
-//
-// Returns:
-//
-//	Tuple[str, str]: A tuple containing (stdout, stderr) as strings.
-func extractOutputFromException(exc *exec.ExitError) (string, string) {
-	if exc == nil {
-		return "", ""
-	}
-
-	// Go's exec.ExitError doesn't directly expose stdout/stderr fields.
-	// In this codebase, stdout/stderr are handled via streaming pipes in the
-	// runner package, so we return empty strings for consistency.
-	// To get actual output, one would need to capture it during cmd execution.
-	return "", ""
 }
 
 func (o Options) Run(ctx context.Context) error {
@@ -569,8 +550,8 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			// Warning: Log lines may be dropped here if the channel is full. The TUI's background writer only persists lines that make it through
-			// this channel; any dropped lines are not written to the TUI's log file. The runner itself is responsible for writing the complete log file synchronously.
+			// Warning: Log lines may be dropped here if the channel is full. Any dropped lines are not delivered to the TUI or its display.
+			// The runner itself is responsible for writing the complete log file synchronously; the TUI does not persist log lines to disk.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}

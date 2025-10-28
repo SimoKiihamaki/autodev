@@ -43,13 +43,12 @@ func (m *model) prepareRunLogFile() {
 	path := filepath.Join(logDir, name)
 	m.logFilePath = path
 	m.logStatus = abbreviatePath(path)
-	// Note: File is now opened by the background log writer goroutine
-	// to avoid concurrent file handle issues
+	// Note: The log file is not opened here; only the path is prepared.
+	// File writing is handled elsewhere to avoid concurrent file handle issues.
 }
 
 func (m *model) writeLogHeader() {
-	// Header writing is now handled by the background log writer goroutine
-	// to avoid concurrent file handle issues
+	// Header writing is handled by the Python runner via --log-file
 }
 
 // buildLogHeader constructs the log header content for persistence
@@ -70,10 +69,8 @@ func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, c
 // persistLogLine is no longer needed - log persistence is handled by background goroutine
 
 func (m *model) closeLogFile(reason string) {
-	// Close the log persistence channel first to ensure background writer finishes
-	closeLogChannel(&m.logPersistCh)
 
-	// File writing is now handled by background goroutine
+	// File writing is handled by the Python runner
 	// Just update the status display
 	if m.logFilePath != "" {
 		summary := abbreviatePath(m.logFilePath)

@@ -205,5 +205,5 @@ func (c Config) GetAllowedPythonDirs() []string {
 	if c.AllowedPythonDirs == nil {
 		return []string{}
 	}
-	return c.AllowedPythonDirs
+	return append([]string(nil), c.AllowedPythonDirs...)
 }

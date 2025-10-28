@@ -142,12 +142,11 @@ type model struct {
 	runIterTotal      int
 	runIterLabel      string
 
-	running      bool
-	cancel       context.CancelFunc
-	logCh        chan runner.Line
-	runResult    chan error
-	logPersistCh chan runner.Line
-	cancelling   bool
+	running    bool
+	cancel     context.CancelFunc
+	logCh      chan runner.Line
+	runResult  chan error
+	cancelling bool
 }
 
 // settingsInputNames defines the navigation order for Settings inputs; keep the
@@ -213,9 +212,6 @@ func New() model {
 
 	m.resetRunDashboard()
 	m.resolvePythonScript(true)
-
-	// Initialize background log persistence channel
-	m.logPersistCh = make(chan runner.Line, logPersistBufferSize) // Buffered to prevent UI blocking
 
 	return m
 }

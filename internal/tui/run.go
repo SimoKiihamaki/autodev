@@ -111,9 +111,6 @@ func (m *model) startRunCmd() tea.Cmd {
 	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
 	m.logCh = make(chan runner.Line, 2048)
 
-	// Recreate log persistence channel for background writing
-	closeLogChannel(&m.logPersistCh)
-	m.logPersistCh = make(chan runner.Line, logPersistBufferSize) // Buffered to prevent UI blocking
 	ch := m.logCh
 	m.resetLogState()
 	m.resetRunDashboard()
@@ -158,7 +155,7 @@ func (m *model) startRunCmd() tea.Cmd {
 		err = opts.Run(ctx)
 	}(ctx, options, ch, m.runResult)
 
-	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogsBatch(), m.startLogWriter(), m.waitRunResult())
+	return tea.Batch(func() tea.Msg { return runStartMsg{} }, m.readLogsBatch(), m.waitRunResult())
 }
 
 func (m *model) preflightChecks() error {

@@ -11,10 +11,6 @@ const (
 	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
 	// Uses a longer timeout to ensure critical diagnostics are not dropped
 	criticalLogSendTimeout = 2 * time.Second
-
-	// logPersistBufferSize is the buffer size for the log persistence channel
-	// This buffer prevents UI blocking when log writing is slow
-	logPersistBufferSize = 100
 )
 
 type runStartMsg struct{}
@@ -81,22 +77,5 @@ func (m *model) waitRunResult() tea.Cmd {
 			return nil
 		}
 		return runFinishMsg{err: err}
-	}
-}
-
-// startLogWriter starts a background goroutine to drain the log persistence channel.
-// The Python runner is responsible for writing logs to disk (via --log-file).
-// This goroutine simply drains the channel to prevent blocking or resource leaks.
-func (m model) startLogWriter() tea.Cmd {
-	if m.logPersistCh == nil {
-		return nil
-	}
-	ch := m.logPersistCh
-	return func() tea.Msg {
-		// Drain the log persistence channel; no log writing is performed here.
-		for range ch {
-			// No-op: log lines are already persisted by the runner.
-		}
-		return nil
 	}
 }

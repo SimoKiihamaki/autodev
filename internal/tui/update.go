@@ -61,7 +61,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancel = nil
 		m.runResult = nil
 		m.logCh = nil
-		closeLogChannel(&m.logPersistCh)
 		m.cancelling = false
 		return m, nil
 	}
@@ -122,12 +121,6 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 	for _, line := range msg.lines {
 		display, plain := m.formatLogLine(line)
 
-		// Send log line to background persistence channel (blocking to guarantee log completeness)
-		// Channel will be nil when background writer is not running
-		if m.logPersistCh != nil {
-			m.logPersistCh <- line
-		}
-
 		m.logBuf = append(m.logBuf, display)
 		if len(m.logBuf) > maxLogLines {
 			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
@@ -158,7 +151,6 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	m.cancel = nil
 	m.runResult = nil
 	m.logCh = nil
-	closeLogChannel(&m.logPersistCh)
 	m.cancelling = false
 
 	logReason := "completed"
