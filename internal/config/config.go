@@ -20,6 +20,11 @@ const (
 	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
 )
 
+// Default configuration values
+const (
+	DefaultMaxBatchSize = 25
+)
+
 type Flags struct {
 	AllowUnsafe     bool `yaml:"allow_unsafe"`
 	DryRun          bool `yaml:"dry_run"`
@@ -101,7 +106,7 @@ func Defaults() Config {
 			MaxLocalIters:     50,
 		},
 		BatchProcessing: BatchProcessing{
-			MaxBatchSize:   25,
+			MaxBatchSize:   DefaultMaxBatchSize,
 			BatchTimeoutMs: 5,
 		},
 		PhaseExecutors: PhaseExec{},
@@ -169,7 +174,7 @@ func Load() (Config, error) {
 	}
 	// Validate and set default MaxBatchSize
 	if c.BatchProcessing.MaxBatchSize <= 0 {
-		c.BatchProcessing.MaxBatchSize = Defaults().BatchProcessing.MaxBatchSize
+		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
 	}
 	return c, nil
 }
