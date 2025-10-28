@@ -194,6 +194,9 @@ func validatePythonCommand(pythonCommand string) error {
 			return fmt.Errorf("Failed to resolve interpreter path: %v", err)
 		}
 		// Validate against allowed directories
+		// NOTE: This is a hardcoded list of common Python installation paths.
+		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
+		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		allowedDirs := []string{"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/"}
 		allowed := false
 		for _, dir := range allowedDirs {
@@ -207,15 +210,9 @@ func validatePythonCommand(pythonCommand string) error {
 		}
 	} else {
 		// No path separator: must be a bare allowed name
-		allowedNames := []string{"python", "python3", "python3.9", "python3.10", "python3.11", "python3.12", "python3.13"}
-		allowed := false
-		for _, name := range allowedNames {
-			if interpreter == name {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
+		// Allow "python", "python3", or "python3.x" where x is any number
+		allowedNamePattern := regexp.MustCompile(`^python3(\.\d+)?$|^python$`)
+		if !allowedNamePattern.MatchString(interpreter) {
 			return fmt.Errorf("Interpreter name %q is not allowed", interpreter)
 		}
 	}
