@@ -11,7 +11,7 @@ Below is a **focused, implementation-ready task list** to get the Live Feed work
 - [x] Task B2 — Simplify viewport flush strategy
 - [x] Task B3 — Collapse duplicate run-feed handlers
 - [x] Task B4 — Make channel size explicit & documented
-- [ ] Task C1 — Unit-test the batch reader
+- [x] Task C1 — Unit-test the batch reader
 - [ ] Task C2 — Integration smoke test with a dummy process
 - [ ] Task D1 — Add `docs/live-feed.md`
 - [ ] Task D2 — Update `README.md`
