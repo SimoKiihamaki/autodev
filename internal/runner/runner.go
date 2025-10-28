@@ -211,13 +211,13 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		defaultAllowedDirs := []string{
 			// Unix-like systems
 			"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/",
-			// Windows systems
-			"C:\\Python3\\", "C:\\Python313\\", "C:\\Python312\\", "C:\\Python311\\", "C:\\Python310\\", "C:\\Python39\\",
-			"C:\\Program Files\\Python3\\", "C:\\Program Files\\Python313\\", "C:\\Program Files\\Python312\\", "C:\\Program Files\\Python311\\", "C:\\Program Files\\Python310\\", "C:\\Program Files\\Python39\\",
-			"C:\\Program Files (x86)\\Python3\\", "C:\\Program Files (x86)\\Python313\\", "C:\\Program Files (x86)\\Python312\\", "C:\\Program Files (x86)\\Python311\\", "C:\\Program Files (x86)\\Python310\\", "C:\\Program Files (x86)\\Python39\\",
-			// Windows AppData paths
-			"C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3\\",
-			"C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python313\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python312\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python311\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python310\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python39\\",
+			// Windows systems (use regex to match all Python 3.x versions)
+			`^C:\\Python3(\d{0,3})\\`,                        // Matches C:\Python3\, C:\Python310\, C:\Python311\, etc.
+			`^C:\\Program Files\\Python3(\d{0,3})\\`,         // Matches C:\Program Files\Python3\, C:\Program Files\Python310\, etc.
+			`^C:\\Program Files \(x86\)\\Python3(\d{0,3})\\`, // Matches C:\Program Files (x86)\Python3\, C:\Program Files (x86)\Python310\, etc.
+			// Windows AppData paths (regex for all user Python installs)
+			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\`,                   // Base user Python dir
+			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{0,3})\\`, // Matches all Python3 user installs
 		}
 		userAllowedDirs := cfg.GetAllowedPythonDirs()
 		allowedDirs := append(defaultAllowedDirs, userAllowedDirs...)
