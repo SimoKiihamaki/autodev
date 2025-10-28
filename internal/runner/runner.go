@@ -283,10 +283,13 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		if !allowed {
 			return fmt.Errorf(
 				"interpreter path %q is not in allowed directories.\n"+
-					"To permit this interpreter, add its directory to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):\n\n"+
+					"To permit this interpreter, add its directory as a prefix or a regex pattern to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):\n\n"+
+					"  # Prefix match example:\n"+
 					"  allowed_python_dirs:\n"+
-					"    - %s\n",
-				absPath, filepath.Dir(absPath))
+					"    - %s\n"+
+					"  # Or as a regex pattern (for advanced use):\n"+
+					"  # - '^%s([/\\\\]|$)'\n",
+				absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
 		}
 	} else {
 		// No path separator: must be a bare allowed name
