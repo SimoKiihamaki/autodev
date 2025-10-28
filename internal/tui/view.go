@@ -27,7 +27,7 @@ func generateToggleHint() string {
 	for i, choice := range executorChoices {
 		choices[i] = choice.displayLabel()
 	}
-	return "Enter / Space to switch " + strings.Join(choices, "/")
+	return "Enter/Space to switch " + strings.Join(choices, "/")
 }
 
 func getExecutorToggleHelp() string {
