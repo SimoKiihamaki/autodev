@@ -91,6 +91,77 @@ func (m *model) focusInput(inputName string) {
 	}
 }
 
+func (m *model) navigateHorizontal(direction string, row, col int, reverseGrid [][]string) {
+	var startCol, endCol, step int
+	rowLen := len(reverseGrid[row])
+
+	if direction == "left" {
+		if col == 0 {
+			return
+		}
+		startCol = col - 1
+		endCol = -1
+		step = -1
+	} else { // "right"
+		if col >= rowLen-1 {
+			return
+		}
+		startCol = col + 1
+		endCol = rowLen
+		step = 1
+	}
+
+	// Try adjacent cell first
+	if startCol >= 0 && startCol < rowLen && reverseGrid[row][startCol] != "" {
+		m.focusInput(reverseGrid[row][startCol])
+		return
+	}
+
+	// Then search in the specified direction
+	for c := startCol; c != endCol; c += step {
+		if reverseGrid[row][c] != "" {
+			m.focusInput(reverseGrid[row][c])
+			return
+		}
+	}
+}
+
+func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][]string) {
+	var startRow, endRow, step int
+	if direction == "up" {
+		if row == 0 {
+			return
+		}
+		startRow = row - 1
+		endRow = -1
+		step = -1
+	} else { // "down"
+		if row >= len(reverseGrid)-1 {
+			return
+		}
+		startRow = row + 1
+		endRow = len(reverseGrid)
+		step = 1
+	}
+
+	// First try same column
+	for r := startRow; r != endRow; r += step {
+		if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
+			m.focusInput(reverseGrid[r][col])
+			return
+		}
+	}
+
+	// Then search horizontally in each row
+	for r := startRow; r != endRow; r += step {
+		if hasAnyCell(reverseGrid[r]) {
+			if m.searchHorizontalInRow(reverseGrid, r, col) {
+				return
+			}
+		}
+	}
+}
+
 func (m *model) navigateSettings(direction string) {
 	if m.focusedInput == "" {
 		m.focusInput("repo")
@@ -137,61 +208,10 @@ func (m *model) navigateSettings(direction string) {
 	}
 
 	switch direction {
-	case "up":
-		if row > 0 {
-			for r := row - 1; r >= 0; r-- {
-				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
-					m.focusInput(reverseGrid[r][col])
-					return
-				}
-			}
-			for r := row - 1; r >= 0; r-- {
-				if hasAnyCell(reverseGrid[r]) {
-					if m.searchHorizontalInRow(reverseGrid, r, col) {
-						return
-					}
-				}
-			}
-		}
-	case "down":
-		if row < len(reverseGrid)-1 {
-			for r := row + 1; r < len(reverseGrid); r++ {
-				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
-					m.focusInput(reverseGrid[r][col])
-					return
-				}
-			}
-			for r := row + 1; r < len(reverseGrid); r++ {
-				if hasAnyCell(reverseGrid[r]) {
-					if m.searchHorizontalInRow(reverseGrid, r, col) {
-						return
-					}
-				}
-			}
-		}
-	case "left":
-		if col > 0 && reverseGrid[row][col-1] != "" {
-			m.focusInput(reverseGrid[row][col-1])
-			return
-		}
-		for c := col - 1; c >= 0; c-- {
-			if reverseGrid[row][c] != "" {
-				m.focusInput(reverseGrid[row][c])
-				return
-			}
-		}
-	case "right":
-		rowLen := len(reverseGrid[row])
-		if col < rowLen-1 && reverseGrid[row][col+1] != "" {
-			m.focusInput(reverseGrid[row][col+1])
-			return
-		}
-		for c := col + 1; c < rowLen; c++ {
-			if reverseGrid[row][c] != "" {
-				m.focusInput(reverseGrid[row][c])
-				return
-			}
-		}
+	case "up", "down":
+		m.navigateVertical(direction, row, col, reverseGrid)
+	case "left", "right":
+		m.navigateHorizontal(direction, row, col, reverseGrid)
 	}
 }
 

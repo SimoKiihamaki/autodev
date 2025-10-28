@@ -21,24 +21,8 @@ const (
 	executorReviewLabel = "Review Fix"
 )
 
-// generateToggleHint creates help text dynamically from executorChoices to future-proof against changes
-func generateToggleHint() string {
-	choices := make([]string, len(executorChoices))
-	for i, choice := range executorChoices {
-		choices[i] = choice.displayLabel()
-	}
-	return "Enter/Space to switch " + strings.Join(choices, "/")
-}
-
-// getExecutorToggleHelp returns a template string; caller must format with generateToggleHint().
-func getExecutorToggleHelp() string {
-	return "Toggle focused: %s (%s, Tab or arrows to navigate, Esc to blur)"
-}
-
-// getGeneralKeysHelp returns a template string; caller must format with generateToggleHint().
-func getGeneralKeysHelp() string {
-	return "Keys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%d,? switch tabs"
-}
+// toggleHint is the help text for toggling executors.
+const toggleHint = "Enter/Space to switch Codex/Claude"
 
 // inputFocusHelpTemplate expects the input name as the first argument.
 const inputFocusHelpTemplate = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
@@ -228,12 +212,12 @@ func renderSettingsView(b *strings.Builder, m model) {
 
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
-			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(getExecutorToggleHelp(), executorToggleLabel(m.focusedInput), generateToggleHint())) + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf("Toggle focused: %s (%s, Tab or arrows to navigate, Esc to blur)", executorToggleLabel(m.focusedInput), toggleHint)) + "\n")
 		} else {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\n"+getGeneralKeysHelp()+"\n", generateToggleHint(), len(tabNames)))
+		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%d,? switch tabs\n", toggleHint, len(tabNames)))
 	}
 }
 
