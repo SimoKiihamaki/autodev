@@ -183,16 +183,51 @@ func renderSettingsView(b *strings.Builder, m model) {
 	b.WriteString(m.inPyCmd.View() + "\n")
 	b.WriteString(m.inPyScript.View() + "\n")
 	b.WriteString(m.inPolicy.View() + "\n")
-	b.WriteString(m.inExecImpl.View() + "  " + m.inExecFix.View() + "  " + m.inExecPR.View() + "  " + m.inExecRev.View() + "\n")
+	localToggle := renderExecutorToggle("Local Loop", m.execLocalChoice, m.focusedInput == "toggleLocal")
+	prToggle := renderExecutorToggle("PR Push", m.execPRChoice, m.focusedInput == "togglePR")
+	reviewToggle := renderExecutorToggle("Review Fix", m.execReviewChoice, m.focusedInput == "toggleReview")
+	b.WriteString(localToggle + "  " + prToggle + "  " + reviewToggle + "\n")
 	b.WriteString(m.inWaitMin.View() + "  ")
 	b.WriteString(m.inPollSec.View() + "  ")
 	b.WriteString(m.inIdleMin.View() + "  ")
 	b.WriteString(m.inMaxIters.View() + "\n")
 
 	if m.focusedInput != "" {
-		b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
+		if isExecutorToggle(m.focusedInput) {
+			b.WriteString("\n" + okStyle.Render("Toggle focused: "+executorToggleLabel(m.focusedInput)+" (←/→ or Enter/Space to switch Codex/Claude, Tab or arrows to navigate, Esc unfocus)") + "\n")
+		} else {
+			b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
+		}
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ to navigate · Enter to focus first input · Ctrl+S save · 1-%d,? to switch tabs\n", len(tabNames)))
+		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focuses first field · ←/→ or Enter/Space toggle Codex/Claude when on a switch · Ctrl+S save · 1-%d,? switch tabs\n", len(tabNames)))
+	}
+}
+
+func renderExecutorToggle(label string, choice executorChoice, focused bool) string {
+	codex := renderExecutorOption("Codex", choice == executorCodex)
+	claude := renderExecutorOption("Claude", choice == executorClaude)
+	line := fmt.Sprintf("%s: %s  %s", label, codex, claude)
+	return focusStyle(focused).Render(line)
+}
+
+func renderExecutorOption(name string, selected bool) string {
+	style := lipgloss.NewStyle()
+	if selected {
+		return style.Bold(true).Render("[" + name + "]")
+	}
+	return style.Render(name)
+}
+
+func executorToggleLabel(name string) string {
+	switch name {
+	case "toggleLocal":
+		return "Local Loop"
+	case "togglePR":
+		return "PR Push"
+	case "toggleReview":
+		return "Review Fix"
+	default:
+		return name
 	}
 }
 
@@ -247,7 +282,7 @@ func renderLogsView(b *strings.Builder, m model) {
 func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Help") + "\n")
 	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · Ctrl+S save · r rescan\n")
-	b.WriteString("• Settings: Tab cycle · Alt+↑/↓/←/→ navigate inputs · Enter to focus · Esc to unfocus · Ctrl+S save\n")
+	b.WriteString("• Settings: Arrow keys move focus · ←/→ or Enter/Space toggles Codex/Claude when on a switch · Tab steps downward · Esc unfocus · Ctrl+S save\n")
 	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
 	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
 	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDn page · Home/End top/bottom · path shown in the Logs tab\n")

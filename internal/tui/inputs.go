@@ -8,21 +8,20 @@ import (
 )
 
 var settingsGrid = map[string][2]int{
-	"repo":     {0, 0},
-	"base":     {1, 0},
-	"branch":   {2, 0},
-	"codex":    {3, 0},
-	"pycmd":    {4, 0},
-	"pyscript": {5, 0},
-	"policy":   {6, 0},
-	"execimpl": {7, 0},
-	"execfix":  {7, 1},
-	"execpr":   {7, 2},
-	"execrev":  {7, 3},
-	"waitmin":  {8, 0},
-	"pollsec":  {8, 1},
-	"idlemin":  {8, 2},
-	"maxiters": {8, 3},
+	"repo":         {0, 0},
+	"base":         {1, 0},
+	"branch":       {2, 0},
+	"codex":        {3, 0},
+	"pycmd":        {4, 0},
+	"pyscript":     {5, 0},
+	"policy":       {6, 0},
+	"toggleLocal":  {7, 0},
+	"togglePR":     {7, 1},
+	"toggleReview": {7, 2},
+	"waitmin":      {8, 0},
+	"pollsec":      {8, 1},
+	"idlemin":      {8, 2},
+	"maxiters":     {8, 3},
 }
 
 func (m *model) blurAllInputs() {
@@ -33,10 +32,6 @@ func (m *model) blurAllInputs() {
 	m.inPyCmd.Blur()
 	m.inPyScript.Blur()
 	m.inPolicy.Blur()
-	m.inExecImpl.Blur()
-	m.inExecFix.Blur()
-	m.inExecPR.Blur()
-	m.inExecRev.Blur()
 	m.inWaitMin.Blur()
 	m.inPollSec.Blur()
 	m.inIdleMin.Blur()
@@ -66,14 +61,8 @@ func (m *model) focusInput(inputName string) {
 		m.inPyScript.Focus()
 	case "policy":
 		m.inPolicy.Focus()
-	case "execimpl":
-		m.inExecImpl.Focus()
-	case "execfix":
-		m.inExecFix.Focus()
-	case "execpr":
-		m.inExecPR.Focus()
-	case "execrev":
-		m.inExecRev.Focus()
+	case "toggleLocal", "togglePR", "toggleReview":
+		return
 	case "waitmin":
 		m.inWaitMin.Focus()
 	case "pollsec":
@@ -296,4 +285,56 @@ func (m *model) toggleFocusedFlag() {
 
 func (m *model) getInputField(inputName string) *textinput.Model {
 	return m.settingsInputs[inputName]
+}
+
+func (m *model) cycleExecutorChoice(name string, direction int) {
+	if direction == 0 {
+		direction = 1
+	}
+	if len(executorChoices) == 0 {
+		return
+	}
+
+	var current executorChoice
+	switch name {
+	case "toggleLocal":
+		current = m.execLocalChoice
+	case "togglePR":
+		current = m.execPRChoice
+	case "toggleReview":
+		current = m.execReviewChoice
+	default:
+		return
+	}
+
+	idx := 0
+	for i, choice := range executorChoices {
+		if choice == current {
+			idx = i
+			break
+		}
+	}
+	newIdx := (idx + direction) % len(executorChoices)
+	if newIdx < 0 {
+		newIdx += len(executorChoices)
+	}
+	newChoice := executorChoices[newIdx]
+
+	switch name {
+	case "toggleLocal":
+		m.execLocalChoice = newChoice
+	case "togglePR":
+		m.execPRChoice = newChoice
+	case "toggleReview":
+		m.execReviewChoice = newChoice
+	}
+}
+
+func isExecutorToggle(name string) bool {
+	switch name {
+	case "toggleLocal", "togglePR", "toggleReview":
+		return true
+	default:
+		return false
+	}
 }

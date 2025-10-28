@@ -21,7 +21,8 @@
 - **/**: Filter/search PRD files
 
 ### Settings Tab (3)
-- **↑/↓/←/→**: Navigate between input fields (2D grid navigation)
+- **↑/↓/←/→**: Navigate between input fields and toggles (2D grid navigation)
+- **←/→ or Enter/Space (toggle)**: Switch Codex/Claude for focused executor toggle
 - **Enter**: Focus first input field or unfocus current input
 - **Esc**: Unfocus current input field
 - **Type**: Edit focused input field

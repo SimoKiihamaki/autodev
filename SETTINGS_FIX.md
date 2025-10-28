@@ -5,6 +5,15 @@
 - Replace the four free-form executor text inputs with three binary toggles that flip between Codex and Claude for the Local loop, PR push, and PR review-fix phases.
 - Keep configuration loading/saving and downstream runner behaviour aligned with the new toggles.
 
+## Checklist
+- [x] Reshape the model to track executor toggles
+- [x] Rebuild the settings navigation grid
+- [x] Handle arrow keys and toggle activation
+- [x] Render the toggles and refresh help copy
+- [x] Persist the toggle selections
+- [x] Refresh tests and add coverage
+- [x] Documentation and QA *(manual TUI validation requires human confirmation)*
+
 ## Step-by-step Tasks
 
 1. **Reshape the model to track executor toggles**
@@ -52,4 +61,3 @@
      1. `go test ./...`
      2. `go run ./cmd/aprd` (or `make run`) and confirm arrow navigation works without Alt and that each toggle flips between Codex and Claude while updating the saved config.
    - Run `go fmt ./...` (or `make build`) before committing to satisfy formatting expectations.
-

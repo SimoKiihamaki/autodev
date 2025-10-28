@@ -247,6 +247,11 @@ func (m *model) hydrateConfigFromInputs() []string {
 	m.cfg.RunPhases.Local = m.runLocal
 	m.cfg.RunPhases.PR = m.runPR
 	m.cfg.RunPhases.ReviewFix = m.runReview
+	localExec := m.execLocalChoice.configValue()
+	m.cfg.PhaseExecutors.Implement = localExec
+	m.cfg.PhaseExecutors.Fix = localExec
+	m.cfg.PhaseExecutors.PR = m.execPRChoice.configValue()
+	m.cfg.PhaseExecutors.ReviewFix = m.execReviewChoice.configValue()
 
 	return invalid
 }

@@ -37,13 +37,17 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "up":
 		if m.focusedInput == "" {
 			m.focusInput("repo")
-			return *m, nil
+		} else {
+			m.navigateSettings("up")
 		}
+		return *m, nil
 	case "down":
 		if m.focusedInput == "" {
 			m.focusInput("repo")
-			return *m, nil
+		} else {
+			m.navigateSettings("down")
 		}
+		return *m, nil
 	case "alt+left":
 		if m.focusedInput != "" {
 			m.navigateSettings("left")
@@ -66,9 +70,39 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		}
 	case "ctrl+s":
 		return *m, m.saveConfig()
+	case "left":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+		if isExecutorToggle(m.focusedInput) {
+			m.cycleExecutorChoice(m.focusedInput, -1)
+			return *m, nil
+		}
+		m.navigateSettings("left")
+		return *m, nil
+	case "right":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+		if isExecutorToggle(m.focusedInput) {
+			m.cycleExecutorChoice(m.focusedInput, 1)
+			return *m, nil
+		}
+		m.navigateSettings("right")
+		return *m, nil
 	}
 
 	if m.focusedInput != "" {
+		if isExecutorToggle(m.focusedInput) {
+			switch msg.String() {
+			case "enter", "space", " ":
+				m.cycleExecutorChoice(m.focusedInput, 1)
+				return *m, nil
+			}
+			return *m, nil
+		}
 		field := m.getInputField(m.focusedInput)
 		if field != nil {
 			var cmd tea.Cmd
