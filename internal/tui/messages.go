@@ -13,6 +13,10 @@ const (
 
 	// logSendTimeout is the timeout for sending log lines to the UI channel
 	logSendTimeout = 100 * time.Millisecond
+
+	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
+	// Uses a longer timeout to ensure critical diagnostics are not dropped
+	criticalLogSendTimeout = 2 * time.Second
 )
 
 type runStartMsg struct{}

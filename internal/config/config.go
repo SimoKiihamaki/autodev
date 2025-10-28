@@ -10,6 +10,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Environment variable constants for executor configuration
+const (
+	EnvExecutorPolicy       = "AUTO_PRD_EXECUTOR_POLICY"
+	EnvExecutorImplement    = "AUTO_PRD_EXECUTOR_IMPLEMENT"
+	EnvExecutorFix          = "AUTO_PRD_EXECUTOR_FIX"
+	EnvExecutorPR           = "AUTO_PRD_EXECUTOR_PR"
+	EnvExecutorReviewFix    = "AUTO_PRD_EXECUTOR_REVIEW_FIX"
+	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
+)
+
 type Flags struct {
 	AllowUnsafe     bool `yaml:"allow_unsafe"`
 	DryRun          bool `yaml:"dry_run"`

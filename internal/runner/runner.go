@@ -197,32 +197,32 @@ func (o Options) Run(ctx context.Context) error {
 
 	// Build env
 	env := sanitizedEnviron(
-		"AUTO_PRD_EXECUTOR_POLICY",
-		"AUTO_PRD_EXECUTOR_IMPLEMENT",
-		"AUTO_PRD_EXECUTOR_FIX",
-		"AUTO_PRD_EXECUTOR_PR",
-		"AUTO_PRD_EXECUTOR_REVIEW_FIX",
-		"AUTO_PRD_ALLOW_UNSAFE_EXECUTION",
+		config.EnvExecutorPolicy,
+		config.EnvExecutorImplement,
+		config.EnvExecutorFix,
+		config.EnvExecutorPR,
+		config.EnvExecutorReviewFix,
+		config.EnvAllowUnsafeExecution,
 	)
 	if o.Config.ExecutorPolicy != "" {
-		env = append(env, "AUTO_PRD_EXECUTOR_POLICY="+o.Config.ExecutorPolicy)
+		env = append(env, config.EnvExecutorPolicy+"="+o.Config.ExecutorPolicy)
 	}
 	// Per-phase executor overrides
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
-		env = append(env, "AUTO_PRD_EXECUTOR_IMPLEMENT="+v)
+		env = append(env, config.EnvExecutorImplement+"="+v)
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
-		env = append(env, "AUTO_PRD_EXECUTOR_FIX="+v)
+		env = append(env, config.EnvExecutorFix+"="+v)
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.PR)); v == "codex" || v == "claude" {
-		env = append(env, "AUTO_PRD_EXECUTOR_PR="+v)
+		env = append(env, config.EnvExecutorPR+"="+v)
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
-		env = append(env, "AUTO_PRD_EXECUTOR_REVIEW_FIX="+v)
+		env = append(env, config.EnvExecutorReviewFix+"="+v)
 	}
 
 	if o.Config.Flags.AllowUnsafe {
-		env = append(env, "AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1", "CI=1")
+		env = append(env, config.EnvAllowUnsafeExecution+"=1", "CI=1")
 	}
 	if len(o.ExtraEnv) > 0 {
 		env = append(env, o.ExtraEnv...)

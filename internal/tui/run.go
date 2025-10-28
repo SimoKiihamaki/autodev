@@ -104,19 +104,21 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
-		safeSend := func(line runner.Line) {
+		// safeSendCritical is used for error/panic messages that must not be dropped
+		safeSendCritical := func(line runner.Line) {
 			defer func() {
 				if r := recover(); r != nil {
 					// Defensive: log unexpected panics (not send-on-closed-channel, which is handled by select)
 					// This catches other potential runtime panics to keep the goroutine alive
-					log.Printf("tui: safeSend recovered from panic: %v", r)
+					log.Printf("tui: safeSendCritical recovered from panic: %v", r)
 				}
 			}()
 			select {
 			case logCh <- line:
-			case <-time.After(logSendTimeout):
-				// Log when messages are dropped to aid debugging
-				log.Printf("tui: dropped log line after %v timeout (UI consumer slow)", logSendTimeout)
+			case <-time.After(criticalLogSendTimeout):
+				// Critical messages should never be dropped, but we need a timeout to prevent blocking forever
+				// Use a much longer timeout for critical diagnostics
+				log.Printf("tui: dropped CRITICAL log line after %v timeout (UI consumer extremely slow)", criticalLogSendTimeout)
 			}
 		}
 
@@ -129,11 +131,11 @@ func (m *model) startRunCmd() tea.Cmd {
 				if stack != "" {
 					msg = msg + "\n" + stack
 				}
-				safeSend(runner.Line{Time: time.Now(), Text: msg, Err: true})
+				safeSendCritical(runner.Line{Time: time.Now(), Text: msg, Err: true})
 				err = panicErr
 			}
 			if err != nil && err != context.Canceled {
-				safeSend(runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
+				safeSendCritical(runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
 			}
 			select {
 			case resultCh <- err:
