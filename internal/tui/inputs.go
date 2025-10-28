@@ -288,14 +288,6 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 }
 
 func (m *model) cycleExecutorChoice(name string, direction int) {
-	// If no direction is specified (direction == 0), default to forward cycling (direction = 1).
-	if direction == 0 {
-		direction = 1
-	}
-	if len(executorChoices) == 0 {
-		return
-	}
-
 	var current executorChoice
 	switch name {
 	case "toggleLocal":

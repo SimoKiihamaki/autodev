@@ -280,7 +280,7 @@ func resolveExecutorChoice(values ...string) executorChoice {
 		case string(executorClaude):
 			return executorClaude
 		case string(executorCodex):
-			// do nothing, will return executorCodex at the end if found
+			// continue, will return executorCodex as default at the end
 		}
 	}
 	return executorCodex
