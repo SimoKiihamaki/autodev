@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const focusedBgColor = "240"
@@ -14,11 +16,18 @@ const focusedBgColor = "240"
 // a single space does not provide enough separation for readability and aesthetics.
 const toggleSeparator = "  "
 
+// Executor label constants to maintain single source of truth
+const (
+	executorLocalLabel  = "Local Loop"
+	executorPRLabel     = "PR Push"
+	executorReviewLabel = "Review Fix"
+)
+
 // generateToggleHint creates help text dynamically from executorChoices to future-proof against changes
 func generateToggleHint() string {
 	choices := make([]string, len(executorChoices))
 	for i, choice := range executorChoices {
-		choices[i] = strings.Title(string(choice))
+		choices[i] = cases.Title(language.Und, cases.NoLower).String(string(choice))
 	}
 	return "Enter / Space to switch " + strings.Join(choices, "/")
 }
@@ -209,9 +218,9 @@ func renderSettingsView(b *strings.Builder, m model) {
 	b.WriteString(m.inPyCmd.View() + "\n")
 	b.WriteString(m.inPyScript.View() + "\n")
 	b.WriteString(m.inPolicy.View() + "\n")
-	localToggle := renderExecutorToggle("Local Loop", m.execLocalChoice, m.focusedInput == "toggleLocal")
-	prToggle := renderExecutorToggle("PR Push", m.execPRChoice, m.focusedInput == "togglePR")
-	reviewToggle := renderExecutorToggle("Review Fix", m.execReviewChoice, m.focusedInput == "toggleReview")
+	localToggle := renderExecutorToggle(executorLocalLabel, m.execLocalChoice, m.focusedInput == "toggleLocal")
+	prToggle := renderExecutorToggle(executorPRLabel, m.execPRChoice, m.focusedInput == "togglePR")
+	reviewToggle := renderExecutorToggle(executorReviewLabel, m.execReviewChoice, m.focusedInput == "toggleReview")
 	b.WriteString(localToggle + toggleSeparator + prToggle + toggleSeparator + reviewToggle + "\n")
 	b.WriteString(m.inWaitMin.View() + "  ")
 	b.WriteString(m.inPollSec.View() + "  ")
@@ -247,11 +256,11 @@ func renderExecutorOption(name string, selected bool) string {
 func executorToggleLabel(name string) string {
 	switch name {
 	case "toggleLocal":
-		return "Local Loop"
+		return executorLocalLabel
 	case "togglePR":
-		return "PR Push"
+		return executorPRLabel
 	case "toggleReview":
-		return "Review Fix"
+		return executorReviewLabel
 	default:
 		return name
 	}
