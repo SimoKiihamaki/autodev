@@ -66,7 +66,7 @@ func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, c
 	return headers
 }
 
-// persistLogLine is no longer needed - log persistence is handled by background goroutine
+// persistLogLine is no longer needed - log persistence is handled by the Python runner via --log-file
 
 func (m *model) closeLogFile(reason string) {
 

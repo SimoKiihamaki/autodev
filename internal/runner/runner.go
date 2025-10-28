@@ -188,6 +188,15 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		return fmt.Errorf("PythonCommand is empty")
 	}
 
+	// Additional safety check: ensure no shell metacharacters remain in any part after splitting
+	// Since exec.Command doesn't invoke a shell, this prevents accidental inclusion of problematic characters
+	dangerousChars := ";|&`$()<>{}[]?*~!#"
+	for i, part := range parts {
+		if strings.ContainsAny(part, dangerousChars) {
+			return fmt.Errorf("PythonCommand part %d contains potentially dangerous shell metacharacters: %q", i, part)
+		}
+	}
+
 	// Note: exec.Command does not invoke a shell; argument characters are not interpreted.
 	// We rely on allowlisted interpreter paths/names below instead of a blanket char filter.
 	// Additional check: ensure the command starts with a safe interpreter name
@@ -208,7 +217,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// NOTE: This is a hardcoded list of common Python installation paths.
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
-		// Allowlist can be extended via config for non-standard Python installations.
+		// Allowlist can be extended via the allowed_python_dirs config field for non-standard Python installations.
 		// Symlink validation ensures the resolved path itself is in an allowed directory.
 
 		// Simple prefix matches for Unix-like systems

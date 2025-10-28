@@ -35,7 +35,7 @@ func (m *model) readLogsBatch() tea.Cmd {
 	}
 	return func() tea.Msg {
 		// No need to check m.logCh here; only use the captured initialCh
-		// If the channel was closed or swapped, this closure will simply drain initialCh
+		// If the channel was closed, this closure will simply drain initialCh
 		line, ok := <-initialCh
 		if !ok {
 			return logBatchMsg{closed: true}
@@ -71,7 +71,7 @@ func (m *model) waitRunResult() tea.Cmd {
 	initialCh := m.runResult
 	return func() tea.Msg {
 		// No need to check m.runResult here; only use the captured initialCh
-		// If the channel was closed or swapped, this closure will simply drain initialCh
+		// If the channel was closed, this closure will simply drain initialCh
 		err, ok := <-initialCh
 		if !ok {
 			return nil
