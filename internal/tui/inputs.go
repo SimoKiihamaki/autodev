@@ -26,7 +26,7 @@ var settingsGrid = map[string][2]int{
 
 // wrapIndex calculates the wrapped index for circular navigation in executor toggle cycling.
 // Used by cycleExecutorChoice to wrap between executor options (Codex/Claude).
-// The formula ((current+delta)%length + length) % length ensures the result is always in [0, length)
+// The formula (((current+delta) % length) + length) % length ensures the result is always in [0, length)
 // by correctly handling negative (current+delta) values for circular navigation.
 func wrapIndex(current, delta, length int) int {
 	return ((current+delta)%length + length) % length

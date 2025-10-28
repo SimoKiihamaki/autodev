@@ -212,7 +212,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
-			b.WriteString("\n" + okStyle.Render(fmt.Sprintf("Toggle focused: %s (%s, Tab or arrows to navigate, Esc to blur)", executorToggleLabel(m.focusedInput), toggleHint)) + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf("Toggle focused: %s (%s, arrows to navigate, Esc to blur)", executorToggleLabel(m.focusedInput), toggleHint)) + "\n")
 		} else {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
