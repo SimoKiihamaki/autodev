@@ -108,37 +108,34 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 }
 
 func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
-	if len(msg.lines) == 0 {
-		if msg.closed {
-			m.logCh = nil
-			return m, nil
+	// Process any lines first, even if the channel is closed
+	if len(msg.lines) > 0 {
+		// Prepare batch arrays for run feed processing
+		for _, line := range msg.lines {
+			display, plain := m.formatLogLine(line)
+
+			m.logBuf = append(m.logBuf, display)
+			if len(m.logBuf) > maxLogLines {
+				m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
+			}
+			m.handleRunFeedLine(display, plain)
 		}
-		return m, m.readLogsBatch()
+
+		// Unconditionally set content for logs tab (joining empty slice produces empty string)
+		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
 	}
 
-	// Prepare batch arrays for run feed processing
-	for _, line := range msg.lines {
-		display, plain := m.formatLogLine(line)
-
-		m.logBuf = append(m.logBuf, display)
-		if len(m.logBuf) > maxLogLines {
-			m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
-		}
-		m.handleRunFeedLine(display, plain)
-	}
-
-	// Unconditionally set content for logs tab (joining empty slice produces empty string)
-	m.logs.SetContent(strings.Join(m.logBuf, "\n"))
-
-	// Schedule another batch read if we still have a log channel
+	// Handle channel closure after processing lines to ensure final batch is not lost
 	if msg.closed {
 		m.logCh = nil
 		return m, nil
 	}
 
+	// Schedule another batch read if we still have a log channel
 	if m.logCh != nil {
 		return m, m.readLogsBatch()
 	}
+
 	return m, nil
 }
 
@@ -170,9 +167,9 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		logReason = "failed"
 	}
 
-	// No need to flush logs or run feed here:
-	// handleLogBatch and handleRunFeedLine always flush content unconditionally,
-	// so state is already up to date.
+	// No need to update logs or run feed here:
+	// handleLogBatch and handleRunFeedLine call SetContent on every invocation,
+	// so viewport state is always current.
 
 	m.closeLogFile(logReason)
 	return m, nil
