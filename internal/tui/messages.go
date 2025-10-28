@@ -24,6 +24,9 @@ type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
 
+// readLogsBatch attempts to read a batch of log lines from the log channel.
+// Returns a closed batch with zero lines if the channel is closed before any data arrives.
+// Always returns at least one line unless the channel is empty and closed.
 func (m model) readLogsBatch() tea.Cmd {
 	if m.logCh == nil {
 		return nil

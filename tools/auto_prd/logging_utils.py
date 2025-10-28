@@ -171,6 +171,8 @@ def install_print_logger() -> None:
             # Force flush=True for all output to prevent buffering stalls.
             # Python switches to block buffering for stdout when output is piped (as opposed to line buffering for terminals),
             # so setting flush=True ensures immediate output regardless of buffering mode.
+            # Flushing is enforced by environment variables (e.g., PYTHONUNBUFFERED=1 or the -u flag), but it is fine to set
+            # flush=True when emitting critical status messages.
             kwargs["flush"] = True
 
             # Call original print

@@ -107,7 +107,8 @@ func (m *model) startRunCmd() tea.Cmd {
 		safeSend := func(line runner.Line) {
 			defer func() {
 				if r := recover(); r != nil {
-					// Log unexpected panics but don't crash the goroutine
+					// Defensive: log unexpected panics (not send-on-closed-channel, which is handled by select)
+					// This catches other potential runtime panics to keep the goroutine alive
 					log.Printf("tui: safeSend recovered from panic: %v", r)
 				}
 			}()

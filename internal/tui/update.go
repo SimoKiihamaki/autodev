@@ -124,6 +124,7 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 		m.handleRunFeedLine(display, plain)
 	}
 
+	// Unconditionally set content for logs tab (joining empty slice produces empty string)
 	m.logs.SetContent(strings.Join(m.logBuf, "\n"))
 
 	// Schedule another batch read if we still have a log channel
@@ -163,12 +164,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		logReason = "failed"
 	}
 
-	if len(m.logBuf) > 0 {
-		m.logs.SetContent(strings.Join(m.logBuf, "\n"))
-	}
-	if len(m.runFeedBuf) > 0 {
-		m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
-	}
+	// Content already set by handleLogBatch; no need to set again
 
 	m.closeLogFile(logReason)
 	return m, nil
