@@ -205,14 +205,34 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		// Allowlist can be extended via config for non-standard Python installations (e.g., pyenv, conda, virtualenvs)
-		defaultAllowedDirs := []string{"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/"}
+		defaultAllowedDirs := []string{
+			// Unix-like systems
+			"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/",
+			// Windows systems
+			"C:\\Python3\\", "C:\\Python313\\", "C:\\Python312\\", "C:\\Python311\\", "C:\\Python310\\", "C:\\Python39\\",
+			"C:\\Program Files\\Python3\\", "C:\\Program Files\\Python313\\", "C:\\Program Files\\Python312\\", "C:\\Program Files\\Python311\\", "C:\\Program Files\\Python310\\", "C:\\Program Files\\Python39\\",
+			"C:\\Program Files (x86)\\Python3\\", "C:\\Program Files (x86)\\Python313\\", "C:\\Program Files (x86)\\Python312\\", "C:\\Program Files (x86)\\Python311\\", "C:\\Program Files (x86)\\Python310\\", "C:\\Program Files (x86)\\Python39\\",
+			// Windows AppData paths
+			"C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3\\",
+			"C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python313\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python312\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python311\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python310\\", "C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python39\\",
+		}
 		userAllowedDirs := cfg.GetAllowedPythonDirs()
 		allowedDirs := append(defaultAllowedDirs, userAllowedDirs...)
 		allowed := false
 		for _, dir := range allowedDirs {
-			if strings.HasPrefix(absPath, dir) {
-				allowed = true
-				break
+			// Check if the pattern contains regex characters
+			if strings.ContainsAny(dir, "[]+*()^$?{}\\.|") {
+				// Treat as regex pattern
+				if matched, _ := regexp.MatchString(dir, absPath); matched {
+					allowed = true
+					break
+				}
+			} else {
+				// Simple prefix match
+				if strings.HasPrefix(absPath, dir) {
+					allowed = true
+					break
+				}
 			}
 		}
 		if !allowed {
@@ -220,10 +240,10 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		}
 	} else {
 		// No path separator: must be a bare allowed name
-		// Allow "python", "python3", or "python3.x" where x is any number
-		allowedNamePattern := regexp.MustCompile(`^python3(\.\d+)?$|^python$`)
+		// Allow "python3" or "python3.x" where x is any number
+		allowedNamePattern := regexp.MustCompile(`^python3(\.\d+)?$`)
 		if !allowedNamePattern.MatchString(interpreter) {
-			return fmt.Errorf("Interpreter name %q is not allowed", interpreter)
+			return fmt.Errorf("Interpreter name %q is not allowed (must be python3 or python3.x)", interpreter)
 		}
 	}
 

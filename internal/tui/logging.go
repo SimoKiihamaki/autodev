@@ -80,6 +80,7 @@ func (m *model) writeLogHeader() {
 	}
 	headers = append(headers, "")
 	if _, err := m.logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
+		fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", m.logFilePath, err)
 		m.status = "Failed to write log header: " + err.Error()
 		m.logStatus = "unavailable: " + err.Error()
 		m.closeLogFile("header error")
@@ -97,6 +98,7 @@ func (m *model) persistLogLine(line runner.Line) {
 	text := strings.TrimRight(line.Text, "\r\n")
 	entry := fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
 	if _, err := m.logFile.WriteString(entry); err != nil {
+		fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", m.logFilePath, err)
 		m.status = "Failed to write log file: " + err.Error()
 		m.closeLogFile("write error")
 	}

@@ -95,7 +95,9 @@ func (m model) startLogWriter() tea.Cmd {
 			}
 			text := strings.TrimRight(line.Text, "\r\n")
 			entry := fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
-			logFile.WriteString(entry) // Ignore errors in background writer
+			if _, err := logFile.WriteString(entry); err != nil {
+				fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
+			}
 		}
 		return nil
 	}
