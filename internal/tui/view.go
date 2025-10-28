@@ -38,7 +38,8 @@ func getGeneralKeysHelp() string {
 	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
 }
 
-const inputFocusHelp = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
+// inputFocusHelpTemplate expects the input name as the first argument.
+const inputFocusHelpTemplate = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
 
 func focusStyle(active bool) lipgloss.Style {
 	style := lipgloss.NewStyle()
@@ -227,7 +228,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 		if isExecutorToggle(m.focusedInput) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(getExecutorToggleHelp(), executorToggleLabel(m.focusedInput))) + "\n")
 		} else {
-			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelp, m.focusedInput)) + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
 		b.WriteString(fmt.Sprintf("\n"+getGeneralKeysHelp()+"\n", len(tabNames)))
