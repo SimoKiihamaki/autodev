@@ -212,6 +212,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// Simple prefix matches for Unix-like systems
 		defaultAllowedPrefixes := []string{
 			"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/",
+			"/opt/python/bin/", "/usr/lib/",
+		}
+		// Add user-local bin directory (e.g., ~/.local/bin/) if available
+		if home, err := os.UserHomeDir(); err == nil {
+			userLocalBin := filepath.Join(home, ".local", "bin") + string(os.PathSeparator)
+			defaultAllowedPrefixes = append(defaultAllowedPrefixes, userLocalBin)
 		}
 
 		// Regex patterns for Windows systems (to match all Python 3.x versions)
@@ -383,7 +389,6 @@ func (o Options) Run(ctx context.Context) error {
 		config.EnvExecutorReviewFix,
 		config.EnvAllowUnsafeExecution,
 		"CI",
-		"PYTHONUNBUFFERED",
 	)
 
 	// Consolidated executor environment variable setting
@@ -550,6 +555,7 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
+			// Note: This only affects the UI; the full log is still written by the runner to disk, so no data is lost.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}
