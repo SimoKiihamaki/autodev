@@ -90,14 +90,16 @@ for i in range(10):
 			t.Fatal("readLogsBatch returned nil")
 		}
 
+		type anyMsg = interface{}
+		msgCh := make(chan anyMsg, 1)
+		go func() { msgCh <- cmd() }()
 		select {
 		case <-deadline.C:
 			t.Fatal("timed out waiting for log batches")
-		default:
-			msg := cmd()
-			batch, ok := msg.(logBatchMsg)
+		case raw := <-msgCh:
+			batch, ok := raw.(logBatchMsg)
 			if !ok {
-				t.Fatalf("unexpected message type: %T", msg)
+				t.Fatalf("unexpected message type: %T", raw)
 			}
 			totalLines += len(batch.lines)
 			m.handleLogBatch(batch)

@@ -164,7 +164,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		logReason = "failed"
 	}
 
-	// Content already set by handleLogBatch; no need to set again
+	// Logs and run feed content already set by handleLogBatch; no need to set again
 
 	m.closeLogFile(logReason)
 	return m, nil

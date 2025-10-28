@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/google/shlex"
 )
 
 // bufferPool reuses byte buffers to reduce allocations
@@ -250,7 +251,7 @@ func (o Options) Run(ctx context.Context) error {
 
 	if o.Config.Flags.AllowUnsafe {
 		executorVars[config.EnvAllowUnsafeExecution] = "1"
-		// CI=1 was removed during environment sanitization and is explicitly re-added here when AllowUnsafe is true (it's not an executor variable)
+		// CI=1 is removed during sanitization and re-added here when AllowUnsafe is true
 		env = append(env, "CI=1")
 	}
 
@@ -266,11 +267,19 @@ func (o Options) Run(ctx context.Context) error {
 	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
 
+	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
+	pyParts, err := shlex.Split(o.Config.PythonCommand)
+	if err != nil || len(pyParts) == 0 {
+		return fmt.Errorf("invalid PythonCommand %q: %w", o.Config.PythonCommand, err)
+	}
+	pyBin, pyFlags := pyParts[0], pyParts[1:]
+
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
-	pythonArgs := make([]string, 0, len(args)+1)
+	pythonArgs := make([]string, 0, len(pyFlags)+len(args)+1)
+	pythonArgs = append(pythonArgs, pyFlags...)
 	pythonArgs = append(pythonArgs, "-u")
 	pythonArgs = append(pythonArgs, args...)
-	cmd := exec.Command(o.Config.PythonCommand, pythonArgs...)
+	cmd := exec.Command(pyBin, pythonArgs...)
 	cmd.Env = env
 	setupProcessGroup(cmd)
 
