@@ -1,70 +1,50 @@
 package tui
 
 import (
-	"time"
-
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type runStartMsg struct{}
-type logLineMsg struct{ line runner.Line }
-type logBatchMsg struct{ lines []runner.Line }
+type logBatchMsg struct {
+	lines  []runner.Line
+	closed bool
+}
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
-
-func (m model) readLogs() tea.Cmd {
-	if m.logCh == nil {
-		return nil
-	}
-	ch := m.logCh
-	return func() tea.Msg {
-		line, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return logLineMsg{line: line}
-	}
-}
 
 func (m model) readLogsBatch() tea.Cmd {
 	if m.logCh == nil {
 		return nil
 	}
 	ch := m.logCh
-	batchConfig := m.cfg.BatchProcessing
+	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
+	if maxBatch <= 0 {
+		maxBatch = 25
+	}
 	return func() tea.Msg {
-		var lines []runner.Line
+		line, ok := <-ch
+		if !ok {
+			return logBatchMsg{closed: true}
+		}
 
-		// Read up to maxBatchSize lines or until channel is empty
-		for i := 0; i < batchConfig.MaxBatchSize; i++ {
+		lines := make([]runner.Line, 0, maxBatch)
+		lines = append(lines, line)
+
+		for len(lines) < maxBatch {
 			select {
-			case line, ok := <-ch:
+			case next, ok := <-ch:
 				if !ok {
-					// Channel closed
-					if len(lines) > 0 {
-						return logBatchMsg{lines: lines}
-					}
-					return nil
+					return logBatchMsg{lines: lines, closed: true}
 				}
-				lines = append(lines, line)
-
-			case <-time.After(time.Duration(batchConfig.BatchTimeoutMs) * time.Millisecond):
-				// Channel is empty, return what we have
-				if len(lines) > 0 {
-					return logBatchMsg{lines: lines}
-				}
-				// No lines available, schedule another read
-				return nil
+				lines = append(lines, next)
+			default:
+				return logBatchMsg{lines: lines, closed: false}
 			}
 		}
 
-		// Got maxBatchSize lines
-		if len(lines) > 0 {
-			return logBatchMsg{lines: lines}
-		}
-		return nil
+		return logBatchMsg{lines: lines, closed: false}
 	}
 }
 

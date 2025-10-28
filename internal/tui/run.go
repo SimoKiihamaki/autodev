@@ -84,7 +84,6 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.logCh = make(chan runner.Line, 2048)
 	ch := m.logCh
 	m.logBuf = nil
-	m.logDirtyLines = 0
 	m.logs.SetContent("")
 	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)

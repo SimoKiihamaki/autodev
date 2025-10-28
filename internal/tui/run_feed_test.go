@@ -139,7 +139,6 @@ func TestHandleRunFeedLine_LongStreamingSession(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
 		runFeedAutoFollow: true,
-		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Simulate a long streaming session with more lines than feedBufCap
@@ -193,36 +192,19 @@ func TestHandleRunFeedLine_FlushBoundaries(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
-		flushController:   newAdaptiveFlushController(),
 	}
 
 	line := fLogLineInfo("First line")
 	m.handleRunFeedLine(line, line)
 
 	// Dirty lines should be reset after first flush
-	if m.runFeedDirtyLines != 0 {
-		t.Fatalf("runFeedDirtyLines=%d after first flush, want 0", m.runFeedDirtyLines)
-	}
-
-	// Test flush boundary with auto-follow enabled (feedFollowFlushStep = 4)
-	for i := 1; i < feedFollowFlushStep; i++ {
+	// Additional lines should appear in viewport immediately
+	for i := 1; i < 5; i++ {
 		line = fLogLineInfo("Test line %d", i)
 		m.handleRunFeedLine(line, line)
-
-		// Dirty lines should accumulate
-		expectedDirty := i
-		if m.runFeedDirtyLines != expectedDirty {
-			t.Fatalf("runFeedDirtyLines=%d at iteration %d, want %d", m.runFeedDirtyLines, i, expectedDirty)
+		if view := m.runFeed.View(); !strings.Contains(view, line) {
+			t.Fatalf("viewport missing line %q", line)
 		}
-	}
-
-	// One more line should trigger the flush
-	line = fLogLineInfo("Flush line")
-	m.handleRunFeedLine(line, line)
-
-	// Dirty lines should be reset again
-	if m.runFeedDirtyLines != 0 {
-		t.Fatalf("runFeedDirtyLines=%d after flush, want 0", m.runFeedDirtyLines)
 	}
 }
 
@@ -233,7 +215,6 @@ func TestHandleRunFeedLine_EmptyBufferFirstFlush(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
-		flushController:   newAdaptiveFlushController(),
 	}
 
 	// First line should trigger immediate flush (wasEmpty = true)
@@ -252,9 +233,6 @@ func TestHandleRunFeedLine_EmptyBufferFirstFlush(t *testing.T) {
 	}
 
 	// Dirty lines should be reset after immediate flush
-	if m.runFeedDirtyLines != 0 {
-		t.Fatalf("runFeedDirtyLines=%d, want 0 after immediate flush", m.runFeedDirtyLines)
-	}
 }
 
 func TestHandleRunFeedLine_TrimmingFlush(t *testing.T) {
@@ -264,7 +242,6 @@ func TestHandleRunFeedLine_TrimmingFlush(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
-		flushController:   newAdaptiveFlushController(),
 	}
 
 	// Fill buffer to capacity to trigger trimming
@@ -303,11 +280,10 @@ func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
 		runFeedAutoFollow: true,
-		flushController:   newAdaptiveFlushController(),
 	}
 
-	// Add enough lines to trigger a flush
-	for i := 0; i < feedFollowFlushStep; i++ {
+	// Add enough lines to trigger updates
+	for i := 0; i < 4; i++ {
 		line := fLogLineInfo("Line %d", i)
 		m.handleRunFeedLine(line, line)
 	}
@@ -322,28 +298,26 @@ func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
 		t.Fatal("viewport should be at bottom when auto-follow is enabled")
 	}
 
-	// Test auto-follow behavior when user scrolls away
-	// Move viewport away from bottom to simulate user scrolling
+	// Add more lines to ensure viewport can scroll away from bottom
+	for i := 4; i < 40; i++ {
+		line := fLogLineInfo("Warmup line %d", i)
+		m.handleRunFeedLine(line, line)
+	}
+
 	m.runFeed.GotoTop()
+	if m.runFeed.AtBottom() {
+		t.Fatal("viewport should not be at bottom after user scrolls to top")
+	}
 
-	// After moving away from bottom, shouldFollow should be false unless autoFollow is true
-	// Let's test with autoFollow explicitly set to false
 	m.runFeedAutoFollow = false
-	m.runFeedDirtyLines = 0 // Reset dirty lines
 
-	// Add lines - since viewport is not at bottom and autoFollow is false,
-	// shouldFollow will be false, but autoFollow might get set to true
-	// if the viewport happens to be at bottom during the flush
-	for i := 0; i < feedFlushStep; i++ {
+	for i := 0; i < 5; i++ {
 		line := fLogLineInfo("Scrolled line %d", i)
 		m.handleRunFeedLine(line, line)
 	}
 
-	// The key test: if we ensure viewport is NOT at bottom and autoFollow starts false,
-	// it should remain false because shouldFollow will be false
-	// But if the viewport happens to be at bottom during any flush, autoFollow gets reset to true
-	if m.runFeed.AtBottom() && !m.runFeedAutoFollow {
-		t.Log("Note: Viewport is at bottom but autoFollow is false - this is valid behavior")
+	if m.runFeedAutoFollow {
+		t.Fatal("auto follow should remain false when user has scrolled away")
 	}
 }
 

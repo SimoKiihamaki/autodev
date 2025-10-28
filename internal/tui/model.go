@@ -125,17 +125,15 @@ type model struct {
 
 	prompt textarea.Model
 
-	logs          viewport.Model
-	logBuf        []string
-	logDirtyLines int
-	logFile       *os.File
-	logFilePath   string
-	logStatus     string
+	logs        viewport.Model
+	logBuf      []string
+	logFile     *os.File
+	logFilePath string
+	logStatus   string
 
 	runFeed           viewport.Model
 	runFeedBuf        []string
 	runFeedAutoFollow bool
-	runFeedDirtyLines int
 	runPhase          string
 	runCurrent        string
 	runPrevious       string
@@ -143,9 +141,6 @@ type model struct {
 	runIterCurrent    int
 	runIterTotal      int
 	runIterLabel      string
-
-	// Adaptive flush controller for optimized batch processing
-	flushController *adaptiveFlushController
 
 	running    bool
 	cancel     context.CancelFunc
@@ -172,7 +167,6 @@ func New() model {
 	}
 
 	m := model{tab: tabRun, cfg: cfg}
-	m.flushController = newAdaptiveFlushController()
 	m.normalizeLogLevel()
 
 	delegate := list.NewDefaultDelegate()
