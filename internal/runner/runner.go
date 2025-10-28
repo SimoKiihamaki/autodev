@@ -203,11 +203,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		if err != nil {
 			return fmt.Errorf("failed to resolve interpreter path: %v", err)
 		}
-		// Validate against allowed directories
+		// Validate resolved path against allowed directories (after symlink resolution)
 		// NOTE: This is a hardcoded list of common Python installation paths.
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		// Allowlist can be extended via config for non-standard Python installations.
+		// Symlink validation ensures the resolved path itself is in an allowed directory.
 
 		// Simple prefix matches for Unix-like systems
 		defaultAllowedPrefixes := []string{
@@ -222,12 +223,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 
 		// Regex patterns for Windows systems (to match all Python 3.x versions)
 		defaultAllowedPatterns := []string{
-			`^C:\\Python3(\d{0,3})\\`,                        // Matches C:\Python3\, C:\Python310\, C:\Python311\, etc.
-			`^C:\\Program Files\\Python3(\d{0,3})\\`,         // Matches C:\Program Files\Python3\, C:\Program Files\Python310\, etc.
-			`^C:\\Program Files \(x86\)\\Python3(\d{0,3})\\`, // Matches C:\Program Files (x86)\Python3\, C:\Program Files (x86)\Python310\, etc.
+			`^C:\\Python3(\d{1,3})\\`,                        // Matches C:\Python310\, C:\Python311\, etc.
+			`^C:\\Program Files\\Python3(\d{1,3})\\`,         // Matches C:\Program Files\Python310\, etc.
+			`^C:\\Program Files \(x86\)\\Python3(\d{1,3})\\`, // Matches C:\Program Files (x86)\Python310\, etc.
 			// Windows AppData paths (regex for all user Python installs)
 			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\`,                   // Base user Python dir
-			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{0,3})\\`, // Matches all Python3 user installs
+			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{1,3})\\`, // Matches all Python3 user installs
 		}
 
 		userAllowedDirs := cfg.GetAllowedPythonDirs()
@@ -279,7 +280,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			}
 		}
 		if !allowed {
-			return fmt.Errorf("interpreter path %q is not in allowed directories. Add the directory to allowed_python_dirs in the config file to permit this interpreter.", absPath)
+			return fmt.Errorf(
+				"interpreter path %q is not in allowed directories.\n"+
+					"To permit this interpreter, add its directory to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):\n\n"+
+					"  allowed_python_dirs:\n"+
+					"    - %s\n",
+				absPath, filepath.Dir(absPath))
 		}
 	} else {
 		// No path separator: must be a bare allowed name

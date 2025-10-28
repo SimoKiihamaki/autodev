@@ -38,10 +38,8 @@ func (m *model) readLogsBatch() tea.Cmd {
 		maxBatch = 1
 	}
 	return func() tea.Msg {
-		// Drop if channel was swapped; prevents cross-run mixing
-		if m.logCh == nil || initialCh != m.logCh {
-			return logBatchMsg{closed: true}
-		}
+		// No need to check m.logCh here; only use the captured initialCh
+		// If the channel was closed or swapped, this closure will simply drain initialCh
 		line, ok := <-initialCh
 		if !ok {
 			return logBatchMsg{closed: true}
@@ -76,10 +74,8 @@ func (m *model) waitRunResult() tea.Cmd {
 	}
 	initialCh := m.runResult
 	return func() tea.Msg {
-		// Drop if channel was swapped; prevents cross-run mixing
-		if m.runResult == nil || initialCh != m.runResult {
-			return nil
-		}
+		// No need to check m.runResult here; only use the captured initialCh
+		// If the channel was closed or swapped, this closure will simply drain initialCh
 		err, ok := <-initialCh
 		if !ok {
 			return nil
@@ -88,18 +84,18 @@ func (m *model) waitRunResult() tea.Cmd {
 	}
 }
 
-// startLogWriter starts a background goroutine to handle log persistence channel drainage
+// startLogWriter starts a background goroutine to drain the log persistence channel.
+// The Python runner is responsible for writing logs to disk (via --log-file).
+// This goroutine simply drains the channel to prevent blocking or resource leaks.
 func (m model) startLogWriter() tea.Cmd {
 	if m.logPersistCh == nil {
 		return nil
 	}
 	ch := m.logPersistCh
 	return func() tea.Msg {
-		// This runs in background and drains the log persistence channel
-		// The Python runner handles the actual file writing via --log-file flag
-		// We just need to drain the channel to prevent blocking
+		// Drain the log persistence channel; no log writing is performed here.
 		for range ch {
-			// Discard log lines as they're already being written by the runner
+			// No-op: log lines are already persisted by the runner.
 		}
 		return nil
 	}
