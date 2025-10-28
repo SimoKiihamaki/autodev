@@ -227,12 +227,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 
 		// Regex patterns for Windows systems (to match all Python 3.x versions)
 		defaultAllowedPatterns := []string{
-			`^C:\\Python3(\d{1,3})\\`,                        // Matches C:\Python310\, C:\Python311\, etc.
-			`^C:\\Program Files\\Python3(\d{1,3})\\`,         // Matches C:\Program Files\Python310\, etc.
-			`^C:\\Program Files \(x86\)\\Python3(\d{1,3})\\`, // Matches C:\Program Files (x86)\Python310\, etc.
+			`(?i)^[A-Z]:\\Python3(\d{1,3})\\`,                        // Matches any drive:\Python310\, etc.
+			`(?i)^[A-Z]:\\Program Files\\Python3(\d{1,3})\\`,         // Matches any drive:\Program Files\Python310\, etc.
+			`(?i)^[A-Z]:\\Program Files \(x86\)\\Python3(\d{1,3})\\`, // Matches any drive:\Program Files (x86)\Python310\, etc.
 			// Windows AppData paths (regex for all user Python installs)
-			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\`,                   // Base user Python dir
-			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{1,3})\\`, // Matches all Python3 user installs
+			`(?i)^[A-Z]:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\`,                   // Base user Python dir
+			`(?i)^[A-Z]:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{1,3})\\`, // Matches all Python3 user installs
 		}
 
 		userAllowedDirs := cfg.GetAllowedPythonDirs()
@@ -527,8 +527,8 @@ func (o Options) Run(ctx context.Context) error {
 }
 
 // stream forwards subprocess output to the log channel without blocking. When the channel
-// backlog fills (UI too slow), it emits a warning and drops live-feed lines; the log file
-// remains complete because writes happen synchronously on disk.
+// backlog fills (UI too slow), it emits a warning and drops live-feed lines.
+// The Python process (invoked with --log-file) is responsible for writing the complete log file synchronously; the Go runner and TUI do not persist log lines to disk.
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	if logs == nil {
 		// No consumer is interested in stream output (e.g. during tests); discard to
