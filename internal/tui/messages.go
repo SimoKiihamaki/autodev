@@ -55,7 +55,7 @@ func (m *model) readLogsBatch() tea.Cmd {
 			case next, ok := <-initialCh:
 				if !ok {
 					channelClosed = true
-					break // exit the loop immediately when the channel is closed
+					break // exit the select statement and mark channel as closed
 				}
 				lines = append(lines, next)
 			default:

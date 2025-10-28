@@ -217,7 +217,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		}
 		// Add user-local bin directory (e.g., ~/.local/bin/) if available
 		if home, err := os.UserHomeDir(); err == nil {
-			userLocalBin := filepath.Join(home, ".local", "bin") + string(os.PathSeparator)
+			userLocalBin := filepath.Join(home, ".local", "bin")
 			defaultAllowedPrefixes = append(defaultAllowedPrefixes, userLocalBin)
 		}
 
@@ -364,6 +364,10 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 // Returns a tuple (stdout, stderr) extracted from exc. In Go, unlike Python,
 // stdout/stderr must be captured via pipes before command execution, so this
 // function provides a placeholder for consistency with the Python implementation.
+//
+// Returns:
+//
+//	Tuple[str, str]: A tuple containing (stdout, stderr) as strings.
 func extractOutputFromException(exc *exec.ExitError) (string, string) {
 	if exc == nil {
 		return "", ""
@@ -457,14 +461,16 @@ func (o Options) Run(ctx context.Context) error {
 
 	// Only append "-u" if not already present in pyFlags
 	hasU := false
+	// Regex to match valid short option groups containing 'u', e.g. -uc, -Eu, -cEu, etc.
+	var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
 	for _, flag := range pyFlags {
 		// Check for literal -u flag
 		if flag == "-u" {
 			hasU = true
 			break
 		}
-		// Check if -u is combined with other flags (e.g., -uE, -ue)
-		if strings.HasPrefix(flag, "-u") && len(flag) > 2 {
+		// Check if -u is in a valid short option group (e.g., -uc, -Eu, -cEu)
+		if uFlagPattern.MatchString(flag) {
 			hasU = true
 			break
 		}
@@ -563,8 +569,8 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			// Warning: Log lines may be dropped here if the channel is full. However, the TUI's background writer persists all lines it receives,
-			// using a blocking channel send to ensure the full log file is always written. Data loss is only possible if this channel is not drained.
+			// Warning: Log lines may be dropped here if the channel is full. The TUI's background writer only persists lines that make it through
+			// this channel; any dropped lines are not written to the TUI's log file. The runner itself is responsible for writing the complete log file synchronously.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}
