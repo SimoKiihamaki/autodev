@@ -9,6 +9,9 @@ import (
 
 const focusedBgColor = "240"
 
+// toggleSeparator defines the spacing between toggle options (intentional double space)
+const toggleSeparator = "  "
+
 const (
 	// Help text constants for better readability
 	toggleHint         = "Enter / Space to switch Codex/Claude"
@@ -194,7 +197,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 	localToggle := renderExecutorToggle("Local Loop", m.execLocalChoice, m.focusedInput == "toggleLocal")
 	prToggle := renderExecutorToggle("PR Push", m.execPRChoice, m.focusedInput == "togglePR")
 	reviewToggle := renderExecutorToggle("Review Fix", m.execReviewChoice, m.focusedInput == "toggleReview")
-	b.WriteString(localToggle + "  " + prToggle + "  " + reviewToggle + "\n")
+	b.WriteString(localToggle + toggleSeparator + prToggle + toggleSeparator + reviewToggle + "\n")
 	b.WriteString(m.inWaitMin.View() + "  ")
 	b.WriteString(m.inPollSec.View() + "  ")
 	b.WriteString(m.inIdleMin.View() + "  ")

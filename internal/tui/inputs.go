@@ -24,6 +24,12 @@ var settingsGrid = map[string][2]int{
 	"maxiters":     {8, 3},
 }
 
+// wrapIndex calculates the wrapped index for circular navigation.
+// The double-modulo handles negative deltas by ensuring the result is always positive.
+func wrapIndex(current, delta, length int) int {
+	return ((current+delta)%length + length) % length
+}
+
 func (m *model) blurAllInputs() {
 	m.inRepo.Blur()
 	m.inBase.Blur()
@@ -309,7 +315,7 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 		}
 	}
 	n := len(executorChoices)
-	newIdx := ((idx+direction)%n + n) % n
+	newIdx := wrapIndex(idx, direction, n)
 	newChoice := executorChoices[newIdx]
 
 	switch name {
