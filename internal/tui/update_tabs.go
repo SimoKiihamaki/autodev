@@ -15,8 +15,8 @@ var envFlagKeyMap = map[string]string{
 }
 
 // tryNavigateOrCycle attempts navigation within the settings input list; if focus remains unchanged
-// (i.e., navigation attempts to move past the first or last input in the list), cycles the current toggle instead.
-// This provides fallback behavior specifically when navigation hits the start or end of the settings input list.
+// (i.e., navigation is blocked or does not change the focused input, such as at grid boundaries or other non-navigable states),
+// cycles the current toggle instead. This provides fallback behavior whenever directional movement is blocked or at the start/end of the list.
 func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	prev := m.focusedInput
 	m.navigateSettings(direction)

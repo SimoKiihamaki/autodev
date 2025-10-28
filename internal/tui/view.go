@@ -9,7 +9,9 @@ import (
 
 const focusedBgColor = "240"
 
-// toggleSeparator defines the spacing between toggle options (intentional double space)
+// toggleSeparator defines the spacing between toggle options.
+// The double space is intentional to provide clear visual separation between toggle options in the TUI;
+// a single space does not provide enough separation for readability and aesthetics.
 const toggleSeparator = "  "
 
 // generateToggleHint creates help text dynamically from executorChoices to future-proof against changes
