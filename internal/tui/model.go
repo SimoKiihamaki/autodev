@@ -281,8 +281,6 @@ func resolveExecutorChoice(values ...string) executorChoice {
 		switch strings.ToLower(strings.TrimSpace(raw)) {
 		case string(executorClaude):
 			return executorClaude
-		case string(executorCodex):
-			// continue, will return executorCodex as default at the end
 		}
 	}
 	return executorCodex
