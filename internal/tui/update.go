@@ -41,6 +41,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "Running…"
 		m.tab = tabRun
 		m.runFeedAutoFollow = true
+		// Reset log buffer and logs for consistency with startRunCmd
+		m.logBuf = nil
+		m.logs.SetContent("")
 		return m, nil
 
 	case runFinishMsg:
@@ -164,7 +167,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		logReason = "failed"
 	}
 
-	// Logs and run feed content already set by handleLogBatch; no need to set again
+	// Logs and run feed content already set by handleLogBatch and handleRunFeedLine; no need to set again
 
 	m.closeLogFile(logReason)
 	return m, nil

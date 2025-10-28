@@ -264,7 +264,7 @@ func (o Options) Run(ctx context.Context) error {
 	// 1. PYTHONUNBUFFERED=1 environment variable (also set in tools/auto_prd/command.py)
 	// 2. -u command-line flag forces unbuffered binary stdout/stderr
 	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
-	// regardless of how the process is invoked. If you change/remove this, update both places.
+	// regardless of how the process is invoked. If you change/remove this, update all three places.
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
@@ -272,11 +272,8 @@ func (o Options) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse PythonCommand %q: %w", o.Config.PythonCommand, err)
 	}
-	if len(pyParts) == 0 {
-		return fmt.Errorf("PythonCommand %q resulted in empty command", o.Config.PythonCommand)
-	}
-	if pyParts[0] == "" {
-		return fmt.Errorf("PythonCommand %q resulted in empty binary path", o.Config.PythonCommand)
+	if len(pyParts) == 0 || pyParts[0] == "" {
+		return fmt.Errorf("PythonCommand %q resulted in empty command or binary path", o.Config.PythonCommand)
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 

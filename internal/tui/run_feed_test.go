@@ -198,7 +198,7 @@ func TestHandleRunFeedLine_FlushBoundaries(t *testing.T) {
 	m.handleRunFeedLine(line, line)
 
 	// Dirty lines should be reset after first flush
-	// Additional lines should appear in viewport immediately
+	// Additional lines should appear in viewport
 	for i := 1; i < 5; i++ {
 		line = fLogLineInfo("Test line %d", i)
 		m.handleRunFeedLine(line, line)

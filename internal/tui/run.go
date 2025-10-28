@@ -81,8 +81,8 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 	m.prepareRunLogFile()
 
-	// Channel buffers up to 2048 log lines for the TUI; excess bursts are allowed to drop
-	// live feed entries downstream, but every line remains in the file log written by the runner.
+	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
+	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
 	m.logCh = make(chan runner.Line, 2048)
 	ch := m.logCh
 	m.logBuf = nil
