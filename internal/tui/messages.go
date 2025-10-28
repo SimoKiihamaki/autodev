@@ -32,6 +32,12 @@ func (m model) readLogsBatch() tea.Cmd {
 	ch := m.logCh
 	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
 	return func() tea.Msg {
+		// Re-check that the model's log channel is still valid to avoid race conditions
+		// where the channel might be closed/nil between command creation and execution
+		if m.logCh == nil || ch != m.logCh {
+			return logBatchMsg{closed: true}
+		}
+
 		line, ok := <-ch
 		if !ok {
 			return logBatchMsg{closed: true}
