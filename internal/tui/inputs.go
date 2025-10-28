@@ -8,21 +8,28 @@ import (
 )
 
 var settingsGrid = map[string][2]int{
-	"repo":     {0, 0},
-	"base":     {1, 0},
-	"branch":   {2, 0},
-	"codex":    {3, 0},
-	"pycmd":    {4, 0},
-	"pyscript": {5, 0},
-	"policy":   {6, 0},
-	"execimpl": {7, 0},
-	"execfix":  {7, 1},
-	"execpr":   {7, 2},
-	"execrev":  {7, 3},
-	"waitmin":  {8, 0},
-	"pollsec":  {8, 1},
-	"idlemin":  {8, 2},
-	"maxiters": {8, 3},
+	"repo":         {0, 0},
+	"base":         {1, 0},
+	"branch":       {2, 0},
+	"codex":        {3, 0},
+	"pycmd":        {4, 0},
+	"pyscript":     {5, 0},
+	"policy":       {6, 0},
+	"toggleLocal":  {7, 0},
+	"togglePR":     {7, 1},
+	"toggleReview": {7, 2},
+	"waitmin":      {8, 0},
+	"pollsec":      {8, 1},
+	"idlemin":      {8, 2},
+	"maxiters":     {8, 3},
+}
+
+// wrapIndex calculates the wrapped index for circular navigation in executor toggle cycling.
+// Used by cycleExecutorChoice to wrap between executor options (Codex/Claude).
+// The formula (((current+delta) % length) + length) % length ensures the result is always in [0, length)
+// by correctly handling negative (current+delta) values for circular navigation.
+func wrapIndex(current, delta, length int) int {
+	return ((current+delta)%length + length) % length
 }
 
 func (m *model) blurAllInputs() {
@@ -33,10 +40,6 @@ func (m *model) blurAllInputs() {
 	m.inPyCmd.Blur()
 	m.inPyScript.Blur()
 	m.inPolicy.Blur()
-	m.inExecImpl.Blur()
-	m.inExecFix.Blur()
-	m.inExecPR.Blur()
-	m.inExecRev.Blur()
 	m.inWaitMin.Blur()
 	m.inPollSec.Blur()
 	m.inIdleMin.Blur()
@@ -66,14 +69,9 @@ func (m *model) focusInput(inputName string) {
 		m.inPyScript.Focus()
 	case "policy":
 		m.inPolicy.Focus()
-	case "execimpl":
-		m.inExecImpl.Focus()
-	case "execfix":
-		m.inExecFix.Focus()
-	case "execpr":
-		m.inExecPR.Focus()
-	case "execrev":
-		m.inExecRev.Focus()
+	case "toggleLocal", "togglePR", "toggleReview":
+		// Toggles have no text input field to focus
+		return
 	case "waitmin":
 		m.inWaitMin.Focus()
 	case "pollsec":
@@ -90,6 +88,77 @@ func (m *model) focusInput(inputName string) {
 		m.status = fmt.Sprintf("Unknown settings input: %s", inputName)
 		m.focusedInput = ""
 		return
+	}
+}
+
+func (m *model) navigateHorizontal(direction string, row, col int, reverseGrid [][]string) {
+	var startCol, endCol, step int
+	rowLen := len(reverseGrid[row])
+
+	if direction == "left" {
+		if col == 0 {
+			return
+		}
+		startCol = col - 1
+		endCol = -1
+		step = -1
+	} else { // "right"
+		if col >= rowLen-1 {
+			return
+		}
+		startCol = col + 1
+		endCol = rowLen
+		step = 1
+	}
+
+	// Try adjacent cell first
+	if startCol >= 0 && startCol < rowLen && reverseGrid[row][startCol] != "" {
+		m.focusInput(reverseGrid[row][startCol])
+		return
+	}
+
+	// Then search in the specified direction
+	for c := startCol; c != endCol; c += step {
+		if reverseGrid[row][c] != "" {
+			m.focusInput(reverseGrid[row][c])
+			return
+		}
+	}
+}
+
+func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][]string) {
+	var startRow, endRow, step int
+	if direction == "up" {
+		if row == 0 {
+			return
+		}
+		startRow = row - 1
+		endRow = -1
+		step = -1
+	} else { // "down"
+		if row >= len(reverseGrid)-1 {
+			return
+		}
+		startRow = row + 1
+		endRow = len(reverseGrid)
+		step = 1
+	}
+
+	// First try same column
+	for r := startRow; r != endRow; r += step {
+		if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
+			m.focusInput(reverseGrid[r][col])
+			return
+		}
+	}
+
+	// Then search horizontally in each row
+	for r := startRow; r != endRow; r += step {
+		if hasAnyCell(reverseGrid[r]) {
+			if m.searchHorizontalInRow(reverseGrid, r, col) {
+				return
+			}
+		}
 	}
 }
 
@@ -139,61 +208,10 @@ func (m *model) navigateSettings(direction string) {
 	}
 
 	switch direction {
-	case "up":
-		if row > 0 {
-			for r := row - 1; r >= 0; r-- {
-				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
-					m.focusInput(reverseGrid[r][col])
-					return
-				}
-			}
-			for r := row - 1; r >= 0; r-- {
-				if hasAnyCell(reverseGrid[r]) {
-					if m.searchHorizontalInRow(reverseGrid, r, col) {
-						return
-					}
-				}
-			}
-		}
-	case "down":
-		if row < len(reverseGrid)-1 {
-			for r := row + 1; r < len(reverseGrid); r++ {
-				if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
-					m.focusInput(reverseGrid[r][col])
-					return
-				}
-			}
-			for r := row + 1; r < len(reverseGrid); r++ {
-				if hasAnyCell(reverseGrid[r]) {
-					if m.searchHorizontalInRow(reverseGrid, r, col) {
-						return
-					}
-				}
-			}
-		}
-	case "left":
-		if col > 0 && reverseGrid[row][col-1] != "" {
-			m.focusInput(reverseGrid[row][col-1])
-			return
-		}
-		for c := col - 1; c >= 0; c-- {
-			if reverseGrid[row][c] != "" {
-				m.focusInput(reverseGrid[row][c])
-				return
-			}
-		}
-	case "right":
-		rowLen := len(reverseGrid[row])
-		if col < rowLen-1 && reverseGrid[row][col+1] != "" {
-			m.focusInput(reverseGrid[row][col+1])
-			return
-		}
-		for c := col + 1; c < rowLen; c++ {
-			if reverseGrid[row][c] != "" {
-				m.focusInput(reverseGrid[row][c])
-				return
-			}
-		}
+	case "up", "down":
+		m.navigateVertical(direction, row, col, reverseGrid)
+	case "left", "right":
+		m.navigateHorizontal(direction, row, col, reverseGrid)
 	}
 }
 
@@ -296,4 +314,43 @@ func (m *model) toggleFocusedFlag() {
 
 func (m *model) getInputField(inputName string) *textinput.Model {
 	return m.settingsInputs[inputName]
+}
+
+func (m *model) cycleExecutorChoice(name string, direction int) {
+	// Get a pointer to the appropriate executor choice field
+	var target *executorChoice
+	switch name {
+	case "toggleLocal":
+		target = &m.execLocalChoice
+	case "togglePR":
+		target = &m.execPRChoice
+	case "toggleReview":
+		target = &m.execReviewChoice
+	default:
+		return
+	}
+
+	// Find current index in executorChoices
+	current := *target
+	idx := 0
+	for i, choice := range executorChoices {
+		if choice == current {
+			idx = i
+			break
+		}
+	}
+
+	// Calculate new choice and update via pointer
+	n := len(executorChoices)
+	newIdx := wrapIndex(idx, direction, n)
+	*target = executorChoices[newIdx]
+}
+
+func isExecutorToggle(name string) bool {
+	switch name {
+	case "toggleLocal", "togglePR", "toggleReview":
+		return true
+	default:
+		return false
+	}
 }

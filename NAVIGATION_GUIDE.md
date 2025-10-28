@@ -21,9 +21,10 @@
 - **/**: Filter/search PRD files
 
 ### Settings Tab (3)
-- **↑/↓/←/→**: Navigate between input fields (2D grid navigation)
-- **Enter**: Focus first input field or unfocus current input
-- **Esc**: Unfocus current input field
+- **↑/↓/←/→**: Navigate between input fields and toggles (2D grid navigation)
+- **←/→ or Enter/Space (toggle)**: Switch Codex/Claude for focused executor toggle
+- **Enter**: Focus first input field or blur current input
+- **Esc**: Blur current input field
 - **Type**: Edit focused input field
 - **s**: Save configuration
 - **Tab**: Alternative navigation (cycles through fields linearly)
@@ -39,12 +40,12 @@
 - **g**: Toggle Sync Git flag (direct toggle)
 - **i**: Toggle Infinite Reviews flag (direct toggle)
 - **s**: Save configuration
-- **Esc**: Unfocus current flag
+- **Esc**: Blur current flag
 
 ### Prompt Tab (5)
 - **↑/↓/←/→**: Focus text area when not focused
 - **Enter**: Focus text area or add newline when already focused
-- **Esc**: Unfocus text area
+- **Esc**: Blur text area
 - **Arrow keys**: Navigate text when focused
 - **Type**: Edit text when focused
 

@@ -37,6 +37,33 @@ type item struct {
 	filter      string
 }
 
+type executorChoice string
+
+const (
+	executorCodex  executorChoice = "codex"
+	executorClaude executorChoice = "claude"
+)
+
+var executorChoices = []executorChoice{executorCodex, executorClaude}
+
+func (c executorChoice) configValue() string {
+	switch c {
+	case executorClaude:
+		return string(executorClaude)
+	default:
+		return string(executorCodex)
+	}
+}
+
+func (c executorChoice) displayLabel() string {
+	switch c {
+	case executorClaude:
+		return "Claude"
+	default:
+		return "Codex"
+	}
+}
+
 func newItem(title, desc, path string) item {
 	parts := []string{title, desc, path}
 	filtered := make([]string, 0, len(parts))
@@ -73,16 +100,16 @@ type model struct {
 	inPyCmd      textinput.Model
 	inPyScript   textinput.Model
 	inPolicy     textinput.Model
-	inExecImpl   textinput.Model
-	inExecFix    textinput.Model
-	inExecPR     textinput.Model
-	inExecRev    textinput.Model
 	inWaitMin    textinput.Model
 	inPollSec    textinput.Model
 	inIdleMin    textinput.Model
 	inMaxIters   textinput.Model
 
 	settingsInputs map[string]*textinput.Model
+
+	execLocalChoice  executorChoice
+	execPRChoice     executorChoice
+	execReviewChoice executorChoice
 
 	focusedInput string
 	focusedFlag  string
@@ -131,7 +158,7 @@ type model struct {
 // explicit sequence so keyboard traversal remains predictable.
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
-	"execimpl", "execfix", "execpr", "execrev", "waitmin", "pollsec", "idlemin", "maxiters",
+	"waitmin", "pollsec", "idlemin", "maxiters",
 }
 
 var envFlagNames = []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
@@ -157,6 +184,7 @@ func New() model {
 	m.prdList.DisableQuitKeybindings()
 
 	m.initSettingsInputs()
+	m.initExecutorChoices()
 
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
@@ -212,10 +240,6 @@ func (m *model) initSettingsInputs() {
 	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
-	m.inExecImpl = mkInput("Exec (implement): codex|claude|<empty>", cfg.PhaseExecutors.Implement, 16)
-	m.inExecFix = mkInput("Exec (fix): codex|claude|<empty>", cfg.PhaseExecutors.Fix, 16)
-	m.inExecPR = mkInput("Exec (pr): codex|claude|<empty>", cfg.PhaseExecutors.PR, 16)
-	m.inExecRev = mkInput("Exec (review_fix): codex|claude|<empty>", cfg.PhaseExecutors.ReviewFix, 22)
 	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(cfg.Timings.WaitMinutes), 6)
 	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
 	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
@@ -232,10 +256,6 @@ func (m *model) initSettingsInputs() {
 		"pycmd":    &m.inPyCmd,
 		"pyscript": &m.inPyScript,
 		"policy":   &m.inPolicy,
-		"execimpl": &m.inExecImpl,
-		"execfix":  &m.inExecFix,
-		"execpr":   &m.inExecPR,
-		"execrev":  &m.inExecRev,
 
 		// timings + iteration caps
 		"waitmin":  &m.inWaitMin,
@@ -243,6 +263,25 @@ func (m *model) initSettingsInputs() {
 		"idlemin":  &m.inIdleMin,
 		"maxiters": &m.inMaxIters,
 	}
+}
+
+func (m *model) initExecutorChoices() {
+	phase := m.cfg.PhaseExecutors
+	// The Local Loop toggle controls both the Implement and Fix phases,
+	// so we merge both fields to determine the local executor choice.
+	m.execLocalChoice = resolveExecutorChoice(phase.Implement, phase.Fix)
+	m.execPRChoice = resolveExecutorChoice(phase.PR)
+	m.execReviewChoice = resolveExecutorChoice(phase.ReviewFix)
+}
+
+func resolveExecutorChoice(values ...string) executorChoice {
+	for _, raw := range values {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case string(executorClaude):
+			return executorClaude
+		}
+	}
+	return executorCodex
 }
 
 func (m model) Init() tea.Cmd {

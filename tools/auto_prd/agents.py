@@ -21,8 +21,40 @@ RATE_LIMIT_JITTER_MAX = 3
 RATE_LIMIT_MIN_SLEEP_SECONDS = 5
 RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
-CODEX_EXEC_TIMEOUT_SECONDS = 1800
-CLAUDE_EXEC_TIMEOUT_SECONDS = 1800
+
+
+def _timeout_from_env(env_key: str, default: int | None) -> int | None:
+    raw = os.getenv(env_key)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if not normalized or normalized in {"none", "no", "off", "disable", "disabled"}:
+        return None
+
+    try:
+        parsed = int(normalized)
+    except ValueError:
+        default_str = "no timeout" if default is None else str(default)
+        logger.warning(
+            "Invalid %s value %r; falling back to %s", env_key, raw, default_str
+        )
+        return default
+
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def get_codex_exec_timeout() -> int | None:
+    """Get the Codex execution timeout from environment variables."""
+    return _timeout_from_env("AUTO_PRD_CODEX_TIMEOUT_SECONDS", None)
+
+
+def get_claude_exec_timeout() -> int | None:
+    """Get the Claude execution timeout from environment variables."""
+    return _timeout_from_env("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", None)
+
 
 # Use a cryptographically secure RNG for backoff jitter to avoid predictable retry cadences.
 _rate_limit_rng = random.SystemRandom()
@@ -41,7 +73,9 @@ def codex_exec(
     os.environ.setdefault("CI", "1")
     allow_flag = allow_unsafe_execution
     if yolo is not None:
-        logger.warning("codex_exec: 'yolo' is deprecated; use allow_unsafe_execution instead")
+        logger.warning(
+            "codex_exec: 'yolo' is deprecated; use allow_unsafe_execution instead"
+        )
         if allow_flag is None:
             allow_flag = yolo
         else:
@@ -51,7 +85,9 @@ def codex_exec(
     if enable_search:
         args.append("--search")
     if not allow_flag and not dry_run:
-        raise PermissionError("Codex executor requires allow_unsafe_execution=True to bypass permissions.")
+        raise PermissionError(
+            "Codex executor requires allow_unsafe_execution=True to bypass permissions."
+        )
     if allow_flag:
         verify_unsafe_execution_ready()
         args.append("--dangerously-bypass-approvals-and-sandbox")
@@ -63,7 +99,13 @@ def codex_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=CODEX_EXEC_TIMEOUT_SECONDS)
+    out, _, _ = run_cmd(
+        args,
+        cwd=repo_root,
+        check=True,
+        stdin=prompt,
+        timeout=get_codex_exec_timeout(),
+    )
     return out
 
 
@@ -104,7 +146,9 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
             if delta > 0:
                 return int(delta) + 5
         except (TypeError, ValueError):
-            logger.debug("Failed to parse HTTP-date Retry-After: %s", http_date.group(1))
+            logger.debug(
+                "Failed to parse HTTP-date Retry-After: %s", http_date.group(1)
+            )
 
     # e.g. "try again in 10m 14s" (gh output) or "2m 30s"
     match = re.search(r"\b(\d+)\s*m\s*(\d+)\s*s\b", message, re.IGNORECASE)
@@ -121,7 +165,11 @@ def parse_rate_limit_sleep(message: str) -> Optional[int]:
         return int(match.group(1)) * 60 + 5
 
     # e.g. "try again in 75 seconds" or "try after 75 sec"
-    match = re.search(r"(?:try (?:again )?(?:after|in)|in)\s+(\d+)\s*(?:second(?:s)?|sec(?:s)?)\b", message, re.IGNORECASE)
+    match = re.search(
+        r"(?:try (?:again )?(?:after|in)|in)\s+(\d+)\s*(?:second(?:s)?|sec(?:s)?)\b",
+        message,
+        re.IGNORECASE,
+    )
     if match:
         return int(match.group(1)) + 5
 
@@ -141,14 +189,21 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
     while True:
         attempts += 1
         try:
-            out, _, _ = run_cmd(args, cwd=repo_root, timeout=CODERABBIT_PROMPT_TIMEOUT_SECONDS)
+            out, _, _ = run_cmd(
+                args, cwd=repo_root, timeout=CODERABBIT_PROMPT_TIMEOUT_SECONDS
+            )
             return out.strip()
         except subprocess.CalledProcessError as exc:
             msg = extract_called_process_error_details(exc)
             sleep_secs = parse_rate_limit_sleep(msg)
             if sleep_secs and attempts <= 3:
-                capped = max(RATE_LIMIT_MIN_SLEEP_SECONDS, min(RATE_LIMIT_MAX_SLEEP_SECONDS, sleep_secs))
-                jitter = _rate_limit_rng.randint(RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX)
+                capped = max(
+                    RATE_LIMIT_MIN_SLEEP_SECONDS,
+                    min(RATE_LIMIT_MAX_SLEEP_SECONDS, sleep_secs),
+                )
+                jitter = _rate_limit_rng.randint(
+                    RATE_LIMIT_JITTER_MIN, RATE_LIMIT_JITTER_MAX
+                )
                 wait = max(1, capped + jitter)
                 sleep_for = min(wait, RATE_LIMIT_MAX_SLEEP_SECONDS)
                 logger.warning(
@@ -166,7 +221,17 @@ def coderabbit_has_findings(text: str) -> bool:
     if not text.strip():
         return False
     lowered = text.lower()
-    for marker in ("file:", "line", "issue", "prompt for ai agent", "consider", "fix", "security", "leak", "race"):
+    for marker in (
+        "file:",
+        "line",
+        "issue",
+        "prompt for ai agent",
+        "consider",
+        "fix",
+        "security",
+        "leak",
+        "race",
+    ):
         if marker in lowered:
             return True
     return False
@@ -185,14 +250,18 @@ def claude_exec(
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
     allow_flag = allow_unsafe_execution
     if yolo is not None:
-        logger.warning("claude_exec: 'yolo' is deprecated; use allow_unsafe_execution instead")
+        logger.warning(
+            "claude_exec: 'yolo' is deprecated; use allow_unsafe_execution instead"
+        )
         if allow_flag is None:
             allow_flag = yolo
         else:
             allow_flag = allow_flag or yolo
     allow_flag = bool(allow_flag)
     if not allow_flag and not dry_run:
-        raise PermissionError("Claude executor requires allow_unsafe_execution=True to bypass permissions.")
+        raise PermissionError(
+            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+        )
     os.environ.setdefault("CI", "1")
     if allow_flag:
         verify_unsafe_execution_ready()
@@ -202,12 +271,20 @@ def claude_exec(
     if model:
         args.extend(["--model", model])
     if not enable_search:
-        logger.info("Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False")
+        logger.info(
+            "Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False"
+        )
     if extra:
         args.extend(extra)
     args.extend(["-p", "-"])
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(args, cwd=repo_root, check=True, stdin=prompt, timeout=CLAUDE_EXEC_TIMEOUT_SECONDS)
+    out, _, _ = run_cmd(
+        args,
+        cwd=repo_root,
+        check=True,
+        stdin=prompt,
+        timeout=get_claude_exec_timeout(),
+    )
     return out

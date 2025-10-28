@@ -14,6 +14,20 @@ var envFlagKeyMap = map[string]string{
 	"i": "infinite",
 }
 
+// tryNavigateOrCycle attempts navigation within the settings input list; if focus remains unchanged
+// (i.e., navigation is blocked or does not change the focused input, such as at grid boundaries or other non-navigable states),
+// cycles the current toggle instead. This provides fallback behavior whenever directional movement is blocked or at the start/end of the list.
+func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
+	prev := m.focusedInput
+	m.navigateSettings(direction)
+	if m.focusedInput == prev && isExecutorToggle(m.focusedInput) {
+		m.cycleExecutorChoice(m.focusedInput, cycleDir)
+	}
+	// If navigation is blocked and the current input is NOT an executor toggle,
+	// no action is taken. This is intentional: only toggles are cycled as a fallback,
+	// while other input types remain unchanged when navigation is blocked.
+}
+
 func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	if msg.Type == tea.KeyEnter && m.focusedInput == "" {
 		m.focusInput("repo")
@@ -37,13 +51,17 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "up":
 		if m.focusedInput == "" {
 			m.focusInput("repo")
-			return *m, nil
+		} else {
+			m.navigateSettings("up")
 		}
+		return *m, nil
 	case "down":
 		if m.focusedInput == "" {
 			m.focusInput("repo")
-			return *m, nil
+		} else {
+			m.navigateSettings("down")
 		}
+		return *m, nil
 	case "alt+left":
 		if m.focusedInput != "" {
 			m.navigateSettings("left")
@@ -66,9 +84,42 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		}
 	case "ctrl+s":
 		return *m, m.saveConfig()
+	case "left":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+		if isExecutorToggle(m.focusedInput) {
+			m.tryNavigateOrCycle("left", -1)
+			return *m, nil
+		}
+		m.navigateSettings("left")
+		return *m, nil
+	case "right":
+		if m.focusedInput == "" {
+			m.focusInput("repo")
+			return *m, nil
+		}
+		if isExecutorToggle(m.focusedInput) {
+			m.tryNavigateOrCycle("right", 1)
+			return *m, nil
+		}
+		m.navigateSettings("right")
+		return *m, nil
 	}
 
 	if m.focusedInput != "" {
+		if isExecutorToggle(m.focusedInput) {
+			switch msg.String() {
+			case "enter":
+				m.cycleExecutorChoice(m.focusedInput, 1)
+				return *m, nil
+			case "space":
+				m.cycleExecutorChoice(m.focusedInput, -1)
+				return *m, nil
+			}
+			return *m, nil
+		}
 		field := m.getInputField(m.focusedInput)
 		if field != nil {
 			var cmd tea.Cmd
