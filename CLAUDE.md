@@ -102,3 +102,10 @@ Since this is a TUI application, testing involves:
 4. Testing process cancellation and error handling
 
 The application expects to find PRD files by scanning for `*.md` files in the current working directory and subdirectories (up to 4 levels deep).
+
+## Post-Push Requirements
+
+Whenever you push fixes to an open pull request, immediately leave a PR comment that:
+- Summarizes what changed in the new commit(s) and why those changes were necessary.
+- Calls out any important decisions you made, including references to repository rules or conventions that shaped the approach.
+- Tags `@coderabbit`, `@copilot`, and `@codex` so the automation tools receive the update.

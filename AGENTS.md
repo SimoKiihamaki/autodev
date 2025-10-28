@@ -32,6 +32,7 @@
 - Commits should be scoped per feature or bugfix; avoid mixing lint and feature changes.
 - PRs include summary, testing evidence (`go test ./...`, `make run` manual validation), and linked issue/PRD.
 - Provide screenshots or terminal captures when UI/UX behavior changes; flag any required env vars or secrets.
+- After pushing fixes to a PR, add a comment describing what changed, why it changed, any notable decisions (especially those driven by repo rules), and tag `@coderabbit`, `@copilot`, and `@codex`.
 
 ## Agent-Specific Tips
 - Configure the embedded Python script path via Settings tab; default `tools/auto_prd_to_pr_v3.py` should remain valid.
