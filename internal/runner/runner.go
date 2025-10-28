@@ -40,7 +40,7 @@ func isPrefixOf(prefix, path string) bool {
 	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
 		prefix = prefix + string(os.PathSeparator)
 	}
-	return strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == os.PathSeparator)
+	return strings.HasPrefix(path, prefix)
 }
 
 type Line struct {
@@ -310,10 +310,10 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			return fmt.Errorf(
 				"interpreter path %q is not in allowed directories.\n"+
 					"To permit this interpreter, add its directory as a prefix or a regex pattern to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):\n\n"+
-					"  # Prefix match example:\n"+
+					"  # Prefix match example (for simple cases):\n"+
 					"  allowed_python_dirs:\n"+
 					"    - %s\n"+
-					"  # Or as a regex pattern (for advanced use):\n"+
+					"  # Or as a regex pattern (for complex version-specific paths or multiple installation patterns):\n"+
 					"  # - '^%s([/\\\\]|$)'\n",
 				absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
 		}
