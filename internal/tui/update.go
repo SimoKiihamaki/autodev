@@ -115,10 +115,7 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 			m.logCh = nil
 			return m, nil
 		}
-		if m.logCh != nil {
-			return m, m.readLogsBatch()
-		}
-		return m, nil
+		return m, m.readLogsBatch()
 	}
 
 	// Prepare batch arrays for run feed processing

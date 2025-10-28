@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
@@ -13,6 +14,10 @@ const (
 	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
 	// Uses a longer timeout to ensure critical diagnostics are not dropped
 	criticalLogSendTimeout = 2 * time.Second
+
+	// logPersistBufferSize is the buffer size for the log persistence channel
+	// This buffer prevents UI blocking when log writing is slow
+	logPersistBufferSize = 100
 )
 
 type runStartMsg struct{}
@@ -48,7 +53,7 @@ func (m model) readLogsBatch() tea.Cmd {
 			case next, ok := <-ch:
 				if !ok {
 					channelClosed = true
-					break
+					continue // continue to next iteration of for loop, which will exit due to channelClosed = true
 				}
 				lines = append(lines, next)
 			default:
@@ -82,6 +87,10 @@ func (m model) startLogWriter() tea.Cmd {
 	}
 	ch := m.logPersistCh
 	logFilePath := m.logFilePath
+	selectedPRD := m.selectedPRD
+	cfgRepoPath := m.cfg.RepoPath
+	cfgExecutorPolicy := m.cfg.ExecutorPolicy
+	cfgBranch := m.cfg.Branch
 	return func() tea.Msg {
 		// This runs in background and writes directly to disk
 		// Open the log file independently for background writing
@@ -92,12 +101,34 @@ func (m model) startLogWriter() tea.Cmd {
 		}
 		defer logFile.Close()
 
+		// Write log header
+		ts := time.Now().Format(time.RFC3339)
+		headers := []string{
+			fmt.Sprintf("# autodev run started %s", ts),
+			fmt.Sprintf("PRD: %s", selectedPRD),
+			fmt.Sprintf("Repo: %s", cfgRepoPath),
+			fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
+		}
+		if cfgBranch != "" {
+			headers = append(headers, fmt.Sprintf("Branch: %s", cfgBranch))
+		}
+		headers = append(headers, "")
+		if _, err := logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
+			fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
+		}
+
 		for line := range ch {
 			entry := formatLogEntry(line)
 			if _, err := logFile.WriteString(entry); err != nil {
 				fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
 			}
 		}
+
+		// Write footer when channel closes
+		if _, err := logFile.WriteString(fmt.Sprintf("# run completed at %s\n", time.Now().Format(time.RFC3339))); err != nil {
+			fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
+		}
+
 		return nil
 	}
 }

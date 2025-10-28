@@ -208,10 +208,14 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		// Allowlist can be extended via config for non-standard Python installations.
-		defaultAllowedDirs := []string{
-			// Unix-like systems
+
+		// Simple prefix matches for Unix-like systems
+		defaultAllowedPrefixes := []string{
 			"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/",
-			// Windows systems (use regex to match all Python 3.x versions)
+		}
+
+		// Regex patterns for Windows systems (to match all Python 3.x versions)
+		defaultAllowedPatterns := []string{
 			`^C:\\Python3(\d{0,3})\\`,                        // Matches C:\Python3\, C:\Python310\, C:\Python311\, etc.
 			`^C:\\Program Files\\Python3(\d{0,3})\\`,         // Matches C:\Program Files\Python3\, C:\Program Files\Python310\, etc.
 			`^C:\\Program Files \(x86\)\\Python3(\d{0,3})\\`, // Matches C:\Program Files (x86)\Python3\, C:\Program Files (x86)\Python310\, etc.
@@ -219,25 +223,52 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\`,                   // Base user Python dir
 			`^C:\\Users\\[^\\]+\\AppData\\Local\\Programs\\Python\\Python3(\d{0,3})\\`, // Matches all Python3 user installs
 		}
+
 		userAllowedDirs := cfg.GetAllowedPythonDirs()
-		allowedDirs := append(defaultAllowedDirs, userAllowedDirs...)
+
 		allowed := false
-		for _, dir := range allowedDirs {
-			if isRegexPattern(dir) {
-				// Treat as regex pattern
-				matched, err := regexp.MatchString(dir, absPath)
+
+		// Check default prefixes first
+		for _, prefix := range defaultAllowedPrefixes {
+			if strings.HasPrefix(absPath, prefix) {
+				allowed = true
+				break
+			}
+		}
+
+		// Check default patterns if not already allowed
+		if !allowed {
+			for _, pattern := range defaultAllowedPatterns {
+				matched, err := regexp.MatchString(pattern, absPath)
 				if err != nil {
-					return fmt.Errorf("invalid regex pattern in allowed_python_dirs: %q: %v", dir, err)
+					return fmt.Errorf("invalid regex pattern in default allowed patterns: %q: %v", pattern, err)
 				}
 				if matched {
 					allowed = true
 					break
 				}
-			} else {
-				// Simple prefix match
-				if strings.HasPrefix(absPath, dir) {
-					allowed = true
-					break
+			}
+		}
+
+		// Check user-configured directories if still not allowed
+		if !allowed {
+			for _, dir := range userAllowedDirs {
+				if isRegexPattern(dir) {
+					// Treat as regex pattern
+					matched, err := regexp.MatchString(dir, absPath)
+					if err != nil {
+						return fmt.Errorf("invalid regex pattern in allowed_python_dirs: %q: %v", dir, err)
+					}
+					if matched {
+						allowed = true
+						break
+					}
+				} else {
+					// Simple prefix match
+					if strings.HasPrefix(absPath, dir) {
+						allowed = true
+						break
+					}
 				}
 			}
 		}
@@ -414,7 +445,18 @@ func (o Options) Run(ctx context.Context) error {
 	// Only append "-u" if not already present in pyFlags
 	hasU := false
 	for _, flag := range pyFlags {
+		// Check for literal -u flag
 		if flag == "-u" {
+			hasU = true
+			break
+		}
+		// Check if -u is combined with other flags (e.g., -uE, -ue)
+		if strings.HasPrefix(flag, "-u") && len(flag) > 2 {
+			hasU = true
+			break
+		}
+		// Check for long form --unbuffered
+		if flag == "--unbuffered" {
 			hasU = true
 			break
 		}

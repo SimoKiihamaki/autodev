@@ -215,7 +215,7 @@ func New() model {
 	m.resolvePythonScript(true)
 
 	// Initialize background log persistence channel
-	m.logPersistCh = make(chan runner.Line, 100) // Buffered to prevent UI blocking
+	m.logPersistCh = make(chan runner.Line, logPersistBufferSize) // Buffered to prevent UI blocking
 
 	return m
 }

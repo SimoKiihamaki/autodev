@@ -113,7 +113,7 @@ func (m *model) startRunCmd() tea.Cmd {
 
 	// Recreate log persistence channel for background writing
 	closeLogChannel(&m.logPersistCh)
-	m.logPersistCh = make(chan runner.Line, 100) // Buffered to prevent UI blocking
+	m.logPersistCh = make(chan runner.Line, logPersistBufferSize) // Buffered to prevent UI blocking
 	ch := m.logCh
 	m.resetLogState()
 	m.resetRunDashboard()

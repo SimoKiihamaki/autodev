@@ -41,74 +41,25 @@ func (m *model) prepareRunLogFile() {
 	}
 	name := fmt.Sprintf("run_%s.log", time.Now().Format("20060102_150405"))
 	path := filepath.Join(logDir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		m.status = "Failed to open log file: " + err.Error()
-		m.logFile = nil
-		m.logFilePath = ""
-		m.logStatus = "unavailable: " + err.Error()
-		return
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		m.status = "Failed to secure log file: " + err.Error()
-		m.logStatus = "unavailable: " + err.Error()
-		_ = f.Close()
-		_ = os.Remove(path)
-		m.logFile = nil
-		m.logFilePath = ""
-		return
-	}
-	m.logFile = f
 	m.logFilePath = path
 	m.logStatus = abbreviatePath(path)
-	m.writeLogHeader()
+	// Note: File is now opened by the background log writer goroutine
+	// to avoid concurrent file handle issues
 }
 
 func (m *model) writeLogHeader() {
-	if m.logFile == nil {
-		return
-	}
-	ts := time.Now().Format(time.RFC3339)
-	headers := []string{
-		fmt.Sprintf("# autodev run started %s", ts),
-		fmt.Sprintf("PRD: %s", m.selectedPRD),
-		fmt.Sprintf("Repo: %s", m.cfg.RepoPath),
-		fmt.Sprintf("Executor policy: %s", m.cfg.ExecutorPolicy),
-	}
-	if m.cfg.Branch != "" {
-		headers = append(headers, fmt.Sprintf("Branch: %s", m.cfg.Branch))
-	}
-	headers = append(headers, "")
-	if _, err := m.logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
-		fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", m.logFilePath, err)
-		m.status = "Failed to write log header: " + err.Error()
-		m.logStatus = "unavailable: " + err.Error()
-		m.closeLogFile("header error")
-	}
+	// Header writing is now handled by the background log writer goroutine
+	// to avoid concurrent file handle issues
 }
 
-func (m *model) persistLogLine(line runner.Line) {
-	if m.logFile == nil {
-		return
-	}
-	entry := formatLogEntry(line)
-	if _, err := m.logFile.WriteString(entry); err != nil {
-		fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", m.logFilePath, err)
-		m.status = "Failed to write log file: " + err.Error()
-		m.closeLogFile("write error")
-	}
-}
+// persistLogLine is no longer needed - log persistence is handled by background goroutine
 
 func (m *model) closeLogFile(reason string) {
-	if m.logFile == nil {
-		return
-	}
-	if reason != "" {
-		_, _ = m.logFile.WriteString(fmt.Sprintf("# run %s at %s\n", reason, time.Now().Format(time.RFC3339)))
-	}
-	_ = m.logFile.Sync()
-	_ = m.logFile.Close()
-	m.logFile = nil
+	// Close the log persistence channel first to ensure background writer finishes
+	closeLogChannel(&m.logPersistCh)
+
+	// File writing is now handled by background goroutine
+	// Just update the status display
 	if m.logFilePath != "" {
 		summary := abbreviatePath(m.logFilePath)
 		if reason != "" && reason != "superseded" {
