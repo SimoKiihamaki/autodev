@@ -557,7 +557,8 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		}
 		if !dropping {
 			dropping = true
-			// Note: This only affects the UI; the full log is still written by the runner to disk, so no data is lost.
+			// Warning: Log lines may be dropped if the channel is full. Log persistence is handled by the TUI's background writer,
+			// which also uses a non-blocking channel and may drop lines when full. Data loss is possible if the consumer is too slow.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}

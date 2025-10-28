@@ -122,12 +122,8 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 	for _, line := range msg.lines {
 		display, plain := m.formatLogLine(line)
 
-		// Send log line to background persistence channel (non-blocking)
-		select {
-		case m.logPersistCh <- line:
-		default:
-			// Drop log lines if channel is full to prevent UI blocking
-		}
+		// Send log line to background persistence channel (blocking to guarantee log completeness)
+		m.logPersistCh <- line
 
 		m.logBuf = append(m.logBuf, display)
 		if len(m.logBuf) > maxLogLines {
