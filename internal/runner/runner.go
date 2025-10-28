@@ -169,7 +169,7 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 func validatePythonCommand(pythonCommand string) error {
 	// Define a regex pattern for shell metacharacters that could be dangerous
 	// This includes characters like ; & | ` $ () [] {} <> * ? ~ ! #
-	dangerousChars := regexp.MustCompile(`[;&|` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#]`)
+	dangerousChars := regexp.MustCompile(`[;&|'"` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#]`)
 
 	if dangerousChars.MatchString(pythonCommand) {
 		return fmt.Errorf("PythonCommand contains potentially dangerous characters: %q", pythonCommand)
@@ -213,7 +213,7 @@ func validatePythonCommand(pythonCommand string) error {
 //	// Then "MALFORMED_ENTRY" and "SECRET_KEY=foo" will be removed since their key names match removeKeys.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
-		return append([]string(nil), os.Environ()...)
+		return os.Environ()
 	}
 	skip := make(map[string]struct{}, len(removeKeys))
 	for _, key := range removeKeys {
