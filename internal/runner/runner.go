@@ -234,6 +234,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		// Allowlist can be extended via the allowed_python_dirs config field for non-standard Python installations.
+		// See the returned error message for instructions on configuring allowed_python_dirs.
 		// Symlink validation ensures the resolved path itself is in an allowed directory.
 
 		// Simple prefix matches for Unix-like systems
