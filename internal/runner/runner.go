@@ -213,6 +213,8 @@ func (o Options) Run(ctx context.Context) error {
 		config.EnvExecutorPR,
 		config.EnvExecutorReviewFix,
 		config.EnvAllowUnsafeExecution,
+		"CI",
+		"PYTHONUNBUFFERED",
 	)
 
 	// Consolidated executor environment variable setting
@@ -253,9 +255,7 @@ func (o Options) Run(ctx context.Context) error {
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
-	pythonArgs := make([]string, 0, len(args)+1)
-	pythonArgs = append(pythonArgs, "-u")
-	pythonArgs = append(pythonArgs, args...)
+	pythonArgs := append([]string{"-u"}, args...)
 	cmd := exec.Command(o.Config.PythonCommand, pythonArgs...)
 	cmd.Env = env
 	setupProcessGroup(cmd)
