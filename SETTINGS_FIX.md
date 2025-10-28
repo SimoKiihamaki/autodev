@@ -5,12 +5,12 @@ Below is a **focused, implementation-ready task list** to get the Live Feed work
 ## Task Progress
 
 - [x] Task A1 — Make `readLogsBatch()` block for the first line, then drain quickly
-- [ ] Task A2 — Remove the double close on `logCh`
+- [x] Task A2 — Remove the double close on `logCh`
 - [ ] Task A3 — Guarantee unbuffered Python output (belt-and-suspenders)
 - [x] Task B1 — Remove legacy single-line reader
 - [x] Task B2 — Simplify viewport flush strategy
 - [x] Task B3 — Collapse duplicate run-feed handlers
-- [ ] Task B4 — Make channel size explicit & documented
+- [x] Task B4 — Make channel size explicit & documented
 - [ ] Task C1 — Unit-test the batch reader
 - [ ] Task C2 — Integration smoke test with a dummy process
 - [ ] Task D1 — Add `docs/live-feed.md`

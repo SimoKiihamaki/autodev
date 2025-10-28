@@ -261,6 +261,9 @@ func (o Options) Run(ctx context.Context) error {
 	}
 }
 
+// stream forwards subprocess output to the log channel without blocking. When the channel
+// backlog fills (UI too slow), it emits a warning and drops live-feed lines; the log file
+// remains complete because writes happen synchronously on disk.
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	if logs == nil {
 		// No consumer is interested in stream output (e.g. during tests); discard to

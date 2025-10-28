@@ -81,6 +81,8 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 	m.prepareRunLogFile()
 
+	// Channel buffers up to 2048 log lines for the TUI; excess bursts are allowed to drop
+	// live feed entries downstream, but every line remains in the file log written by the runner.
 	m.logCh = make(chan runner.Line, 2048)
 	ch := m.logCh
 	m.logBuf = nil
@@ -102,7 +104,14 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
-		defer close(logCh)
+		safeSend := func(line runner.Line) {
+			defer func() { _ = recover() }()
+			select {
+			case logCh <- line:
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
@@ -112,17 +121,11 @@ func (m *model) startRunCmd() tea.Cmd {
 				if stack != "" {
 					msg = msg + "\n" + stack
 				}
-				select {
-				case logCh <- runner.Line{Time: time.Now(), Text: msg, Err: true}:
-				case <-time.After(100 * time.Millisecond):
-				}
+				safeSend(runner.Line{Time: time.Now(), Text: msg, Err: true})
 				err = panicErr
 			}
 			if err != nil && err != context.Canceled {
-				select {
-				case logCh <- runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true}:
-				case <-time.After(100 * time.Millisecond):
-				}
+				safeSend(runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
 			}
 			select {
 			case resultCh <- err:
