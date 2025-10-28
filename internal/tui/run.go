@@ -105,7 +105,11 @@ func (m *model) startRunCmd() tea.Cmd {
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
 		safeSend := func(line runner.Line) {
-			defer func() { _ = recover() }()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("panic in safeSend: %v", r)
+				}
+			}()
 			select {
 			case logCh <- line:
 			case <-time.After(100 * time.Millisecond):
