@@ -108,4 +108,4 @@ The application expects to find PRD files by scanning for `*.md` files in the cu
 Whenever you push fixes to an open pull request, immediately leave a PR comment that:
 - Summarizes what changed in the new commit(s) and why those changes were necessary.
 - Calls out any important decisions you made, including references to repository rules or conventions that shaped the approach.
-- Tags `@coderabbit`, `@copilot-pull-request-reviewer[bot]`, and `@codex` so the automation tools receive the update. **Do not mention `@copilot` directly**; that handle summons the SWE agent and will open a new PR automatically.
+- Tags `@coderabbit`, `@copilot-pull-request-reviewer[bot]`, and includes the explicit trigger `@codex review` so each automation stays in sync. **Do not mention `@copilot` directly**; that handle summons the SWE agent and will open a new PR automatically.

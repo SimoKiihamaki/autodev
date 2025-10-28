@@ -32,7 +32,7 @@
 - Commits should be scoped per feature or bugfix; avoid mixing lint and feature changes.
 - PRs include summary, testing evidence (`go test ./...`, `make run` manual validation), and linked issue/PRD.
 - Provide screenshots or terminal captures when UI/UX behavior changes; flag any required env vars or secrets.
-- After pushing fixes to a PR, add a comment describing what changed, why it changed, any notable decisions (especially those driven by repo rules), and tag `@coderabbit`, `@copilot-pull-request-reviewer[bot]`, and `@codex`. Avoid tagging `@copilot` directly—doing so triggers the SWE agent and creates an unwanted follow-up PR.
+- After pushing fixes to a PR, add a comment describing what changed, why it changed, any notable decisions (especially those driven by repo rules), and tag `@coderabbit`, `@copilot-pull-request-reviewer[bot]`, and include the explicit trigger `@codex review`. Avoid tagging `@copilot` directly—doing so triggers the SWE agent and creates an unwanted follow-up PR.
 
 ## Agent-Specific Tips
 - Configure the embedded Python script path via Settings tab; default `tools/auto_prd_to_pr_v3.py` should remain valid.
