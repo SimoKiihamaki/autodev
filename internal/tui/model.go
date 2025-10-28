@@ -88,6 +88,9 @@ type model struct {
 	status string
 	errMsg string
 
+	keys   KeyMap
+	typing bool
+
 	prdList     list.Model
 	selectedPRD string
 	tags        []string
@@ -167,6 +170,7 @@ func New() model {
 	}
 
 	m := model{tab: tabRun, cfg: cfg}
+	m.keys = DefaultKeyMap()
 	m.normalizeLogLevel()
 
 	delegate := list.NewDefaultDelegate()
@@ -298,4 +302,52 @@ func (m *model) settingsInputMap() map[string]*textinput.Model {
 func (m *model) resetLogState() {
 	m.logBuf = nil
 	m.logs.SetContent("")
+}
+
+func (m *model) refreshTypingState() {
+	m.typing = m.hasTypingFocus()
+}
+
+func (m *model) hasTypingFocus() bool {
+	if m.tagInput.Focused() || m.prompt.Focused() {
+		return true
+	}
+	for _, input := range m.settingsInputs {
+		if input != nil && input.Focused() {
+			return true
+		}
+	}
+	if m.prdList.FilterState() == list.Filtering {
+		return true
+	}
+	return false
+}
+
+func (m *model) SetTyping(on bool) {
+	m.typing = on
+}
+
+func (m model) IsTyping() bool {
+	return m.typing
+}
+
+func (m model) currentTabID() string {
+	switch m.tab {
+	case tabRun:
+		return tabIDRun
+	case tabPRD:
+		return tabIDPRD
+	case tabSettings:
+		return tabIDSettings
+	case tabEnv:
+		return tabIDEnv
+	case tabPrompt:
+		return tabIDPrompt
+	case tabLogs:
+		return tabIDLogs
+	case tabHelp:
+		return tabIDHelp
+	default:
+		return tabIDRun
+	}
 }

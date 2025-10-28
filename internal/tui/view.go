@@ -299,12 +299,30 @@ func renderLogsView(b *strings.Builder, m model) {
 
 func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Help") + "\n")
-	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · Ctrl+S save · r rescan\n")
-	b.WriteString("• Settings: Arrow keys move focus · ←/→ or Enter/Space toggles Codex/Claude when on a switch · Tab steps downward · Esc blur · Ctrl+S save\n")
-	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
-	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
-	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDn page · Home/End top/bottom · path shown in the Logs tab\n")
-	b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
-	b.WriteString(fmt.Sprintf("\nGlobal: 1-%d tabs · ? help · q quit · Ctrl+C force quit\n", len(tabNames)))
+
+	writeHelpSection := func(title string, entries []HelpEntry) {
+		if len(entries) == 0 {
+			return
+		}
+		b.WriteString("• " + title + ":\n")
+		for _, entry := range entries {
+			var comboLabels []string
+			for _, combo := range entry.Combos {
+				comboLabels = append(comboLabels, combo.Display())
+			}
+			b.WriteString("  - " + entry.Label + ": " + strings.Join(comboLabels, ", ") + "\n")
+		}
+	}
+
+	writeHelpSection("Global", m.keys.GlobalHelpEntries())
+
+	for i, tabID := range tabIDOrder {
+		entries := m.keys.HelpEntriesForTab(tabID)
+		if len(entries) == 0 || i >= len(tabNames) {
+			continue
+		}
+		writeHelpSection(tabNames[i], entries)
+	}
+
 	b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
 }
