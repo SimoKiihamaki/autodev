@@ -8,9 +8,6 @@ import (
 )
 
 const (
-	// defaultMaxBatchSize is the default number of log lines to batch together
-	defaultMaxBatchSize = 25
-
 	// logSendTimeout is the timeout for sending log lines to the UI channel
 	logSendTimeout = 100 * time.Millisecond
 
@@ -37,9 +34,6 @@ func (m model) readLogsBatch() tea.Cmd {
 	}
 	ch := m.logCh
 	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
-	if maxBatch <= 0 {
-		maxBatch = defaultMaxBatchSize
-	}
 	return func() tea.Msg {
 		line, ok := <-ch
 		if !ok {

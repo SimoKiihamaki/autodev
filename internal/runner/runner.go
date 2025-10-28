@@ -185,6 +185,16 @@ func sanitizedEnviron(removeKeys ...string) []string {
 	return out
 }
 
+// setExecutorEnv sanitizes and sets executor-related environment variables
+func setExecutorEnv(env []string, executorVars map[string]string) []string {
+	for key, value := range executorVars {
+		if value != "" {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
+
 func (o Options) Run(ctx context.Context) error {
 	prd := o.PRDPath
 	tmpPath, cleanup, err := makeTempPRD(prd, o.InitialPrompt)
@@ -204,26 +214,33 @@ func (o Options) Run(ctx context.Context) error {
 		config.EnvExecutorReviewFix,
 		config.EnvAllowUnsafeExecution,
 	)
+
+	// Consolidated executor environment variable setting
+	executorVars := map[string]string{}
 	if o.Config.ExecutorPolicy != "" {
-		env = append(env, config.EnvExecutorPolicy+"="+o.Config.ExecutorPolicy)
+		executorVars[config.EnvExecutorPolicy] = o.Config.ExecutorPolicy
 	}
 	// Per-phase executor overrides
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
-		env = append(env, config.EnvExecutorImplement+"="+v)
+		executorVars[config.EnvExecutorImplement] = v
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
-		env = append(env, config.EnvExecutorFix+"="+v)
+		executorVars[config.EnvExecutorFix] = v
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.PR)); v == "codex" || v == "claude" {
-		env = append(env, config.EnvExecutorPR+"="+v)
+		executorVars[config.EnvExecutorPR] = v
 	}
 	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
-		env = append(env, config.EnvExecutorReviewFix+"="+v)
+		executorVars[config.EnvExecutorReviewFix] = v
 	}
 
 	if o.Config.Flags.AllowUnsafe {
-		env = append(env, config.EnvAllowUnsafeExecution+"=1", "CI=1")
+		executorVars[config.EnvAllowUnsafeExecution] = "1"
+		// CI=1 is added separately as it's not an executor variable
+		env = append(env, "CI=1")
 	}
+
+	env = setExecutorEnv(env, executorVars)
 	if len(o.ExtraEnv) > 0 {
 		env = append(env, o.ExtraEnv...)
 	}

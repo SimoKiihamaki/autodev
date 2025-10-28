@@ -108,8 +108,9 @@ func (m *model) startRunCmd() tea.Cmd {
 		safeSendCritical := func(line runner.Line) {
 			defer func() {
 				if r := recover(); r != nil {
-					// Defensive: log unexpected panics (not send-on-closed-channel, which is handled by select)
-					// This catches other potential runtime panics to keep the goroutine alive
+					// Defensive: log unexpected panics, including send-on-closed-channel
+					// The recover catches all panics to keep the goroutine alive; channel closure
+					// would cause a send panic that's handled by this defer+recover pattern
 					log.Printf("tui: safeSendCritical recovered from panic: %v", r)
 				}
 			}()
