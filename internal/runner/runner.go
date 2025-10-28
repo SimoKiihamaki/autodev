@@ -27,6 +27,9 @@ var bufferPool = sync.Pool{
 // allowedNamePattern validates python interpreter names (e.g., "python", "python2", "python2.7", "python3", "python3.9")
 var allowedNamePattern = regexp.MustCompile(`^python(\d)?(\.\d+)?$`)
 
+// uFlagPattern matches valid short option groups containing 'u', e.g. -uc, -Eu, -cEu, etc.
+var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
+
 type Line struct {
 	Time time.Time
 	Text string
@@ -454,8 +457,6 @@ func (o Options) Run(ctx context.Context) error {
 
 	// Only append "-u" if not already present in pyFlags
 	hasU := false
-	// Regex to match valid short option groups containing 'u', e.g. -uc, -Eu, -cEu, etc.
-	var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
 	for _, flag := range pyFlags {
 		// Check for literal -u flag
 		if flag == "-u" {

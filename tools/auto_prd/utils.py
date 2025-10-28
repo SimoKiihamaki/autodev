@@ -115,6 +115,9 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> Tuple[str, str
     different data. To reliably extract the output, both attributes are checked: output is preferred
     if present (i.e., not None), otherwise stdout is used. This function handles cases where only one
     is populated, or both are present, to ensure consistent extraction of process output.
+
+    Returns:
+        Tuple[str, str]: A tuple containing (stdout, stderr) as strings.
     """
     stderr = _coerce_text(getattr(exc, "stderr", None))
     output_val = getattr(exc, "output", None)
