@@ -31,7 +31,7 @@ func generateToggleHint() string {
 }
 
 func getExecutorToggleHelp() string {
-	return fmt.Sprintf("Toggle focused: %%s (%s, Tab or arrows to navigate, Esc blur)", generateToggleHint())
+	return fmt.Sprintf("Toggle focused: %%s (%s, Tab or arrows to navigate, Esc to blur)", generateToggleHint())
 }
 
 func getGeneralKeysHelp() string {
