@@ -303,12 +303,15 @@ func sanitizedEnviron(removeKeys ...string) []string {
 //
 //	A new environment slice with the executorVars added (if their value is not empty).
 func setExecutorEnv(env []string, executorVars map[string]string) []string {
+	// Defensive copy: ensure we never mutate the input slice
+	newEnv := make([]string, len(env))
+	copy(newEnv, env)
 	for key, value := range executorVars {
 		if value != "" {
-			env = append(env, key+"="+value)
+			newEnv = append(newEnv, key+"="+value)
 		}
 	}
-	return env
+	return newEnv
 }
 
 func (o Options) Run(ctx context.Context) error {
