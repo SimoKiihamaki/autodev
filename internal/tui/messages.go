@@ -100,19 +100,10 @@ func (m model) startLogWriter() tea.Cmd {
 			return nil // If we can't open the file, skip logging
 		}
 		defer logFile.Close()
+		defer close(ch)
 
 		// Write log header
-		ts := time.Now().Format(time.RFC3339)
-		headers := []string{
-			fmt.Sprintf("# autodev run started %s", ts),
-			fmt.Sprintf("PRD: %s", selectedPRD),
-			fmt.Sprintf("Repo: %s", cfgRepoPath),
-			fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
-		}
-		if cfgBranch != "" {
-			headers = append(headers, fmt.Sprintf("Branch: %s", cfgBranch))
-		}
-		headers = append(headers, "")
+		headers := buildLogHeader(time.Now(), selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch)
 		if _, err := logFile.WriteString(strings.Join(headers, "\n") + "\n"); err != nil {
 			fmt.Fprintf(os.Stderr, "log write error (%s): %v\n", logFilePath, err)
 		}

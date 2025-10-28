@@ -52,6 +52,21 @@ func (m *model) writeLogHeader() {
 	// to avoid concurrent file handle issues
 }
 
+// buildLogHeader constructs the log header content for persistence
+func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch string) []string {
+	headers := []string{
+		fmt.Sprintf("# autodev run started %s", ts.Format(time.RFC3339)),
+		fmt.Sprintf("PRD: %s", selectedPRD),
+		fmt.Sprintf("Repo: %s", cfgRepoPath),
+		fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
+	}
+	if cfgBranch != "" {
+		headers = append(headers, fmt.Sprintf("Branch: %s", cfgBranch))
+	}
+	headers = append(headers, "")
+	return headers
+}
+
 // persistLogLine is no longer needed - log persistence is handled by background goroutine
 
 func (m *model) closeLogFile(reason string) {

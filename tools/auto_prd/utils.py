@@ -108,7 +108,7 @@ def _coerce_text(data: Any) -> str:
     return str(data)
 
 
-def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str]:
+def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> Tuple[str, str]:
     """
     Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes.
 
