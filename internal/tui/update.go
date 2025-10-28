@@ -41,7 +41,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "Running…"
 		m.tab = tabRun
 		m.runFeedAutoFollow = true
-		// Reset log buffer and logs to mirror initialization in startRunCmd (see that function lines 88-89)
+		// Reset log buffer, logs, and run dashboard state to mirror initialization in startRunCmd.
 		m.logBuf = nil
 		m.logs.SetContent("")
 		return m, nil
@@ -180,7 +180,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		m.errMsg = ""
 		m.status = "Run canceled."
 		logReason = "canceled"
-		// Reset log buffer, logs, and run dashboard state to mirror initialization in startRunCmd (see that function lines 88-89)
+		// Reset log buffer, logs, and run dashboard state to mirror initialization in startRunCmd.
 		m.logBuf = nil
 		m.logs.SetContent("")
 		m.resetRunDashboard()
@@ -190,7 +190,9 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		logReason = "failed"
 	}
 
-	// No need to flush logs or run feed here: handleLogBatch and handleRunFeedLine always flush content unconditionally, so state is already up to date.
+	// No need to flush logs or run feed here:
+	// handleLogBatch and handleRunFeedLine always flush content unconditionally,
+	// so state is already up to date.
 
 	m.closeLogFile(logReason)
 	return m, nil

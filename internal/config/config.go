@@ -66,20 +66,21 @@ type Phases struct {
 }
 
 type Config struct {
-	ExecutorPolicy  string             `yaml:"executor_policy"`
-	LogLevel        string             `yaml:"log_level"`
-	PythonCommand   string             `yaml:"python_command"`
-	PythonScript    string             `yaml:"python_script"`
-	RepoPath        string             `yaml:"repo_path"`
-	BaseBranch      string             `yaml:"base_branch"`
-	Branch          string             `yaml:"branch"`
-	CodexModel      string             `yaml:"codex_model"`
-	Flags           Flags              `yaml:"flags"`
-	Timings         Timings            `yaml:"timings"`
-	BatchProcessing BatchProcessing    `yaml:"batch_processing"`
-	PhaseExecutors  PhaseExec          `yaml:"phase_executors"`
-	RunPhases       Phases             `yaml:"run_phases"`
-	PRDs            map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
+	ExecutorPolicy    string             `yaml:"executor_policy"`
+	LogLevel          string             `yaml:"log_level"`
+	PythonCommand     string             `yaml:"python_command"`
+	PythonScript      string             `yaml:"python_script"`
+	RepoPath          string             `yaml:"repo_path"`
+	BaseBranch        string             `yaml:"base_branch"`
+	Branch            string             `yaml:"branch"`
+	CodexModel        string             `yaml:"codex_model"`
+	Flags             Flags              `yaml:"flags"`
+	Timings           Timings            `yaml:"timings"`
+	BatchProcessing   BatchProcessing    `yaml:"batch_processing"`
+	PhaseExecutors    PhaseExec          `yaml:"phase_executors"`
+	RunPhases         Phases             `yaml:"run_phases"`
+	AllowedPythonDirs []string           `yaml:"allowed_python_dirs"`
+	PRDs              map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
 }
 
 // Defaults returns a sensible default config.
@@ -109,9 +110,10 @@ func Defaults() Config {
 			MaxBatchSize:   DefaultMaxBatchSize,
 			BatchTimeoutMs: 5,
 		},
-		PhaseExecutors: PhaseExec{},
-		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},
-		PRDs:           map[string]PRDMeta{},
+		PhaseExecutors:    PhaseExec{},
+		RunPhases:         Phases{Local: true, PR: true, ReviewFix: true},
+		AllowedPythonDirs: []string{},
+		PRDs:              map[string]PRDMeta{},
 	}
 }
 
@@ -192,4 +194,14 @@ func Save(c Config) error {
 		return err
 	}
 	return os.WriteFile(p, b, 0o600)
+}
+
+// GetAllowedPythonDirs returns the list of allowed Python directories from the config.
+// This can be extended by users to support non-standard Python installations
+// (e.g., pyenv, conda, virtualenvs).
+func (c Config) GetAllowedPythonDirs() []string {
+	if c.AllowedPythonDirs == nil {
+		return []string{}
+	}
+	return c.AllowedPythonDirs
 }

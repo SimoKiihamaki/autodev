@@ -56,7 +56,11 @@ def scrub_cli_text(value: str) -> str:
         else:
             cleaned_chars.append(char)
     cleaned = "".join(cleaned_chars)
-    logger.debug("Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r", value, cleaned)
+    logger.debug(
+        "Sanitized CLI text to remove unsafe shell metacharacters: %r -> %r",
+        value,
+        cleaned,
+    )
     return cleaned
 
 
@@ -88,7 +92,7 @@ def parse_tasks_left(output: str) -> Optional[int]:
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
     stderr = _coerce_text(getattr(exc, "stderr", None))
     stdout = _coerce_text(getattr(exc, "output", None))
-    if not stdout:
+    if getattr(exc, "output", None) is None:
         stdout = _coerce_text(getattr(exc, "stdout", None))
     text = (stderr or "") + "\n" + (stdout or "")
     match = re.search(r"HTTP\s+(\d{3})", text)
@@ -108,7 +112,7 @@ def _coerce_text(data: Any) -> str:
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
     stderr = _coerce_text(getattr(exc, "stderr", None))
     stdout = _coerce_text(getattr(exc, "output", None))
-    if not stdout:
+    if getattr(exc, "output", None) is None:
         stdout = _coerce_text(getattr(exc, "stdout", None))
     text = (stderr or stdout or "").strip()
     return text or f"exit code {exc.returncode}"

@@ -167,6 +167,13 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 // validatePythonCommand checks that the PythonCommand doesn't contain potentially dangerous
 // shell metacharacters that could lead to command injection.
 func validatePythonCommand(pythonCommand string) error {
+	return validatePythonCommandWithConfig(pythonCommand, config.Config{})
+}
+
+// validatePythonCommandWithConfig checks that the PythonCommand doesn't contain potentially dangerous
+// shell metacharacters that could lead to command injection. It also validates the interpreter path
+// against allowed directories, with support for user configuration overrides.
+func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) error {
 	// Define a regex pattern for shell metacharacters that could be dangerous
 	// This includes characters like ; & | ` $ () [] {} <> * ? ~ ! #
 	dangerousChars := regexp.MustCompile(`[;&|'"` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#]`)
@@ -197,7 +204,10 @@ func validatePythonCommand(pythonCommand string) error {
 		// NOTE: This is a hardcoded list of common Python installation paths.
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
-		allowedDirs := []string{"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/"}
+		// Allowlist can be extended via config for non-standard Python installations (e.g., pyenv, conda, virtualenvs)
+		defaultAllowedDirs := []string{"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/"}
+		userAllowedDirs := cfg.GetAllowedPythonDirs()
+		allowedDirs := append(defaultAllowedDirs, userAllowedDirs...)
 		allowed := false
 		for _, dir := range allowedDirs {
 			if strings.HasPrefix(absPath, dir) {
@@ -335,12 +345,12 @@ func (o Options) Run(ctx context.Context) error {
 	// 1. PYTHONUNBUFFERED=1 environment variable (also set in tools/auto_prd/command.py)
 	// 2. -u command-line flag forces unbuffered binary stdout/stderr
 	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
-	// regardless of how the process is invoked. If you change/remove this, update all three places.
+	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
 	// Validate PythonCommand to prevent command injection
-	if err := validatePythonCommand(o.Config.PythonCommand); err != nil {
+	if err := validatePythonCommandWithConfig(o.Config.PythonCommand, o.Config); err != nil {
 		return err
 	}
 
