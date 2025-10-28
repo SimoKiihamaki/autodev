@@ -6,7 +6,7 @@ Below is a **focused, implementation-ready task list** to get the Live Feed work
 
 - [x] Task A1 — Make `readLogsBatch()` block for the first line, then drain quickly
 - [x] Task A2 — Remove the double close on `logCh`
-- [ ] Task A3 — Guarantee unbuffered Python output (belt-and-suspenders)
+- [x] Task A3 — Guarantee unbuffered Python output (belt-and-suspenders)
 - [x] Task B1 — Remove legacy single-line reader
 - [x] Task B2 — Simplify viewport flush strategy
 - [x] Task B3 — Collapse duplicate run-feed handlers
