@@ -7,6 +7,16 @@ from unittest import mock
 
 from .test_helpers import safe_import
 
+
+def get_expected_repo_root() -> Path:
+    """Get the expected repository root directory for test purposes.
+
+    Returns:
+        Path to the repository root directory (3 levels up from the test file)
+    """
+    return Path(__file__).resolve().parents[3]
+
+
 CLAUDE_DEBUG_LOG_NAME = safe_import(
     "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
 )
@@ -38,9 +48,15 @@ class ScrubCliTextTests(unittest.TestCase):
 class ValidateCommandArgsTests(unittest.TestCase):
     def test_rejects_unsafe_arguments(self) -> None:
         with self.assertRaises(ValueError):
+            validate_command_args(["gh", "pr", "create", "--body", "contains | pipe"])
+
+    def test_allows_backticks(self) -> None:
+        try:
             validate_command_args(
                 ["gh", "pr", "create", "--body", "contains `backticks`"]
             )
+        except ValueError as exc:  # pragma: no cover - defensive path
+            self.fail(f"validate_command_args unexpectedly rejected backticks: {exc}")
 
     def test_accepts_scrubbed_arguments(self) -> None:
         safe_body = scrub_cli_text("contains `backticks`")
@@ -50,49 +66,52 @@ class ValidateCommandArgsTests(unittest.TestCase):
 
 class EnsureClaudeDebugDirTests(unittest.TestCase):
     def setUp(self) -> None:
-        self._env_backup = os.environ.copy()
         register_safe_cwd(Path(__file__).parent)
-
-    def tearDown(self) -> None:
-        os.environ.clear()
-        os.environ.update(self._env_backup)
 
     def test_converts_directory_env_value_into_log_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = tmpdir
-            path = ensure_claude_debug_dir()
-            self.assertTrue(
-                path.is_file(), msg="expected Claude debug path to become a file"
-            )
-            self.assertTrue(path.name.endswith(CLAUDE_DEBUG_LOG_NAME))
-            self.assertEqual(Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]), path)
+            with mock.patch.dict(os.environ, {"CLAUDE_CODE_DEBUG_LOGS_DIR": tmpdir}):
+                path = ensure_claude_debug_dir()
+                expected = (get_expected_repo_root() / ".claude-debug").resolve()
+                self.assertTrue(
+                    path.is_file(), msg="expected Claude debug path to become a file"
+                )
+                self.assertEqual(path.resolve(), expected)
+                self.assertEqual(
+                    Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
+                )
 
     def test_creates_repo_local_file_when_variable_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = Path.cwd()
             try:
                 os.chdir(tmpdir)
-                os.environ.pop("CLAUDE_CODE_DEBUG_LOGS_DIR", None)
-                path = ensure_claude_debug_dir()
-                self.assertTrue(path.exists())
-                self.assertEqual(path.parent.resolve(), Path(tmpdir).resolve())
+                with mock.patch.dict(os.environ, clear=True):
+                    path = ensure_claude_debug_dir()
+                    self.assertTrue(path.exists())
+                    expected = (get_expected_repo_root() / ".claude-debug").resolve()
+                    self.assertEqual(path.resolve(), expected)
             finally:
                 os.chdir(original_cwd)
 
 
 class RequireCmdClaudeTests(unittest.TestCase):
     def test_require_cmd_invokes_debug_dir_setup(self) -> None:
-        with mock.patch(
-            "tools.auto_prd.command_checks.shutil.which", return_value="/usr/bin/claude"
-        ), mock.patch(
-            "tools.auto_prd.command_checks.run_cmd", return_value=("", "", 0)
-        ), mock.patch(
-            "tools.auto_prd.command_checks.ensure_claude_debug_dir"
-        ) as ensure_mock:
-            from ..command_checks import require_cmd
+        with mock.patch.dict(os.environ, clear=True):
+            with mock.patch(
+                "tools.auto_prd.command_checks.shutil.which",
+                return_value="/usr/bin/claude",
+            ), mock.patch(
+                "tools.auto_prd.command_checks.run_cmd", return_value=("", "", 0)
+            ):
+                from ..command_checks import require_cmd
 
-            require_cmd("claude")
-            ensure_mock.assert_called_once()
+                require_cmd("claude")
+
+            expected = (get_expected_repo_root() / ".claude-debug").resolve()
+            self.assertEqual(
+                Path(os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"]).resolve(), expected
+            )
 
 
 class RunCmdTests(unittest.TestCase):

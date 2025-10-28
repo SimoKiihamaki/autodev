@@ -43,6 +43,42 @@ SENSITIVE_KEYS = {
 CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
 
 
+def find_repo_root(start_path: Optional[Path] = None) -> Path:
+    """Find the repository root by searching for a .git entry (dir or file).
+
+    Args:
+        start_path: Path to start searching from, defaults to the file's location
+
+    Returns:
+        Path to the repository root directory. Falls back to Path.cwd() if not found.
+    """
+    if start_path is None:
+        start_path = Path(__file__).resolve()
+
+    current = start_path
+    while True:
+        git_entry = current / ".git"
+        # Accept both directories and files (worktrees/submodules have a file that points to the gitdir)
+        if git_entry.exists():
+            return current
+        if current == current.parent:
+            break
+        current = current.parent
+
+    # If we can't find .git, fall back to current working directory
+    return Path.cwd()
+
+
+def get_claude_debug_path() -> Path:
+    """Get the expected path to the .claude-debug file in the repo root.
+
+    Returns:
+        Path to the .claude-debug file
+    """
+    repo_root = find_repo_root()
+    return repo_root / ".claude-debug"
+
+
 def sanitize_args(args: Sequence[str]) -> list[str]:
     sanitized: list[str] = []
     skip_next = False
@@ -100,15 +136,38 @@ def is_within(path: Path, root: Path) -> bool:
 
 
 def validate_command_args(cmd: Sequence[str]) -> None:
+    """Validate command arguments for safety.
+
+    Args:
+        cmd: Command sequence to validate
+
+    Raises:
+        ValueError: If cmd is not a non-empty sequence of strings
+        TypeError: If command arguments are not strings
+        SystemExit: If command contains unsafe characters or binary is not allowed
+
+    Note:
+        Validates against UNSAFE_ARG_CHARS, which contains shell metacharacters:
+        {'|', ';', '>', '<', '`'} that could enable shell injection.
+        Backticks ('`') remain in UNSAFE_ARG_CHARS but are treated as a special case that
+        is permitted by the validation logic because subprocess is always run with shell=False,
+        so backticks are not interpreted by the shell and do not pose a risk in this context.
+    """
     if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
         raise ValueError("cmd must be a non-empty sequence of strings")
     for arg in cmd:
         if not isinstance(arg, str):
             raise TypeError("command arguments must be strings")
-        if any(char in arg for char in UNSAFE_ARG_CHARS):
-            raise ValueError(
-                f"cmd argument contains unsafe shell metacharacters: {arg!r}"
+        unsafe_chars = {char for char in arg if char in UNSAFE_ARG_CHARS}
+        if not unsafe_chars:
+            continue
+        if unsafe_chars.issubset({"`"}):
+            logger.debug(
+                "Allowing argument containing backticks after relaxed validation: %r",
+                arg,
             )
+            continue
+        raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
@@ -219,21 +278,31 @@ def ensure_claude_debug_dir() -> Path:
         return path / CLAUDE_DEBUG_LOG_NAME
 
     existing = os.getenv("CLAUDE_CODE_DEBUG_LOGS_DIR")
+    repo_root_candidate = normalize(get_claude_debug_path())
     repo_candidate = normalize(Path.cwd() / ".claude-debug")
     temp_candidate = normalize(Path(tempfile.gettempdir()) / "claude_code_logs")
 
-    candidates: list[Path] = []
+    # Using a dict to maintain insertion order while preventing duplicates
+    candidate_dict: dict[Path, None] = {}
+
+    if repo_root_candidate is not None:
+        candidate_dict[repo_root_candidate] = None
+
     if existing:
         try:
-            candidates.append(normalize(existing))
+            normalized_existing = normalize(existing)
+            candidate_dict[normalized_existing] = None
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning(
                 "Failed to expand CLAUDE_CODE_DEBUG_LOGS_DIR=%r: %s. Falling back to defaults.",
                 existing,
                 exc,
             )
-    candidates.extend([repo_candidate, temp_candidate])
 
+    candidate_dict[repo_candidate] = None
+    candidate_dict[temp_candidate] = None
+
+    candidates = list(candidate_dict.keys())
     for candidate in candidates:
         file_candidate = (
             candidate / CLAUDE_DEBUG_LOG_NAME if candidate.is_dir() else candidate
@@ -251,16 +320,17 @@ def ensure_claude_debug_dir() -> Path:
         return file_candidate
 
     # As a last resort, force the repo-local path even if touch failed earlier.
+    fallback = repo_candidate
     try:
-        repo_candidate.parent.mkdir(parents=True, exist_ok=True)
+        fallback.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
     try:
-        repo_candidate.touch(exist_ok=True)
+        fallback.touch(exist_ok=True)
     except OSError:
-        logger.debug("Failed to touch fallback Claude debug log at %s", repo_candidate)
-    os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(repo_candidate)
-    return repo_candidate
+        logger.debug("Failed to touch fallback Claude debug log at %s", fallback)
+    os.environ["CLAUDE_CODE_DEBUG_LOGS_DIR"] = str(fallback)
+    return fallback
 
 
 def run_cmd(
