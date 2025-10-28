@@ -31,6 +31,32 @@ var (
 	}
 )
 
+// closeLogChannel safely closes a log persistence channel if it exists
+func closeLogChannel(ch *chan runner.Line) {
+	if ch != nil && *ch != nil {
+		close(*ch)
+		*ch = nil
+	}
+}
+
+// safeSendCritical is used for error/panic messages that must not be dropped.
+// It safely sends a critical log line to the channel with timeout and panic recovery.
+func safeSendCritical(logCh chan runner.Line, line runner.Line) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Defensive: catch all panics, including send-on-closed-channel, to prevent process crash
+			log.Printf("tui: safeSendCritical recovered from panic: %v", r)
+		}
+	}()
+	select {
+	case logCh <- line:
+	case <-time.After(criticalLogSendTimeout):
+		// Critical messages should never be dropped, but we need a timeout to prevent blocking forever
+		// Use a much longer timeout for critical diagnostics
+		log.Printf("tui: dropped CRITICAL log line after %v timeout (UI consumer extremely slow)", criticalLogSendTimeout)
+	}
+}
+
 func (m *model) normalizeLogLevel() {
 	lvl := strings.TrimSpace(m.cfg.LogLevel)
 	if lvl == "" {
@@ -86,9 +112,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.logCh = make(chan runner.Line, 2048)
 
 	// Recreate log persistence channel for background writing
-	if m.logPersistCh != nil {
-		close(m.logPersistCh)
-	}
+	closeLogChannel(&m.logPersistCh)
 	m.logPersistCh = make(chan runner.Line, 100) // Buffered to prevent UI blocking
 	ch := m.logCh
 	m.resetLogState()
@@ -109,22 +133,6 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 
 	go func(ctx context.Context, opts runner.Options, logCh chan runner.Line, resultCh chan error) {
-		// safeSendCritical is used for error/panic messages that must not be dropped
-		safeSendCritical := func(line runner.Line) {
-			defer func() {
-				if r := recover(); r != nil {
-					// Defensive: catch all panics, including send-on-closed-channel, to prevent process crash
-					log.Printf("tui: safeSendCritical recovered from panic: %v", r)
-				}
-			}()
-			select {
-			case logCh <- line:
-			case <-time.After(criticalLogSendTimeout):
-				// Critical messages should never be dropped, but we need a timeout to prevent blocking forever
-				// Use a much longer timeout for critical diagnostics
-				log.Printf("tui: dropped CRITICAL log line after %v timeout (UI consumer extremely slow)", criticalLogSendTimeout)
-			}
-		}
 
 		var err error
 		defer func() {
@@ -135,11 +143,11 @@ func (m *model) startRunCmd() tea.Cmd {
 				if stack != "" {
 					msg = msg + "\n" + stack
 				}
-				safeSendCritical(runner.Line{Time: time.Now(), Text: msg, Err: true})
+				safeSendCritical(logCh, runner.Line{Time: time.Now(), Text: msg, Err: true})
 				err = panicErr
 			}
 			if err != nil && err != context.Canceled {
-				safeSendCritical(runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
+				safeSendCritical(logCh, runner.Line{Time: time.Now(), Text: "run error: " + err.Error(), Err: true})
 			}
 			select {
 			case resultCh <- err:

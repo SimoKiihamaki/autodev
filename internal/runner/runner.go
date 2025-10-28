@@ -170,7 +170,7 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 // isRegexPattern checks if a string contains regex metacharacters that would require
 // regex matching instead of simple string operations.
 func isRegexPattern(pattern string) bool {
-	return strings.ContainsAny(pattern, "[]+*()^$?{}\\.|")
+	return strings.ContainsAny(pattern, "[]+*()^$?{}\\|")
 }
 
 // validatePythonCommandWithConfig checks that the PythonCommand doesn't contain potentially dangerous
@@ -225,7 +225,11 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		for _, dir := range allowedDirs {
 			if isRegexPattern(dir) {
 				// Treat as regex pattern
-				if matched, _ := regexp.MatchString(dir, absPath); matched {
+				matched, err := regexp.MatchString(dir, absPath)
+				if err != nil {
+					return fmt.Errorf("invalid regex pattern in allowed_python_dirs: %q: %v", dir, err)
+				}
+				if matched {
 					allowed = true
 					break
 				}
@@ -311,6 +315,22 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 		}
 	}
 	return newEnv
+}
+
+// extractOutputFromException extracts stdout and stderr from a subprocess exception.
+// Returns a tuple (stdout, stderr) extracted from exc. In Go, unlike Python,
+// stdout/stderr must be captured via pipes before command execution, so this
+// function provides a placeholder for consistency with the Python implementation.
+func extractOutputFromException(exc *exec.ExitError) (string, string) {
+	if exc == nil {
+		return "", ""
+	}
+
+	// Go's exec.ExitError doesn't directly expose stdout/stderr fields.
+	// In this codebase, stdout/stderr are handled via streaming pipes in the
+	// runner package, so we return empty strings for consistency.
+	// To get actual output, one would need to capture it during cmd execution.
+	return "", ""
 }
 
 func (o Options) Run(ctx context.Context) error {

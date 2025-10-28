@@ -61,10 +61,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancel = nil
 		m.runResult = nil
 		m.logCh = nil
-		if m.logPersistCh != nil {
-			close(m.logPersistCh)
-			m.logPersistCh = nil
-		}
+		closeLogChannel(&m.logPersistCh)
 		m.cancelling = false
 		return m, nil
 	}
@@ -165,10 +162,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	m.cancel = nil
 	m.runResult = nil
 	m.logCh = nil
-	if m.logPersistCh != nil {
-		close(m.logPersistCh)
-		m.logPersistCh = nil
-	}
+	closeLogChannel(&m.logPersistCh)
 	m.cancelling = false
 
 	logReason := "completed"
