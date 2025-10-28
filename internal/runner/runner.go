@@ -24,6 +24,9 @@ var bufferPool = sync.Pool{
 	},
 }
 
+// allowedNamePattern validates python interpreter names (e.g., "python3", "python3.9")
+var allowedNamePattern = regexp.MustCompile(`^python3(\.\d+)?$`)
+
 type Line struct {
 	Time time.Time
 	Text string
@@ -185,15 +188,8 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		return fmt.Errorf("PythonCommand is empty")
 	}
 
-	// Validate each part for dangerous characters after splitting
-	dangerousChars := regexp.MustCompile(`[;&|'"` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#\n\r]`)
-
-	for _, part := range parts {
-		if dangerousChars.MatchString(part) {
-			return fmt.Errorf("PythonCommand contains potentially dangerous characters in part %q: %q", part, pythonCommand)
-		}
-	}
-
+	// Note: exec.Command does not invoke a shell; argument characters are not interpreted.
+	// We rely on allowlisted interpreter paths/names below instead of a blanket char filter.
 	// Additional check: ensure the command starts with a safe interpreter name
 	// Allow common Python interpreters like python, python3, /usr/bin/python3, etc.
 	interpreter := parts[0]
@@ -248,7 +244,6 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 	} else {
 		// No path separator: must be a bare allowed name
 		// Allow "python3" or "python3.x" where x is any number
-		allowedNamePattern := regexp.MustCompile(`^python3(\.\d+)?$`)
 		if !allowedNamePattern.MatchString(interpreter) {
 			return fmt.Errorf("Interpreter name %q is not allowed (must be python3 or python3.x)", interpreter)
 		}

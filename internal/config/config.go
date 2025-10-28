@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,6 +177,7 @@ func Load() (Config, error) {
 	}
 	// Validate and set default MaxBatchSize
 	if c.BatchProcessing.MaxBatchSize <= 0 {
+		log.Printf("Warning: Invalid max_batch_size (%d), using default value %d", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
 		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
 	}
 	return c, nil

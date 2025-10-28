@@ -90,11 +90,7 @@ def parse_tasks_left(output: str) -> Optional[int]:
 
 
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
-    stderr = _coerce_text(getattr(exc, "stderr", None))
-    output_val = getattr(exc, "output", None)
-    stdout = _coerce_text(output_val)
-    if output_val is None:
-        stdout = _coerce_text(getattr(exc, "stdout", None))
+    stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or "") + "\n" + (stdout or "")
     match = re.search(r"HTTP\s+(\d{3})", text)
     if match:
@@ -110,12 +106,18 @@ def _coerce_text(data: Any) -> str:
     return str(data)
 
 
-def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str]:
+    """Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes."""
     stderr = _coerce_text(getattr(exc, "stderr", None))
     output_val = getattr(exc, "output", None)
     stdout = _coerce_text(output_val)
     if output_val is None:
         stdout = _coerce_text(getattr(exc, "stdout", None))
+    return stdout, stderr
+
+
+def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+    stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or stdout or "").strip()
     return text or f"exit code {exc.returncode}"
 
