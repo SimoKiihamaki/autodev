@@ -108,7 +108,7 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 	return m
 }
 
-func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
+func (m *model) handleLogBatch(msg logBatchMsg) (*model, tea.Cmd) {
 	if len(msg.lines) == 0 {
 		if msg.closed {
 			m.logCh = nil

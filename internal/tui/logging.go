@@ -54,7 +54,7 @@ func (m *model) writeLogHeader() {
 // buildLogHeader constructs the log header content for persistence
 func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch string) []string {
 	headers := []string{
-		fmt.Sprintf("# autodev run started %s", ts.Format(time.RFC3339)),
+		fmt.Sprintf("// autodev run started %s", ts.Format(time.RFC3339)),
 		fmt.Sprintf("PRD: %s", selectedPRD),
 		fmt.Sprintf("Repo: %s", cfgRepoPath),
 		fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
