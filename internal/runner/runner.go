@@ -167,10 +167,10 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	return args
 }
 
-// validatePythonCommand checks that the PythonCommand doesn't contain potentially dangerous
-// shell metacharacters that could lead to command injection.
-func validatePythonCommand(pythonCommand string) error {
-	return validatePythonCommandWithConfig(pythonCommand, config.Config{})
+// isRegexPattern checks if a string contains regex metacharacters that would require
+// regex matching instead of simple string operations.
+func isRegexPattern(pattern string) bool {
+	return strings.ContainsAny(pattern, "[]+*()^$?{}\\.|")
 }
 
 // validatePythonCommandWithConfig checks that the PythonCommand doesn't contain potentially dangerous
@@ -223,8 +223,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		allowedDirs := append(defaultAllowedDirs, userAllowedDirs...)
 		allowed := false
 		for _, dir := range allowedDirs {
-			// Check if the pattern contains regex characters
-			if strings.ContainsAny(dir, "[]+*()^$?{}\\.|") {
+			if isRegexPattern(dir) {
 				// Treat as regex pattern
 				if matched, _ := regexp.MatchString(dir, absPath); matched {
 					allowed = true

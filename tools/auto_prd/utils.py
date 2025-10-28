@@ -107,7 +107,13 @@ def _coerce_text(data: Any) -> str:
 
 
 def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str]:
-    """Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes."""
+    """
+    Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes.
+
+    In some Python versions, CalledProcessError.output is an alias for stdout, but in others,
+    only one of output or stdout may be present. To reliably extract the output, both attributes
+    are checked: output is preferred if present, otherwise stdout is used.
+    """
     stderr = _coerce_text(getattr(exc, "stderr", None))
     output_val = getattr(exc, "output", None)
     stdout = _coerce_text(output_val)
