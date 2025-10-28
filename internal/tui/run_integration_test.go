@@ -102,7 +102,7 @@ for i in range(10):
 			totalLines += len(batch.lines)
 			m.handleLogBatch(batch)
 			if batch.closed {
-				return
+				break
 			}
 		}
 
