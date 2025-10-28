@@ -275,17 +275,13 @@ func (m *model) initExecutorChoices() {
 }
 
 func resolveExecutorChoice(values ...string) executorChoice {
-	sawCodex := false
 	for _, raw := range values {
 		switch strings.ToLower(strings.TrimSpace(raw)) {
 		case string(executorClaude):
 			return executorClaude
 		case string(executorCodex):
-			sawCodex = true
+			// do nothing, will return executorCodex at the end if found
 		}
-	}
-	if sawCodex {
-		return executorCodex
 	}
 	return executorCodex
 }

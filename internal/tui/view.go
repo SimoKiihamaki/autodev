@@ -9,6 +9,13 @@ import (
 
 const focusedBgColor = "240"
 
+const (
+	// Help text constants for better readability
+	executorToggleHelp = "Toggle focused: %s (←/→ or Enter/Space to switch Codex/Claude, Tab or arrows to navigate, Esc blur)"
+	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
+	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · ←/→ or Enter/Space toggle Codex/Claude when on a switch · Ctrl+S save · 1-%d,? switch tabs"
+)
+
 func focusStyle(active bool) lipgloss.Style {
 	style := lipgloss.NewStyle()
 	if active {
@@ -194,12 +201,12 @@ func renderSettingsView(b *strings.Builder, m model) {
 
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
-			b.WriteString("\n" + okStyle.Render("Toggle focused: "+executorToggleLabel(m.focusedInput)+" (←/→ or Enter/Space to switch Codex/Claude, Tab or arrows to navigate, Esc unfocus)") + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(executorToggleHelp, executorToggleLabel(m.focusedInput))) + "\n")
 		} else {
-			b.WriteString("\n" + okStyle.Render("Input focused: "+m.focusedInput+" (↑/↓/←/→ to navigate, Enter/Esc to unfocus)") + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelp, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focuses first field · ←/→ or Enter/Space toggle Codex/Claude when on a switch · Ctrl+S save · 1-%d,? switch tabs\n", len(tabNames)))
+		b.WriteString(fmt.Sprintf("\n"+generalKeysHelp+"\n", len(tabNames)))
 	}
 }
 
