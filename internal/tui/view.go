@@ -15,8 +15,8 @@ const toggleSeparator = "  "
 const (
 	// Help text constants for better readability
 	toggleHint         = "Enter / Space to switch Codex/Claude"
-	executorToggleHelp = "Toggle focused: %s (" + toggleHint + ", Tab or arrows to navigate, Esc unfocus)"
-	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to unfocus)"
+	executorToggleHelp = "Toggle focused: %s (" + toggleHint + ", Tab or arrows to navigate, Esc blur)"
+	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
 	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · " + toggleHint + " when on a switch · Ctrl+S save · 1-%d,? switch tabs"
 )
 
@@ -264,7 +264,7 @@ func renderEnvView(b *strings.Builder, m model) {
 	b.WriteString(infiniteStyle.Render(fmt.Sprintf("[i] Infinite Reviews: %v", m.flagInfinite)) + "\n")
 
 	if m.focusedFlag != "" {
-		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc unfocus)") + "\n")
+		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc blur)") + "\n")
 		return
 	}
 	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save") + "\n")
@@ -274,9 +274,9 @@ func renderPromptView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Initial Prompt (optional)") + "\n")
 	b.WriteString(m.prompt.View() + "\n")
 	if m.prompt.Focused() {
-		b.WriteString(okStyle.Render("Text area focused (Esc to unfocus)") + "\n")
+		b.WriteString(okStyle.Render("Text area focused (Esc to blur)") + "\n")
 	} else {
-		b.WriteString("Press Enter to edit text, Esc to unfocus\n")
+		b.WriteString("Press Enter to edit text, Esc to blur\n")
 	}
 }
 
@@ -293,7 +293,7 @@ func renderLogsView(b *strings.Builder, m model) {
 func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Help") + "\n")
 	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · Ctrl+S save · r rescan\n")
-	b.WriteString("• Settings: Arrow keys move focus · ←/→ or Enter/Space toggles Codex/Claude when on a switch · Tab steps downward · Esc unfocus · Ctrl+S save\n")
+	b.WriteString("• Settings: Arrow keys move focus · ←/→ or Enter/Space toggles Codex/Claude when on a switch · Tab steps downward · Esc blur · Ctrl+S save\n")
 	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
 	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
 	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDn page · Home/End top/bottom · path shown in the Logs tab\n")

@@ -69,6 +69,7 @@ func (m *model) focusInput(inputName string) {
 		m.inPolicy.Focus()
 	case "toggleLocal", "togglePR", "toggleReview":
 		// Toggles have no text input field to focus
+		log.Printf("tui: focusInput called for toggle input %q (no-op)", inputName)
 		return
 	case "waitmin":
 		m.inWaitMin.Focus()

@@ -14,8 +14,9 @@ var envFlagKeyMap = map[string]string{
 	"i": "infinite",
 }
 
-// tryNavigateOrCycle attempts navigation; if focus remains unchanged (stuck at boundary), cycles the current toggle instead.
-// This provides fallback behavior when normal navigation hits the edge of a navigation container.
+// tryNavigateOrCycle attempts navigation within the settings input list; if focus remains unchanged
+// (i.e., navigation attempts to move past the first or last input in the list), cycles the current toggle instead.
+// This provides fallback behavior specifically when navigation hits the start or end of the settings input list.
 func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	prev := m.focusedInput
 	m.navigateSettings(direction)
