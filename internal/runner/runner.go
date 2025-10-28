@@ -241,7 +241,11 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 
 		// Check default prefixes first
 		for _, prefix := range defaultAllowedPrefixes {
-			if strings.HasPrefix(absPath, prefix) {
+			// Ensure prefix ends with a path separator
+			if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+				prefix = prefix + string(os.PathSeparator)
+			}
+			if absPath == prefix || (strings.HasPrefix(absPath, prefix) && (len(absPath) == len(prefix) || absPath[len(prefix)] == os.PathSeparator)) {
 				allowed = true
 				break
 			}
@@ -276,7 +280,12 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 					}
 				} else {
 					// Simple prefix match
-					if strings.HasPrefix(absPath, dir) {
+					// Ensure prefix ends with a path separator
+					prefix := dir
+					if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+						prefix = prefix + string(os.PathSeparator)
+					}
+					if absPath == prefix || (strings.HasPrefix(absPath, prefix) && (len(absPath) == len(prefix) || absPath[len(prefix)] == os.PathSeparator)) {
 						allowed = true
 						break
 					}
