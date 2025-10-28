@@ -35,7 +35,10 @@ def _timeout_from_env(env_key: str, default: int | None) -> int | None:
     try:
         parsed = int(normalized)
     except ValueError:
-        logger.warning("Invalid %s value %r; falling back to %s", env_key, raw, default)
+        default_str = "no timeout" if default is None else str(default)
+        logger.warning(
+            "Invalid %s value %r; falling back to %s", env_key, raw, default_str
+        )
         return default
 
     if parsed <= 0:
