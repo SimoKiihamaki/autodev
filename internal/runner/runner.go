@@ -201,7 +201,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		}
 		absPath, err := filepath.EvalSymlinks(interpreter)
 		if err != nil {
-			return fmt.Errorf("Failed to resolve interpreter path: %v", err)
+			return fmt.Errorf("failed to resolve interpreter path: %v", err)
 		}
 		// Validate against allowed directories
 		// NOTE: This is a hardcoded list of common Python installation paths.
@@ -239,13 +239,13 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			}
 		}
 		if !allowed {
-			return fmt.Errorf("Interpreter path %q is not in allowed directories. Add the directory to allowed_python_dirs in the config file to permit this interpreter.", absPath)
+			return fmt.Errorf("interpreter path %q is not in allowed directories. Add the directory to allowed_python_dirs in the config file to permit this interpreter.", absPath)
 		}
 	} else {
 		// No path separator: must be a bare allowed name
 		// Allow "python3" or "python3.x" where x is any number
 		if !allowedNamePattern.MatchString(interpreter) {
-			return fmt.Errorf("Interpreter name %q is not allowed (must be python3 or python3.x)", interpreter)
+			return fmt.Errorf("interpreter name %q is not allowed (must be python3 or python3.x)", interpreter)
 		}
 	}
 
