@@ -30,12 +30,14 @@ func generateToggleHint() string {
 	return "Enter/Space to switch " + strings.Join(choices, "/")
 }
 
+// getExecutorToggleHelp returns a template string; caller must format with generateToggleHint().
 func getExecutorToggleHelp() string {
-	return fmt.Sprintf("Toggle focused: %%s (%s, Tab or arrows to navigate, Esc to blur)", generateToggleHint())
+	return "Toggle focused: %s (%s, Tab or arrows to navigate, Esc to blur)"
 }
 
+// getGeneralKeysHelp returns a template string; caller must format with generateToggleHint().
 func getGeneralKeysHelp() string {
-	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
+	return "Keys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%d,? switch tabs"
 }
 
 // inputFocusHelpTemplate expects the input name as the first argument.
@@ -226,12 +228,12 @@ func renderSettingsView(b *strings.Builder, m model) {
 
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
-			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(getExecutorToggleHelp(), executorToggleLabel(m.focusedInput))) + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(getExecutorToggleHelp(), executorToggleLabel(m.focusedInput), generateToggleHint())) + "\n")
 		} else {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\n"+getGeneralKeysHelp()+"\n", len(tabNames)))
+		b.WriteString(fmt.Sprintf("\n"+getGeneralKeysHelp()+"\n", generateToggleHint(), len(tabNames)))
 	}
 }
 
