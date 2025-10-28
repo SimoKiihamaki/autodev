@@ -21,8 +21,30 @@ RATE_LIMIT_JITTER_MAX = 3
 RATE_LIMIT_MIN_SLEEP_SECONDS = 5
 RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
-CODEX_EXEC_TIMEOUT_SECONDS = 1800
-CLAUDE_EXEC_TIMEOUT_SECONDS = 1800
+
+
+def _timeout_from_env(env_key: str, default: int | None) -> int | None:
+    raw = os.getenv(env_key)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if not normalized or normalized in {"none", "no", "off", "disable", "disabled"}:
+        return None
+
+    try:
+        parsed = int(normalized)
+    except ValueError:
+        logger.warning("Invalid %s value %r; falling back to %s", env_key, raw, default)
+        return default
+
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+CODEX_EXEC_TIMEOUT_SECONDS = _timeout_from_env("AUTO_PRD_CODEX_TIMEOUT_SECONDS", None)
+CLAUDE_EXEC_TIMEOUT_SECONDS = _timeout_from_env("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", None)
 
 # Use a cryptographically secure RNG for backoff jitter to avoid predictable retry cadences.
 _rate_limit_rng = random.SystemRandom()
