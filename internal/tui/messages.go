@@ -41,11 +41,13 @@ func (m model) readLogsBatch() tea.Cmd {
 		lines := make([]runner.Line, 0, maxBatch)
 		lines = append(lines, line)
 
-		for len(lines) < maxBatch {
+		channelClosed := false
+		for len(lines) < maxBatch && !channelClosed {
 			select {
 			case next, ok := <-ch:
 				if !ok {
-					return logBatchMsg{lines: lines, closed: true}
+					channelClosed = true
+					break
 				}
 				lines = append(lines, next)
 			default:
@@ -53,7 +55,7 @@ func (m model) readLogsBatch() tea.Cmd {
 			}
 		}
 
-		return logBatchMsg{lines: lines, closed: false}
+		return logBatchMsg{lines: lines, closed: channelClosed}
 	}
 }
 
