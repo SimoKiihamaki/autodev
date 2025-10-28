@@ -176,10 +176,19 @@ func isRegexPattern(pattern string) bool {
 	return strings.ContainsAny(pattern, "[]+*()^$?{}\\|")
 }
 
-// validatePythonCommandWithConfig checks that the PythonCommand doesn't contain potentially dangerous
-// shell metacharacters that could lead to command injection. It also validates the interpreter path
-// against allowed directories, with support for user configuration overrides.
-// This function uses an atomic approach: it splits the command first using shlex, then validates each part.
+// validatePythonCommandWithConfig performs critical security validation of the PythonCommand string.
+//
+// SECURITY RATIONALE:
+// Threat model: Prevent command injection via shell metacharacters in user-supplied PythonCommand.
+// This function does NOT invoke a shell (exec.Command is used), but we must still ensure that only
+// known-safe interpreter names/paths and flags are allowed, to prevent bypasses or abuse.
+// The allowlist approach is chosen to strictly permit only recognized Python interpreter names/paths
+// (e.g., "python3", "/usr/bin/python3") and safe flags, rejecting anything unexpected.
+// The command is split using shlex to handle quoting/escaping safely, and each part is validated.
+// This ensures that even if a user attempts to inject shell metacharacters or unexpected arguments,
+// they will be rejected unless explicitly allowed.
+//
+// Future maintainers: Do not relax these checks without a thorough security review.
 func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) error {
 	// First, split the command using shlex to properly handle quotes and escapes
 	parts, err := shlex.Split(pythonCommand)
