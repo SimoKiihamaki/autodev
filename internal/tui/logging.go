@@ -47,8 +47,11 @@ func (m *model) prepareRunLogFile() {
 	// File writing is handled by the Python process (via --log-file argument) to avoid concurrent file handle issues.
 }
 
+// writeLogHeader is kept as a stub for interface compatibility.
+// Header writing is now handled by the Python runner via --log-file argument
+// to avoid concurrent file handle issues between Go TUI and Python process.
 func (m *model) writeLogHeader() {
-	// Header writing is handled by the Python runner via --log-file
+	// No-op: Header writing delegated to Python runner
 }
 
 // buildLogHeader constructs the log header content for persistence

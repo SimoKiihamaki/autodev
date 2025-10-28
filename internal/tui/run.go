@@ -31,14 +31,6 @@ var (
 	}
 )
 
-// closeLogChannel safely closes a log persistence channel if it exists
-func closeLogChannel(ch *chan runner.Line) {
-	if ch != nil && *ch != nil {
-		close(*ch)
-		*ch = nil
-	}
-}
-
 // safeSendCritical is used for error/panic messages that must not be dropped.
 // It safely sends a critical log line to the channel with timeout and panic recovery.
 func safeSendCritical(logCh chan runner.Line, line runner.Line) {

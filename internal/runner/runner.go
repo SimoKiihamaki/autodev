@@ -32,11 +32,15 @@ var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
 
 // isPrefixOf checks if a prefix path is a prefix of another path, handling path separators correctly
 func isPrefixOf(prefix, path string) bool {
+	// Check for exact match before appending separator
+	if path == prefix {
+		return true
+	}
 	// Ensure prefix ends with a path separator
 	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
 		prefix = prefix + string(os.PathSeparator)
 	}
-	return path == prefix || (strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == os.PathSeparator))
+	return strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == os.PathSeparator)
 }
 
 type Line struct {
