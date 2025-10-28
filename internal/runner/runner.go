@@ -250,7 +250,7 @@ func (o Options) Run(ctx context.Context) error {
 
 	if o.Config.Flags.AllowUnsafe {
 		executorVars[config.EnvAllowUnsafeExecution] = "1"
-		// CI=1 is added separately as it's not an executor variable
+		// CI=1 was removed during environment sanitization and is explicitly re-added here when AllowUnsafe is true (it's not an executor variable)
 		env = append(env, "CI=1")
 	}
 
