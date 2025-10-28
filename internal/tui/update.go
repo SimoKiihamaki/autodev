@@ -161,6 +161,10 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		m.errMsg = ""
 		m.status = "Run canceled."
 		logReason = "canceled"
+		// Reset log buffer, logs, and run dashboard state for consistency with startRunCmd
+		m.logBuf = nil
+		m.logs.SetContent("")
+		m.resetRunDashboard()
 	default:
 		m.errMsg = msg.err.Error()
 		m.status = "Run failed."

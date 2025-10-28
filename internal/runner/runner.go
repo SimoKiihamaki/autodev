@@ -176,9 +176,6 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 //	// If environ contains: "PATH=/usr/bin", "MALFORMED_ENTRY", "HOME=/home/user"
 //	// And removeKeys contains: "MALFORMED_ENTRY"
 //	// Then "MALFORMED_ENTRY" will be removed since the key name matches removeKeys
-//
-// Malformed entries (no '=') are treated as keys without values and will still be
-// checked against removeKeys for exclusion.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
 		return os.Environ()

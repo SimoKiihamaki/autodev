@@ -169,7 +169,7 @@ func Load() (Config, error) {
 	}
 	// Validate and set default MaxBatchSize
 	if c.BatchProcessing.MaxBatchSize <= 0 {
-		c.BatchProcessing.MaxBatchSize = 25
+		c.BatchProcessing.MaxBatchSize = Defaults().BatchProcessing.MaxBatchSize
 	}
 	return c, nil
 }
