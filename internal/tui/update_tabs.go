@@ -14,6 +14,15 @@ var envFlagKeyMap = map[string]string{
 	"i": "infinite",
 }
 
+// tryNavigateOrCycle attempts navigation and cycles if stuck
+func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
+	prev := m.focusedInput
+	m.navigateSettings(direction)
+	if m.focusedInput == prev {
+		m.cycleExecutorChoice(m.focusedInput, cycleDir)
+	}
+}
+
 func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	if msg.Type == tea.KeyEnter && m.focusedInput == "" {
 		m.focusInput("repo")
@@ -76,11 +85,7 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			return *m, nil
 		}
 		if isExecutorToggle(m.focusedInput) {
-			prev := m.focusedInput
-			m.navigateSettings("left")
-			if m.focusedInput == prev {
-				m.cycleExecutorChoice(m.focusedInput, -1)
-			}
+			m.tryNavigateOrCycle("left", -1)
 			return *m, nil
 		}
 		m.navigateSettings("left")
@@ -91,11 +96,7 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			return *m, nil
 		}
 		if isExecutorToggle(m.focusedInput) {
-			prev := m.focusedInput
-			m.navigateSettings("right")
-			if m.focusedInput == prev {
-				m.cycleExecutorChoice(m.focusedInput, 1)
-			}
+			m.tryNavigateOrCycle("right", 1)
 			return *m, nil
 		}
 		m.navigateSettings("right")
