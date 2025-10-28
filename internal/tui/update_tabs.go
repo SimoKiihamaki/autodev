@@ -23,6 +23,9 @@ func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	if m.focusedInput == prev && isExecutorToggle(m.focusedInput) {
 		m.cycleExecutorChoice(m.focusedInput, cycleDir)
 	}
+	// If navigation is blocked and the current input is NOT an executor toggle,
+	// no action is taken. This is intentional: only toggles are cycled as a fallback,
+	// while other input types remain unchanged when navigation is blocked.
 }
 
 func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {

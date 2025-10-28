@@ -35,7 +35,7 @@ func getExecutorToggleHelp() string {
 }
 
 func getGeneralKeysHelp() string {
-	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focuses first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
+	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
 }
 
 const inputFocusHelp = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
@@ -237,7 +237,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 func renderExecutorToggle(label string, choice executorChoice, focused bool) string {
 	codex := renderExecutorOption("Codex", choice == executorCodex)
 	claude := renderExecutorOption("Claude", choice == executorClaude)
-	line := fmt.Sprintf("%s: %s  %s", label, codex, claude)
+	line := fmt.Sprintf("%s: %s%s%s", label, codex, toggleSeparator, claude)
 	return focusStyle(focused).Render(line)
 }
 
