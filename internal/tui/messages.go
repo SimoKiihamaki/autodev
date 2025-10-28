@@ -53,7 +53,7 @@ func (m model) readLogsBatch() tea.Cmd {
 			case next, ok := <-ch:
 				if !ok {
 					channelClosed = true
-					continue // continue to next iteration of for loop, which will exit due to channelClosed = true
+					break // exit the loop immediately when the channel is closed
 				}
 				lines = append(lines, next)
 			default:

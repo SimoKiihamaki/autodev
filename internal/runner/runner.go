@@ -24,8 +24,8 @@ var bufferPool = sync.Pool{
 	},
 }
 
-// allowedNamePattern validates python interpreter names (e.g., "python3", "python3.9")
-var allowedNamePattern = regexp.MustCompile(`^python3(\.\d+)?$`)
+// allowedNamePattern validates python interpreter names (e.g., "python", "python3", "python3.9")
+var allowedNamePattern = regexp.MustCompile(`^python(\d)?(\.\d+)?$`)
 
 type Line struct {
 	Time time.Time
@@ -381,6 +381,8 @@ func (o Options) Run(ctx context.Context) error {
 	args := buildArgs(o.Config, tmpPath, o.LogFilePath, o.LogLevel)
 
 	// Build env
+	// Remove CI environment variable to prevent unintended CI behavior in the automation script
+	// CI will only be re-added when AllowUnsafe is explicitly enabled
 	env := sanitizedEnviron(
 		config.EnvExecutorPolicy,
 		config.EnvExecutorImplement,
