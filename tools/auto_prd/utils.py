@@ -111,8 +111,10 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> Tuple[str, str
     Extract stdout and stderr from a CalledProcessError, handling both output and stdout attributes.
 
     In some Python versions, CalledProcessError.output is an alias for stdout, but in others,
-    only one of output or stdout may be present. To reliably extract the output, both attributes
-    are checked: output is preferred if present, otherwise stdout is used.
+    only one of output or stdout may be present, or both may be present and may contain the same or
+    different data. To reliably extract the output, both attributes are checked: output is preferred
+    if present (i.e., not None), otherwise stdout is used. This function handles cases where only one
+    is populated, or both are present, to ensure consistent extraction of process output.
     """
     stderr = _coerce_text(getattr(exc, "stderr", None))
     output_val = getattr(exc, "output", None)

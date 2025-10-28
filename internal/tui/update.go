@@ -42,8 +42,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tab = tabRun
 		m.runFeedAutoFollow = true
 		// Clear log buffer and logs display for new run.
-		m.logBuf = nil
-		m.logs.SetContent("")
+		m.resetLogState()
 		return m, nil
 
 	case runFinishMsg:

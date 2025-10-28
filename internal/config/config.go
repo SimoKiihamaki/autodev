@@ -177,7 +177,7 @@ func Load() (Config, error) {
 	}
 	// Validate and set default MaxBatchSize
 	if c.BatchProcessing.MaxBatchSize <= 0 {
-		log.Printf("Warning: Invalid max_batch_size (%d), using default value %d", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
+		log.Printf("Warning: Invalid max_batch_size (%d), using default value %d. Note: Invalid values are corrected in memory but not persisted to the config file.", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
 		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
 	}
 	return c, nil

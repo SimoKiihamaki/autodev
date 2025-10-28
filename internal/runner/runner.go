@@ -554,7 +554,7 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 		if !dropping {
 			dropping = true
 			// Warning: Log lines may be dropped here if the channel is full. Any dropped lines are not delivered to the TUI or its display.
-			// The runner itself is responsible for writing the complete log file synchronously; the TUI does not persist log lines to disk.
+			// The Python process (invoked with --log-file) is responsible for writing the complete log file synchronously; the Go runner and TUI do not persist log lines to disk.
 			msg := fmt.Sprintf("log channel backlog full (capacity %d); downstream consumer may be too slow", cap(logs))
 			sendLine(logs, Line{Time: time.Now(), Text: msg, Err: true})
 		}
