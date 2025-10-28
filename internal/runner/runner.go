@@ -330,15 +330,16 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			}
 		}
 		if !allowed {
-			return fmt.Errorf(
-				"interpreter path %q is not in allowed directories.\n"+
-					"To permit this interpreter, add its directory as a prefix or a regex pattern to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):\n\n"+
-					"  # Prefix match example (for simple cases):\n"+
-					"  allowed_python_dirs:\n"+
-					"    - %s\n"+
-					"  # Or as a regex pattern (for complex version-specific paths or multiple installation patterns):\n"+
-					"  # - '^%s([/\\\\]|$)'\n",
-				absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
+			const errMsg = `interpreter path %q is not in allowed directories.
+To permit this interpreter, add its directory as a prefix or a regex pattern to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):
+
+  # Prefix match example (for simple cases):
+  allowed_python_dirs:
+    - %s
+  # Or as a regex pattern (for complex version-specific paths or multiple installation patterns):
+  # - '^%s([/\\]|$)'
+`
+			return fmt.Errorf(errMsg, absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
 		}
 	} else {
 		// No path separator: must be a bare allowed name
@@ -488,12 +489,15 @@ func (o Options) Run(ctx context.Context) error {
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
-	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
-	pythonArgs := make([]string, 0, len(pyFlags)+len(args)+1)
+	// Compute capacity dynamically: add 1 only if "-u" will be appended
+	needUnbuffered := !hasUnbufferedFlag(pyFlags)
+	capacity := len(pyFlags) + len(args)
+	if needUnbuffered {
+		capacity++
+	}
+	pythonArgs := make([]string, 0, capacity)
 	pythonArgs = append(pythonArgs, pyFlags...)
-
-	// Only append "-u" if not already present in pyFlags
-	if !hasUnbufferedFlag(pyFlags) {
+	if needUnbuffered {
 		pythonArgs = append(pythonArgs, "-u")
 	}
 
