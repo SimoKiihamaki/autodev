@@ -171,11 +171,15 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 //
 //	env := sanitizedEnviron("SECRET_KEY", "TEMP_VAR")
 //
-// For environment variables without '=', the entire string is treated as the key name:
+// For each environment entry, the key name is determined as the substring before the first '='.
+// If an entry does not contain '=', the entire string is treated as the key name.
+// Any entry whose key name matches an entry in removeKeys will be removed.
 //
-//	// If environ contains: "PATH=/usr/bin", "MALFORMED_ENTRY", "HOME=/home/user"
-//	// And removeKeys contains: "MALFORMED_ENTRY"
-//	// Then "MALFORMED_ENTRY" will be removed since the key name matches removeKeys
+// Example:
+//
+//	env := sanitizedEnviron("SECRET_KEY", "MALFORMED_ENTRY")
+//	// If environ contains: "PATH=/usr/bin", "MALFORMED_ENTRY", "SECRET_KEY=foo", "HOME=/home/user"
+//	// Then "MALFORMED_ENTRY" and "SECRET_KEY=foo" will be removed since their key names match removeKeys.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
 		return os.Environ()
@@ -282,8 +286,8 @@ func (o Options) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse PythonCommand %q: %w", o.Config.PythonCommand, err)
 	}
-	if len(pyParts) == 0 || pyParts[0] == "" {
-		return fmt.Errorf("PythonCommand %q resulted in empty command or binary path", o.Config.PythonCommand)
+	if len(pyParts) == 0 {
+		return fmt.Errorf("PythonCommand %q resulted in no command parts after splitting", o.Config.PythonCommand)
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
