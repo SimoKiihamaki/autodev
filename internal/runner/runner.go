@@ -166,6 +166,19 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 // sanitizedEnviron returns a copy of the current environment with the specified keys removed.
 // removeKeys is a variadic list of environment variable names to exclude from the returned slice.
 // The returned slice can be used as the environment for subprocesses.
+//
+// Example:
+//
+//	env := sanitizedEnviron("SECRET_KEY", "TEMP_VAR")
+//
+// For environment variables without '=', the entire string is treated as the key name:
+//
+//	// If environ contains: "PATH=/usr/bin", "MALFORMED_ENTRY", "HOME=/home/user"
+//	// And removeKeys contains: "MALFORMED_ENTRY"
+//	// Then "MALFORMED_ENTRY" will be removed since the key name matches removeKeys
+//
+// Malformed entries (no '=') are treated as keys without values and will still be
+// checked against removeKeys for exclusion.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
 		return os.Environ()
