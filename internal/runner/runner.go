@@ -207,7 +207,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// NOTE: This is a hardcoded list of common Python installation paths.
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
-		// Allowlist can be extended via config for non-standard Python installations (e.g., pyenv, conda, virtualenvs)
+		// Allowlist can be extended via config for non-standard Python installations.
 		defaultAllowedDirs := []string{
 			// Unix-like systems
 			"/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/python/libexec/bin/",
