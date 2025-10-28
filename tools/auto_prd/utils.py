@@ -91,7 +91,9 @@ def parse_tasks_left(output: str) -> Optional[int]:
 
 def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
     stdout, stderr = _extract_stdout_stderr(exc)
-    text = (stderr or "") + "\n" + (stdout or "")
+    stdout = _coerce_text(stdout)
+    stderr = _coerce_text(stderr)
+    text = f"{stderr}\n{stdout}"
     match = re.search(r"HTTP\s+(\d{3})", text)
     if match:
         return match.group(1)
