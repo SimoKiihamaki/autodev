@@ -162,6 +162,9 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	return args
 }
 
+// sanitizedEnviron returns a copy of the current environment with the specified keys removed.
+// removeKeys is a variadic list of environment variable names to exclude from the returned slice.
+// The returned slice can be used as the environment for subprocesses.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
 		return os.Environ()
@@ -185,7 +188,16 @@ func sanitizedEnviron(removeKeys ...string) []string {
 	return out
 }
 
-// setExecutorEnv sanitizes and sets executor-related environment variables
+// setExecutorEnv appends executor-related environment variables to the provided environment slice.
+//
+// Parameters:
+//
+//	env - the base environment as a slice of strings in "KEY=VALUE" format.
+//	executorVars - a map of environment variable names to values to be added.
+//
+// Returns:
+//
+//	A new environment slice with the executorVars added (if their value is not empty).
 func setExecutorEnv(env []string, executorVars map[string]string) []string {
 	for key, value := range executorVars {
 		if value != "" {
