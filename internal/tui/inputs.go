@@ -296,18 +296,21 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 }
 
 func (m *model) cycleExecutorChoice(name string, direction int) {
-	var current executorChoice
+	// Get a pointer to the appropriate executor choice field
+	var target *executorChoice
 	switch name {
 	case "toggleLocal":
-		current = m.execLocalChoice
+		target = &m.execLocalChoice
 	case "togglePR":
-		current = m.execPRChoice
+		target = &m.execPRChoice
 	case "toggleReview":
-		current = m.execReviewChoice
+		target = &m.execReviewChoice
 	default:
 		return
 	}
 
+	// Find current index in executorChoices
+	current := *target
 	idx := 0
 	for i, choice := range executorChoices {
 		if choice == current {
@@ -315,18 +318,11 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 			break
 		}
 	}
+
+	// Calculate new choice and update via pointer
 	n := len(executorChoices)
 	newIdx := wrapIndex(idx, direction, n)
-	newChoice := executorChoices[newIdx]
-
-	switch name {
-	case "toggleLocal":
-		m.execLocalChoice = newChoice
-	case "togglePR":
-		m.execPRChoice = newChoice
-	case "toggleReview":
-		m.execReviewChoice = newChoice
-	}
+	*target = executorChoices[newIdx]
 }
 
 func isExecutorToggle(name string) bool {

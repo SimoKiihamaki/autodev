@@ -12,12 +12,25 @@ const focusedBgColor = "240"
 // toggleSeparator defines the spacing between toggle options (intentional double space)
 const toggleSeparator = "  "
 
+// generateToggleHint creates help text dynamically from executorChoices to future-proof against changes
+func generateToggleHint() string {
+	choices := make([]string, len(executorChoices))
+	for i, choice := range executorChoices {
+		choices[i] = strings.Title(string(choice))
+	}
+	return "Enter / Space to switch " + strings.Join(choices, "/")
+}
+
+func getExecutorToggleHelp() string {
+	return fmt.Sprintf("Toggle focused: %%s (%s, Tab or arrows to navigate, Esc blur)", generateToggleHint())
+}
+
+func getGeneralKeysHelp() string {
+	return fmt.Sprintf("Keys: ↑/↓/←/→ move focus · Enter focuses first field · %s when on a switch · Ctrl+S save · 1-%%d,? switch tabs", generateToggleHint())
+}
+
 const (
-	// Help text constants for better readability
-	toggleHint         = "Enter / Space to switch Codex/Claude"
-	executorToggleHelp = "Toggle focused: %s (" + toggleHint + ", Tab or arrows to navigate, Esc blur)"
-	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
-	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · " + toggleHint + " when on a switch · Ctrl+S save · 1-%d,? switch tabs"
+	inputFocusHelp = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
 )
 
 func focusStyle(active bool) lipgloss.Style {
@@ -205,12 +218,12 @@ func renderSettingsView(b *strings.Builder, m model) {
 
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
-			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(executorToggleHelp, executorToggleLabel(m.focusedInput))) + "\n")
+			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(getExecutorToggleHelp(), executorToggleLabel(m.focusedInput))) + "\n")
 		} else {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelp, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\n"+generalKeysHelp+"\n", len(tabNames)))
+		b.WriteString(fmt.Sprintf("\n"+getGeneralKeysHelp()+"\n", len(tabNames)))
 	}
 }
 
