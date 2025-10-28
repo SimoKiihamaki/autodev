@@ -41,7 +41,7 @@ for i in range(10):
 	if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
 		t.Fatalf("write script: %v", err)
 	}
-	if err := os.WriteFile(prdPath, []byte("# dummy"), 0o644); err != nil {
+	if err := os.WriteFile(prdPath, []byte("# dummy"), 0o600); err != nil {
 		t.Fatalf("write prd: %v", err)
 	}
 

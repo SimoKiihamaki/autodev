@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -163,6 +164,36 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	return args
 }
 
+// validatePythonCommand checks that the PythonCommand doesn't contain potentially dangerous
+// shell metacharacters that could lead to command injection.
+func validatePythonCommand(pythonCommand string) error {
+	// Define a regex pattern for shell metacharacters that could be dangerous
+	// This includes characters like ; & | ` $ () [] {} <> * ? ~ ! #
+	dangerousChars := regexp.MustCompile(`[;&|` + "`" + `\$\(\)\[\]\{\}<>\*\?~!#]`)
+
+	if dangerousChars.MatchString(pythonCommand) {
+		return fmt.Errorf("PythonCommand contains potentially dangerous characters: %q", pythonCommand)
+	}
+
+	// Additional check: ensure the command starts with a safe interpreter name
+	// Allow common Python interpreters like python, python3, /usr/bin/python3, etc.
+	parts := strings.Fields(pythonCommand)
+	if len(parts) == 0 {
+		return fmt.Errorf("PythonCommand is empty")
+	}
+
+	interpreter := parts[0]
+	// Allow absolute paths or simple interpreter names without path separators
+	if strings.ContainsAny(interpreter, "/\\") {
+		// If it contains path separators, it should be an absolute path
+		if !filepath.IsAbs(interpreter) {
+			return fmt.Errorf("PythonCommand with path must be absolute: %q", interpreter)
+		}
+	}
+
+	return nil
+}
+
 // sanitizedEnviron returns a copy of the current environment with the specified keys removed.
 // removeKeys is a variadic list of environment variable names to exclude from the returned slice.
 // The returned slice can be used as the environment for subprocesses.
@@ -182,7 +213,7 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 //	// Then "MALFORMED_ENTRY" and "SECRET_KEY=foo" will be removed since their key names match removeKeys.
 func sanitizedEnviron(removeKeys ...string) []string {
 	if len(removeKeys) == 0 {
-		return os.Environ()
+		return append([]string(nil), os.Environ()...)
 	}
 	skip := make(map[string]struct{}, len(removeKeys))
 	for _, key := range removeKeys {
@@ -282,6 +313,11 @@ func (o Options) Run(ctx context.Context) error {
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
+	// Validate PythonCommand to prevent command injection
+	if err := validatePythonCommand(o.Config.PythonCommand); err != nil {
+		return err
+	}
+
 	pyParts, err := shlex.Split(o.Config.PythonCommand)
 	if err != nil {
 		return fmt.Errorf("failed to parse PythonCommand %q: %w", o.Config.PythonCommand, err)
