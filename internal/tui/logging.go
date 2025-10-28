@@ -44,7 +44,7 @@ func (m *model) prepareRunLogFile() {
 	m.logFilePath = path
 	m.logStatus = abbreviatePath(path)
 	// Note: The log file is not opened here; only the path is prepared.
-	// File writing is handled elsewhere to avoid concurrent file handle issues.
+	// File writing is handled by the Python process (via --log-file argument) to avoid concurrent file handle issues.
 }
 
 func (m *model) writeLogHeader() {
@@ -69,8 +69,8 @@ func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, c
 // persistLogLine is no longer needed - log persistence is handled by the Python runner via --log-file
 
 func (m *model) closeLogFile(reason string) {
-
-	// File writing is handled by the Python runner
+	// Note: Log file persistence is handled exclusively by the Python process via --log-file argument.
+	// The Go runner and TUI do not write log lines to disk; they only manage the UI state and file path.
 	// Just update the status display
 	if m.logFilePath != "" {
 		summary := abbreviatePath(m.logFilePath)

@@ -172,7 +172,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
                     "data": {
                         "repository": {
                             "pullRequest": {
-                                "issueComments": {"nodes": []},
+                                "comments": {"nodes": []},
                                 "reviews": {
                                     "nodes": [
                                         {

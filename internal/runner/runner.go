@@ -30,6 +30,15 @@ var allowedNamePattern = regexp.MustCompile(`^python(\d)?(\.\d+)?$`)
 // uFlagPattern matches valid short option groups containing 'u', e.g. -uc, -Eu, -cEu, etc.
 var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
 
+// isPrefixOf checks if a prefix path is a prefix of another path, handling path separators correctly
+func isPrefixOf(prefix, path string) bool {
+	// Ensure prefix ends with a path separator
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix = prefix + string(os.PathSeparator)
+	}
+	return path == prefix || (strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == os.PathSeparator))
+}
+
 type Line struct {
 	Time time.Time
 	Text string
@@ -250,11 +259,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 
 		// Check default prefixes first
 		for _, prefix := range defaultAllowedPrefixes {
-			// Ensure prefix ends with a path separator
-			if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
-				prefix = prefix + string(os.PathSeparator)
-			}
-			if absPath == prefix || (strings.HasPrefix(absPath, prefix) && (len(absPath) == len(prefix) || absPath[len(prefix)] == os.PathSeparator)) {
+			if isPrefixOf(prefix, absPath) {
 				allowed = true
 				break
 			}
@@ -289,12 +294,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 					}
 				} else {
 					// Simple prefix match
-					// Ensure prefix ends with a path separator
-					prefix := dir
-					if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
-						prefix = prefix + string(os.PathSeparator)
-					}
-					if absPath == prefix || (strings.HasPrefix(absPath, prefix) && (len(absPath) == len(prefix) || absPath[len(prefix)] == os.PathSeparator)) {
+					if isPrefixOf(dir, absPath) {
 						allowed = true
 						break
 					}
