@@ -181,8 +181,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 		m.status = "Run canceled."
 		logReason = "canceled"
 		// Reset log buffer, logs, and run dashboard state to mirror initialization in startRunCmd.
-		m.logBuf = nil
-		m.logs.SetContent("")
+		m.resetLogState()
 		m.resetRunDashboard()
 	default:
 		m.errMsg = msg.err.Error()

@@ -42,6 +42,7 @@ func (m model) readLogsBatch() tea.Cmd {
 		lines = append(lines, line)
 
 		channelClosed := false
+		// Try to read additional lines without blocking
 		for len(lines) < maxBatch && !channelClosed {
 			select {
 			case next, ok := <-ch:
@@ -51,6 +52,7 @@ func (m model) readLogsBatch() tea.Cmd {
 				}
 				lines = append(lines, next)
 			default:
+				// No more lines immediately available
 				return logBatchMsg{lines: lines, closed: false}
 			}
 		}

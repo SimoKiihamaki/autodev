@@ -297,3 +297,9 @@ func (m *model) settingsInputMap() map[string]*textinput.Model {
 	}
 	return out
 }
+
+// resetLogState resets the log buffer and viewport content to initial state
+func (m *model) resetLogState() {
+	m.logBuf = nil
+	m.logs.SetContent("")
+}

@@ -91,8 +91,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	}
 	m.logPersistCh = make(chan runner.Line, 100) // Buffered to prevent UI blocking
 	ch := m.logCh
-	m.logBuf = nil
-	m.logs.SetContent("")
+	m.resetLogState()
 	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)
 	m.tab = tabRun

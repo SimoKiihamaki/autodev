@@ -393,7 +393,19 @@ func (o Options) Run(ctx context.Context) error {
 	// Use exec.Command to allow graceful Interrupt before a forced Kill on ctx cancel
 	pythonArgs := make([]string, 0, len(pyFlags)+len(args)+1)
 	pythonArgs = append(pythonArgs, pyFlags...)
-	pythonArgs = append(pythonArgs, "-u")
+
+	// Only append "-u" if not already present in pyFlags
+	hasU := false
+	for _, flag := range pyFlags {
+		if flag == "-u" {
+			hasU = true
+			break
+		}
+	}
+	if !hasU {
+		pythonArgs = append(pythonArgs, "-u")
+	}
+
 	pythonArgs = append(pythonArgs, args...)
 	cmd := exec.Command(pyBin, pythonArgs...)
 	cmd.Env = env
