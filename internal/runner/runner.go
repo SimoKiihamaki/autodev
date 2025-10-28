@@ -257,7 +257,7 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 		// This limitation exists for security reasons to prevent execution of interpreters from arbitrary locations.
 		// This will fail for valid Python installations in other locations (e.g., pyenv, conda, custom paths).
 		// Allowlist can be extended via the allowed_python_dirs config field for non-standard Python installations.
-		// See the returned error message for instructions on configuring allowed_python_dirs.
+		// See the error message returned below (at line 342) for instructions on configuring allowed_python_dirs.
 		// Symlink validation ensures the resolved path itself is in an allowed directory.
 
 		// Simple prefix matches for Unix-like systems
@@ -558,8 +558,8 @@ func (o Options) Run(ctx context.Context) error {
 	}
 }
 
-// stream forwards subprocess output to the log channel without blocking. When the channel
-// backlog fills (UI too slow), it emits a warning and drops live-feed lines.
+// stream attempts to forward subprocess output to the log channel without blocking for normal log lines.
+// When the channel backlog fills (UI too slow), it emits a warning (which may block) and drops live-feed lines.
 // The Python process (invoked with --log-file) is responsible for writing the complete log file synchronously; the Go runner and TUI do not persist log lines to disk.
 func stream(r io.Reader, isErr bool, logs chan Line) {
 	if logs == nil {
