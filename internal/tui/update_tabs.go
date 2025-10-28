@@ -76,7 +76,11 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			return *m, nil
 		}
 		if isExecutorToggle(m.focusedInput) {
-			m.cycleExecutorChoice(m.focusedInput, -1)
+			prev := m.focusedInput
+			m.navigateSettings("left")
+			if m.focusedInput == prev {
+				m.cycleExecutorChoice(m.focusedInput, -1)
+			}
 			return *m, nil
 		}
 		m.navigateSettings("left")
@@ -87,7 +91,11 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			return *m, nil
 		}
 		if isExecutorToggle(m.focusedInput) {
-			m.cycleExecutorChoice(m.focusedInput, 1)
+			prev := m.focusedInput
+			m.navigateSettings("right")
+			if m.focusedInput == prev {
+				m.cycleExecutorChoice(m.focusedInput, 1)
+			}
 			return *m, nil
 		}
 		m.navigateSettings("right")

@@ -11,7 +11,7 @@ const focusedBgColor = "240"
 
 const (
 	// Help text constants for better readability
-	toggleHint         = "←/→ or Enter/Space to switch Codex/Claude"
+	toggleHint         = "Enter/Space to switch Codex/Claude"
 	executorToggleHelp = "Toggle focused: %s (" + toggleHint + ", Tab or arrows to navigate, Esc unfocus)"
 	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to unfocus)"
 	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · " + toggleHint + " when on a switch · Ctrl+S save · 1-%d,? switch tabs"
