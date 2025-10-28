@@ -97,7 +97,7 @@ func (m *model) handleSettingsTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
 			switch msg.String() {
-			case "enter", "space", " ":
+			case "enter", "space":
 				m.cycleExecutorChoice(m.focusedInput, 1)
 				return *m, nil
 			}

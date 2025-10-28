@@ -11,9 +11,10 @@ const focusedBgColor = "240"
 
 const (
 	// Help text constants for better readability
-	executorToggleHelp = "Toggle focused: %s (←/→ or Enter/Space to switch Codex/Claude, Tab or arrows to navigate, Esc blur)"
+	toggleHint         = "←/→ or Enter/Space to switch Codex/Claude"
+	executorToggleHelp = "Toggle focused: %s (" + toggleHint + ", Tab or arrows to navigate, Esc blur)"
 	inputFocusHelp     = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
-	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · ←/→ or Enter/Space toggle Codex/Claude when on a switch · Ctrl+S save · 1-%d,? switch tabs"
+	generalKeysHelp    = "Keys: ↑/↓/←/→ move focus · Enter focuses first field · " + toggleHint + " when on a switch · Ctrl+S save · 1-%d,? switch tabs"
 )
 
 func focusStyle(active bool) lipgloss.Style {

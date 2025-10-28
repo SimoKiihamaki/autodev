@@ -62,6 +62,7 @@ func (m *model) focusInput(inputName string) {
 	case "policy":
 		m.inPolicy.Focus()
 	case "toggleLocal", "togglePR", "toggleReview":
+		// Toggles have no text input field to focus
 		return
 	case "waitmin":
 		m.inWaitMin.Focus()

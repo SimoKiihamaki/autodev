@@ -269,6 +269,8 @@ func (m *model) initSettingsInputs() {
 
 func (m *model) initExecutorChoices() {
 	phase := m.cfg.PhaseExecutors
+	// The Local Loop toggle controls both the Implement and Fix phases,
+	// so we merge both fields to determine the local executor choice.
 	m.execLocalChoice = resolveExecutorChoice(phase.Implement, phase.Fix)
 	m.execPRChoice = resolveExecutorChoice(phase.PR)
 	m.execReviewChoice = resolveExecutorChoice(phase.ReviewFix)
