@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -216,7 +217,7 @@ func TestResetToDefaultsMarksDirty(t *testing.T) {
 	custom.Flags.AllowUnsafe = true
 	custom.Flags.DryRun = true
 	custom.RunPhases = config.Phases{Local: false, PR: false, ReviewFix: true}
-	custom.FollowLogs = boolPtr(false)
+	custom.FollowLogs = utils.BoolPtr(false)
 	custom.PhaseExecutors = config.PhaseExec{
 		Implement: "codex",
 		Fix:       "codex",

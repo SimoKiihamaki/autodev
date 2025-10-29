@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -96,7 +97,7 @@ func Defaults() Config {
 		BaseBranch:     "main",
 		Branch:         "",
 		CodexModel:     "gpt-5-codex",
-		FollowLogs:     boolPtr(true),
+		FollowLogs:     utils.BoolPtr(true),
 		Flags: Flags{
 			AllowUnsafe:     false,
 			DryRun:          false,
@@ -269,7 +270,7 @@ func (c Config) Clone() Config {
 		copyCfg.AllowedPythonDirs = append([]string(nil), c.AllowedPythonDirs...)
 	}
 	if c.FollowLogs != nil {
-		copyCfg.FollowLogs = boolPtr(*c.FollowLogs)
+		copyCfg.FollowLogs = utils.BoolPtr(*c.FollowLogs)
 	}
 
 	// Clone pointer fields
@@ -420,11 +421,6 @@ func (c Config) GetAllowedPythonDirs() []string {
 		return []string{}
 	}
 	return append([]string(nil), c.AllowedPythonDirs...)
-}
-
-// boolPtr returns a pointer to a bool value.
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 // intPtr returns a pointer to an int value.

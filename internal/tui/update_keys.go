@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 	clipboard "github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -194,7 +195,7 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			handled = true
 		case ActToggleFollow:
 			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = boolPtr(m.followLogs)
+			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
 			m.runFeedAutoFollow = m.followLogs
 			if m.runFeedAutoFollow && len(m.runFeedBuf) > 0 {
 				m.runFeed.GotoBottom()
@@ -542,7 +543,7 @@ func (m *model) handleLogsTabActions(actions []Action, msg tea.KeyMsg) (bool, te
 			handled = true
 		case ActToggleFollow:
 			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = boolPtr(m.followLogs)
+			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
 			if m.followLogs {
 				m.logs.GotoBottom()
 			}

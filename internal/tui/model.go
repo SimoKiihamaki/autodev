@@ -9,6 +9,7 @@ import (
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/SimoKiihamaki/autodev/internal/runner"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -208,7 +209,7 @@ func New() model {
 	if cfg.FollowLogs != nil {
 		follow = *cfg.FollowLogs
 	} else {
-		cfg.FollowLogs = boolPtr(follow)
+		cfg.FollowLogs = utils.BoolPtr(follow)
 	}
 	m.followLogs = follow
 	m.runFeedAutoFollow = follow

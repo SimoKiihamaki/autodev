@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 )
 
 func TestConfigCloneIndependence(t *testing.T) {
@@ -48,7 +50,7 @@ func TestConfigEqual(t *testing.T) {
 	}
 
 	modified = base.Clone()
-	modified.FollowLogs = boolPtr(!*base.FollowLogs)
+	modified.FollowLogs = utils.BoolPtr(!*base.FollowLogs)
 	if base.Equal(modified) {
 		t.Fatalf("expected differing follow_logs to report inequality")
 	}
