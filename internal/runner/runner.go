@@ -41,8 +41,9 @@ func isPrefixOf(prefix, path string) bool {
 		return true
 	}
 	// Ensure prefix ends with a path separator using filepath.Separator for cross-platform consistency
-	if !strings.HasSuffix(cleanPrefix, string(filepath.Separator)) {
-		cleanPrefix += string(filepath.Separator)
+	sep := string(filepath.Separator)
+	if !strings.HasSuffix(cleanPrefix, sep) {
+		cleanPrefix += sep
 	}
 	return strings.HasPrefix(cleanPath, cleanPrefix)
 }
@@ -142,6 +143,8 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // All paths passed to this function should be absolute.
 // Note: repoPath should be resolved from symlinks before calling this function to prevent TOCTOU issues
 func validatePythonScriptPath(scriptPath, repoPath string) error {
+	sep := string(filepath.Separator)
+
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
@@ -163,7 +166,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		if filepath.IsAbs(relPath) {
 			return fmt.Errorf("PythonScript path cannot be made relative to repository root (possible different drives/volumes on Windows): %q (repo: %q)", scriptPath, repoPath)
 		}
-		for _, part := range strings.Split(relPath, string(filepath.Separator)) {
+		for _, part := range strings.Split(relPath, sep) {
 			if part == ".." {
 				return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
 			}
@@ -230,6 +233,25 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 	return resolved, nil
 }
 
+// buildScriptArgs constructs the argument list for invoking the configured Python script.
+//
+// Parameters:
+//   - cfg:        The configuration object containing the Python script path and repository path.
+//   - prdPath:    The path to the PRD file to be passed to the script.
+//   - logFilePath:The path to the log file to be passed to the script.
+//   - logLevel:   The log level to be passed to the script.
+//
+// Returns:
+//   - []string:   The argument list to be used for invoking the Python script.
+//   - error:      An error if argument construction or validation fails.
+//
+// Security considerations:
+//   - This function performs extensive validation and resolution of the script path to prevent
+//     security vulnerabilities, such as TOCTOU (Time-of-check to time-of-use) attacks.
+//   - It resolves symlinks in both the repository path and the script path to ensure that the
+//     script to be executed is within the intended repository and not replaced by a malicious file.
+//   - The function uses validatePythonScriptPath to enforce that the resolved script path is safe.
+//   - Any failure in path resolution or validation results in an error, preventing execution.
 func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
 	script := cfg.PythonScript
 
