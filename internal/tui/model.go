@@ -536,3 +536,15 @@ func indexForTabID(tabs []string, id string) int {
 func (m model) hasTabID(id string) bool {
 	return indexForTabID(m.tabs, id) >= 0
 }
+
+// getLastErrorText returns the most recent error text from the model.
+// It checks lastRunErr first, then falls back to errMsg, and trims whitespace.
+func getLastErrorText(m *model) string {
+	if m.lastRunErr != nil {
+		return strings.TrimSpace(m.lastRunErr.Error())
+	}
+	if m.errMsg != "" {
+		return strings.TrimSpace(m.errMsg)
+	}
+	return ""
+}

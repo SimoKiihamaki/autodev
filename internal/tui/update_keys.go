@@ -137,13 +137,7 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			}
 			handled = true
 		case ActCopyError:
-			text := ""
-			if m.lastRunErr != nil {
-				text = m.lastRunErr.Error()
-			} else {
-				text = m.errMsg
-			}
-			text = strings.TrimSpace(text)
+			text := getLastErrorText(m)
 			note := ""
 			if text == "" {
 				note = "No error available to copy"

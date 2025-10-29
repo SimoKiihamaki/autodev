@@ -201,12 +201,7 @@ func renderRunView(b *strings.Builder, m model) {
 			b.WriteString(annotateUnsaved("Status: Idle", m.dirty) + "\n")
 		}
 
-		lastErrText := ""
-		if m.lastRunErr != nil {
-			lastErrText = strings.TrimSpace(m.lastRunErr.Error())
-		} else if m.errMsg != "" {
-			lastErrText = strings.TrimSpace(m.errMsg)
-		}
+		lastErrText := getLastErrorText(&m)
 		if lastErrText != "" {
 			primary := lastErrText
 			if idx := strings.IndexByte(primary, '\n'); idx >= 0 {
