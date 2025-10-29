@@ -30,6 +30,7 @@ func atoiSafe(s string) (int, error) {
 // When n <= 0, this function returns (0, false) to make misuse explicit
 // rather than silently returning a valid-looking but potentially unsafe index.
 // The returned bool indicates whether the index is valid for use in slice/array access.
+// Assumes delta values are reasonable for UI navigation (not extreme values that would cause overflow).
 func wrapIndex(current, delta, n int) (int, bool) {
 	// n must be > 0 for modulo operation to be safe
 	if n <= 0 {
@@ -39,6 +40,16 @@ func wrapIndex(current, delta, n int) (int, bool) {
 	if current < 0 || current >= n {
 		return 0, false
 	}
+	// Check for potential overflow - only for extreme delta values
+	// This handles the case where delta is extremely large (positive or negative)
+	// For typical UI navigation (delta = -1, 1, etc.), this won't trigger
+	if delta > 0 && current > 0 && delta > int(^uint(0)>>1)-current {
+		return 0, false // Would overflow on addition
+	}
+	if delta < 0 && current > 0 && -delta > int(^uint(0)>>1)+current {
+		return 0, false // Would overflow on addition
+	}
+
 	idx := (current + delta) % n
 	if idx < 0 {
 		idx += n

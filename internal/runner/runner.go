@@ -146,6 +146,18 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
 	}
+	// Ensure scriptPath is fully symlink-resolved
+	resolvedScriptPath, err := filepath.EvalSymlinks(scriptPath)
+	if err != nil {
+		return fmt.Errorf("internal error: failed to resolve symlinks for scriptPath %q: %w", scriptPath, err)
+	}
+	cleanScriptPath := filepath.Clean(scriptPath)
+	cleanResolvedScriptPath := filepath.Clean(resolvedScriptPath)
+	if cleanScriptPath != cleanResolvedScriptPath {
+		return fmt.Errorf("internal error: validatePythonScriptPath received non-symlink-resolved path: %q (resolved: %q)", scriptPath, resolvedScriptPath)
+	}
+	// Use the resolved path for the remainder of the function
+	scriptPath = resolvedScriptPath
 
 	// If repoPath is configured, ensure the script is within the repo
 	if repoPath != "" {

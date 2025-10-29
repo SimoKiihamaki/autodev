@@ -40,13 +40,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Handle quit after save if the flag is set
 		if m.quitAfterSave {
-			m.quitAfterSave = false
 			if m.lastSaveErr == nil {
+				// Only clear the flag when save succeeds
+				m.quitAfterSave = false
 				m.cancelQuitConfirm()
 				m.closeLogFile("quit")
 				return m, tea.Quit
 			}
-			// On error, show the error and don't quit
+			// On error, preserve quitAfterSave so user can retry saving without re-confirming quit
 			m.cancelQuitConfirm()
 		}
 		return m, nil
