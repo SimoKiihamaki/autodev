@@ -163,8 +163,10 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		if filepath.IsAbs(relPath) {
 			return fmt.Errorf("PythonScript path cannot be made relative to repository root (possible different drives/volumes on Windows): %q (repo: %q)", scriptPath, repoPath)
 		}
-		if strings.Contains(relPath, "..") {
-			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
+		for _, part := range strings.Split(relPath, string(os.PathSeparator)) {
+			if part == ".." {
+				return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
+			}
 		}
 		return nil
 	}
