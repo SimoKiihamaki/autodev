@@ -19,6 +19,14 @@ from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
 
 
+MENTION_OVERRIDES = {
+    "copilot": "@copilot-pull-request-reviewer[bot]",
+    "copilot-pull-request-reviewer": "@copilot-pull-request-reviewer[bot]",
+    "github-copilot": "@copilot-pull-request-reviewer[bot]",
+    "github-copilot[bot]": "@copilot-pull-request-reviewer[bot]",
+}
+
+
 GATHER_THREAD_COMMENTS_QUERY = """
 query($threadId:ID!,$cursor:String){
   node(id:$threadId){
@@ -340,8 +348,8 @@ def acknowledge_review_items(
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
         if isinstance(comment_id, int) and comment_id not in processed_ids:
-            author = (item.get("author") or "").strip().lower()
-            mention = f"@{author}" if author else REVIEW_FALLBACK_MENTION
+            author = (item.get("author") or "").strip()
+            mention = _format_review_reply_mention(author)
             reply_body = (
                 f"Fix applied in the latest push -- thanks for the review! {mention}"
             )
@@ -370,10 +378,19 @@ def acknowledge_review_items(
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
-                logger.warning(
-                    "Failed to resolve review thread %s: %s", thread_id, detail
-                )
+                logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
     return processed_ids
+
+
+def _format_review_reply_mention(author_login: str) -> str:
+    login = (author_login or "").strip()
+    if not login:
+        return REVIEW_FALLBACK_MENTION
+    normalized = login.lower()
+    override = MENTION_OVERRIDES.get(normalized)
+    if override:
+        return override
+    return f"@{login}"
 
 
 def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
