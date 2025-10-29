@@ -27,12 +27,12 @@ func atoiSafe(s string) (int, error) {
 // Callers should pass the desired index (after applying an increment or
 // decrement) along with the collection length.
 //
-// IMPORTANT: When n <= 0, this function returns 0. Callers MUST verify
-// that the collection length is positive before using the returned index
-// to avoid out-of-bounds access.
+// IMPORTANT: When n <= 0, this function returns -1 to make misuse explicit
+// rather than silently returning a valid-looking but potentially unsafe index.
+// Callers MUST check for a negative return value before using it for slice/array access.
 func wrapIndex(idx, n int) int {
 	if n <= 0 {
-		return 0
+		return -1
 	}
 	idx %= n
 	if idx < 0 {

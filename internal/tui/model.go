@@ -475,7 +475,10 @@ func (m *model) moveQuitSelection(delta int) {
 	if count == 0 {
 		return
 	}
-	m.quitConfirmIndex = wrapIndex(m.quitConfirmIndex+delta, count)
+	newIndex := wrapIndex(m.quitConfirmIndex+delta, count)
+	if newIndex >= 0 {
+		m.quitConfirmIndex = newIndex
+	}
 }
 
 func (m model) quitSelectionLabel() string {

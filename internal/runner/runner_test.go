@@ -65,7 +65,10 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 		t.Fatalf("expected python executable 'python3', got %q", plan.Cmd)
 	}
 
-	scriptArgs := buildScriptArgs(cfg, prd, logFile, "warning")
+	scriptArgs, err := buildScriptArgs(cfg, prd, logFile, "warning")
+	if err != nil {
+		t.Fatalf("buildScriptArgs failed: %v", err)
+	}
 	if len(plan.Args) < len(scriptArgs) {
 		t.Fatalf("plan args shorter than script args: %v vs %v", plan.Args, scriptArgs)
 	}

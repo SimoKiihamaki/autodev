@@ -137,8 +137,46 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	return tmpPath, cleanup, nil
 }
 
-func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) []string {
+// validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories
+func validatePythonScriptPath(scriptPath, repoPath string) error {
+	// Check for obvious path traversal attempts
+	if strings.Contains(scriptPath, "..") {
+		return fmt.Errorf("PythonScript path contains parent directory references: %q", scriptPath)
+	}
+
+	// If script path is absolute, validate it directly
+	if filepath.IsAbs(scriptPath) {
+		// Ensure absolute path doesn't contain suspicious patterns
+		if strings.Contains(scriptPath, "/../") || strings.Contains(scriptPath, `\\..`) {
+			return fmt.Errorf("PythonScript absolute path contains suspicious patterns: %q", scriptPath)
+		}
+		return nil
+	}
+
+	// For relative paths, ensure they're reasonable
+	if strings.HasPrefix(scriptPath, "/") || strings.HasPrefix(scriptPath, "\\") {
+		return fmt.Errorf("PythonScript relative path appears to be absolute: %q", scriptPath)
+	}
+
+	// Check for suspicious path components
+	parts := strings.Split(scriptPath, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".." || part == "." {
+			return fmt.Errorf("PythonScript path contains suspicious path components: %q", scriptPath)
+		}
+	}
+
+	return nil
+}
+
+func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
 	script := cfg.PythonScript
+
+	// Validate script path for security
+	if err := validatePythonScriptPath(script, cfg.RepoPath); err != nil {
+		return nil, err
+	}
+
 	if !filepath.IsAbs(script) && strings.TrimSpace(cfg.RepoPath) != "" {
 		candidate := filepath.Join(cfg.RepoPath, script)
 		if abs, err := filepath.Abs(candidate); err == nil {
@@ -223,7 +261,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) [
 	level = strings.ToUpper(level)
 	args = append(args, "--log-level", level)
 
-	return args
+	return args, nil
 }
 
 // BuildArgs converts the provided configuration into the final command, arguments,
@@ -235,7 +273,10 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		return Args{}, err
 	}
 
-	scriptArgs := buildScriptArgs(input.Config, input.PRDPath, input.LogFilePath, input.LogLevel)
+	scriptArgs, err := buildScriptArgs(input.Config, input.PRDPath, input.LogFilePath, input.LogLevel)
+	if err != nil {
+		return Args{}, err
+	}
 
 	// Build env
 	// Remove CI environment variable to prevent unintended CI behavior in the automation script

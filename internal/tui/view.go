@@ -402,7 +402,7 @@ func renderEnvView(b *strings.Builder, m model) {
 
 	b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
 		prStyle.Render("[P] PR="+fmt.Sprint(m.runPR)) + "  " +
-		reviewStyle.Render("[Ctrl+R] ReviewFix="+fmt.Sprint(m.runReview)) + "\n")
+		reviewStyle.Render("[Ctrl+R] Review Fix="+fmt.Sprint(m.runReview)) + "\n")
 
 	unsafeStyle := focusStyle(m.focusedFlag == "unsafe")
 	dryrunStyle := focusStyle(m.focusedFlag == "dryrun")

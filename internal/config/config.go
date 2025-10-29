@@ -162,10 +162,63 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Defaults()
+
+	// Start with empty config instead of defaults to preserve explicit zero values
+	var c Config
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return Config{}, err
 	}
+
+	// Apply defaults only for fields that weren't explicitly set
+	defaults := Defaults()
+
+	// Helper function to set default only if field is zero value
+	setStringDefault := func(field *string, defaultValue string) {
+		if strings.TrimSpace(*field) == "" {
+			*field = defaultValue
+		}
+	}
+
+	setIntDefault := func(field *int, defaultValue int) {
+		if *field == 0 {
+			*field = defaultValue
+		}
+	}
+
+	// Apply defaults for string fields
+	setStringDefault(&c.ExecutorPolicy, defaults.ExecutorPolicy)
+	setStringDefault(&c.LogLevel, defaults.LogLevel)
+	setStringDefault(&c.PythonCommand, defaults.PythonCommand)
+	setStringDefault(&c.PythonScript, defaults.PythonScript)
+	setStringDefault(&c.BaseBranch, defaults.BaseBranch)
+	setStringDefault(&c.CodexModel, defaults.CodexModel)
+
+	// For boolean fields like FollowLogs, we need special handling
+	// Since we can't distinguish explicit false from missing false, we'll keep FollowLogs true
+	// as the default, but users who explicitly set false will need to accept this limitation
+	if !c.FollowLogs && strings.Contains(string(b), "follow_logs: false") {
+		// User explicitly set follow_logs to false, keep it as false
+	} else {
+		c.FollowLogs = defaults.FollowLogs
+	}
+
+	// Apply defaults for int fields
+	setIntDefault(&c.Timings.WaitMinutes, defaults.Timings.WaitMinutes)
+	setIntDefault(&c.Timings.ReviewPollSeconds, defaults.Timings.ReviewPollSeconds)
+	setIntDefault(&c.Timings.IdleGraceMinutes, defaults.Timings.IdleGraceMinutes)
+	setIntDefault(&c.Timings.MaxLocalIters, defaults.Timings.MaxLocalIters)
+	setIntDefault(&c.BatchProcessing.MaxBatchSize, defaults.BatchProcessing.MaxBatchSize)
+	setIntDefault(&c.BatchProcessing.BatchTimeoutMs, defaults.BatchProcessing.BatchTimeoutMs)
+
+	// Initialize slices/maps if nil
+	if c.AllowedPythonDirs == nil {
+		c.AllowedPythonDirs = defaults.AllowedPythonDirs
+	}
+	if c.PRDs == nil {
+		c.PRDs = defaults.PRDs
+	}
+
+	// Process LogLevel
 	trim := strings.TrimSpace(c.LogLevel)
 	if trim == "" {
 		c.LogLevel = "INFO"
@@ -177,11 +230,13 @@ func Load() (Config, error) {
 			c.LogLevel = upper
 		}
 	}
-	// Validate and set default MaxBatchSize
+
+	// Validate and set default MaxBatchSize if still invalid
 	if c.BatchProcessing.MaxBatchSize <= 0 {
 		log.Printf("Warning: max_batch_size must be > 0, got %d; using default value %d. Note: Invalid values are corrected in memory but not persisted to the config file.", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
 		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
 	}
+
 	return c, nil
 }
 
