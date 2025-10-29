@@ -152,8 +152,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		// Resolve symlinks in repoPath as well to handle cases like /var -> /private/var
 		resolvedRepoPath, err := filepath.EvalSymlinks(repoPath)
 		if err != nil {
-			// If we can't resolve symlinks in repoPath, try the original path
-			resolvedRepoPath = repoPath
+			return fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", repoPath, err)
 		}
 
 		relPath, err := filepath.Rel(resolvedRepoPath, scriptPath)

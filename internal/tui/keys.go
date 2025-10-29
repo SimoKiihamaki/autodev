@@ -80,7 +80,7 @@ type KeyCombo struct {
 }
 
 func (kc KeyCombo) String() string {
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0)
 	if kc.Ctrl {
 		parts = append(parts, "ctrl")
 	}
@@ -96,7 +96,7 @@ func (kc KeyCombo) String() string {
 }
 
 func (kc KeyCombo) Display() string {
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0)
 	if kc.Ctrl {
 		parts = append(parts, "Ctrl")
 	}

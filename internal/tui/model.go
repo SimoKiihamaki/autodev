@@ -173,7 +173,15 @@ var settingsInputNames = []string{
 	"waitmin", "pollsec", "idlemin", "maxiters",
 }
 
-var envFlagNames = []string{flagNameLocal, flagNamePR, flagNameReview, flagNameUnsafe, flagNameDryRun, flagNameSyncGit, flagNameInfinite}
+var envFlagNames = []string{
+	flagNameLocal,
+	flagNamePR,
+	flagNameReview,
+	flagNameUnsafe,
+	flagNameDryRun,
+	flagNameSyncGit,
+	flagNameInfinite,
+}
 
 func New() model {
 	cfg, err := config.Load()

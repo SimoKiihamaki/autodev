@@ -396,8 +396,8 @@ func renderEnvView(b *strings.Builder, m model) {
 	prStyle := focusStyle(m.focusedFlag == "pr")
 	reviewStyle := focusStyle(m.focusedFlag == "review")
 
-	b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
-		prStyle.Render("[P] PR="+fmt.Sprint(m.runPR)) + "  " +
+	b.WriteString("Phases: " + localStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagLocal)+" Local="+fmt.Sprint(m.runLocal)) + "  " +
+		prStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagPR)+" PR="+fmt.Sprint(m.runPR)) + "  " +
 		reviewStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagReview)+" Review Fix="+fmt.Sprint(m.runReview)) + "\n")
 
 	unsafeStyle := focusStyle(m.focusedFlag == "unsafe")
