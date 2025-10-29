@@ -77,6 +77,7 @@ for i in range(10):
 		logs:              viewport.New(80, 24),
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 

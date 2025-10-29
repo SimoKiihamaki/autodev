@@ -41,10 +41,10 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 	cfg.CodexModel = "gpt-5-codex"
 	cfg.Flags.DryRun = true
 	cfg.Flags.SyncGit = true
-	cfg.Timings.WaitMinutes = 3
-	cfg.Timings.ReviewPollSeconds = 45
-	cfg.Timings.IdleGraceMinutes = 2
-	cfg.Timings.MaxLocalIters = 7
+	cfg.Timings.WaitMinutes = &[]int{3}[0]
+	cfg.Timings.ReviewPollSeconds = &[]int{45}[0]
+	cfg.Timings.IdleGraceMinutes = &[]int{2}[0]
+	cfg.Timings.MaxLocalIters = &[]int{7}[0]
 	cfg.RunPhases.Local = true
 	cfg.RunPhases.PR = false
 	cfg.RunPhases.ReviewFix = true
@@ -52,13 +52,28 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 
 	logFile := filepath.Join(repo, "run.log")
 
-	args := buildArgs(cfg, prd, logFile, "warning")
-
-	if len(args) == 0 {
-		t.Fatalf("buildArgs returned no arguments")
+	plan, err := BuildArgs(BuildArgsInput{
+		Config:      cfg,
+		PRDPath:     prd,
+		LogFilePath: logFile,
+		LogLevel:    "warning",
+	})
+	if err != nil {
+		t.Fatalf("BuildArgs failed: %v", err)
 	}
-	if got := args[0]; got != script {
-		t.Fatalf("expected script %q, got %q", script, got)
+	if plan.Cmd != "python3" {
+		t.Fatalf("expected python executable 'python3', got %q", plan.Cmd)
+	}
+
+	scriptArgs, err := buildScriptArgs(cfg, prd, logFile, "warning")
+	if err != nil {
+		t.Fatalf("buildScriptArgs failed: %v", err)
+	}
+	if len(plan.Args) < len(scriptArgs) {
+		t.Fatalf("plan args shorter than script args: %v vs %v", plan.Args, scriptArgs)
+	}
+	if got := plan.Args[len(plan.Args)-len(scriptArgs):]; !slices.Equal(got, scriptArgs) {
+		t.Fatalf("script args mismatch; got %v want %v", got, scriptArgs)
 	}
 
 	wantContains := [][]string{
@@ -80,8 +95,8 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 	}
 
 	for _, want := range wantContains {
-		if !containsSequence(args, want...) {
-			t.Fatalf("args missing %v; got %v", want, args)
+		if !containsSequence(scriptArgs, want...) {
+			t.Fatalf("script args missing %v; got %v", want, scriptArgs)
 		}
 	}
 }

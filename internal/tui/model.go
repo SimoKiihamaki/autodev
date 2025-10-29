@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/SimoKiihamaki/autodev/internal/runner"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -15,21 +17,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type tab int
-
-const (
-	tabRun tab = iota
-	tabPRD
-	tabSettings
-	tabEnv
-	tabPrompt
-	tabLogs
-	tabHelp
-)
-
 const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
+const defaultToastTTL = 4 * time.Second
 
-var tabNames = []string{"Run", "PRD", "Settings", "Env", "Prompt", "Logs", "Help"}
+// Flag name constants to maintain single source of truth
+const (
+	FlagNameLocal    = "local"
+	FlagNamePR       = "pr"
+	FlagNameReview   = "review"
+	FlagNameUnsafe   = "unsafe"
+	FlagNameDryRun   = "dryrun"
+	FlagNameSyncGit  = "syncgit"
+	FlagNameInfinite = "infinite"
+)
 
 type item struct {
 	title, desc string
@@ -45,6 +45,14 @@ const (
 )
 
 var executorChoices = []executorChoice{executorCodex, executorClaude}
+
+var quitOptions = []string{"Save", "Discard", "Cancel"}
+
+type toastState struct {
+	id        uint64
+	message   string
+	expiresAt time.Time
+}
 
 func (c executorChoice) configValue() string {
 	switch c {
@@ -83,10 +91,19 @@ func (i item) FilterValue() string {
 }
 
 type model struct {
-	tab    tab
-	cfg    config.Config
-	status string
-	errMsg string
+	tabIndex      int
+	tabs          []string
+	cfg           config.Config
+	defaultConfig config.Config
+	status        string
+	errMsg        string
+
+	savedConfig config.Config
+	dirty       bool
+
+	keys     KeyMap
+	typing   bool
+	showHelp bool
 
 	prdList     list.Model
 	selectedPRD string
@@ -133,6 +150,7 @@ type model struct {
 
 	runFeed           viewport.Model
 	runFeedBuf        []string
+	followLogs        bool
 	runFeedAutoFollow bool
 	runPhase          string
 	runCurrent        string
@@ -147,6 +165,16 @@ type model struct {
 	logCh      chan runner.Line
 	runResult  chan error
 	cancelling bool
+
+	quitConfirmActive bool
+	quitConfirmIndex  int
+	quitAfterSave     bool
+
+	lastSaveErr error
+	lastRunErr  error
+
+	toast    *toastState
+	toastSeq uint64
 }
 
 // settingsInputNames defines the navigation order for Settings inputs; keep the
@@ -156,7 +184,15 @@ var settingsInputNames = []string{
 	"waitmin", "pollsec", "idlemin", "maxiters",
 }
 
-var envFlagNames = []string{"local", "pr", "review", "unsafe", "dryrun", "syncgit", "infinite"}
+var envFlagNames = []string{
+	FlagNameLocal,
+	FlagNamePR,
+	FlagNameReview,
+	FlagNameUnsafe,
+	FlagNameDryRun,
+	FlagNameSyncGit,
+	FlagNameInfinite,
+}
 
 func New() model {
 	cfg, err := config.Load()
@@ -166,7 +202,11 @@ func New() model {
 		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
 	}
 
-	m := model{tab: tabRun, cfg: cfg}
+	m := model{tabIndex: 0, cfg: cfg}
+	m.defaultConfig = config.Defaults()
+	m.savedConfig = cfg.Clone()
+	m.tabs = defaultTabIDs()
+	m.keys = DefaultKeyMap()
 	m.normalizeLogLevel()
 
 	delegate := list.NewDefaultDelegate()
@@ -183,6 +223,15 @@ func New() model {
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
 	m.runReview = cfg.RunPhases.ReviewFix
+	// FollowLogs may be nil if not set; default to true for safety and persist.
+	follow := true
+	if cfg.FollowLogs != nil {
+		follow = *cfg.FollowLogs
+	} else {
+		cfg.FollowLogs = utils.BoolPtr(follow)
+	}
+	m.followLogs = follow
+	m.runFeedAutoFollow = follow
 
 	m.flagAllowUnsafe = cfg.Flags.AllowUnsafe
 	m.flagDryRun = cfg.Flags.DryRun
@@ -212,8 +261,64 @@ func New() model {
 
 	m.resetRunDashboard()
 	m.resolvePythonScript(true)
+	m.updateDirtyState()
 
 	return m
+}
+
+func (m *model) flash(msg string, ttl time.Duration) tea.Cmd {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return nil
+	}
+	if ttl <= 0 {
+		ttl = defaultToastTTL
+	}
+	m.toastSeq++
+	id := m.toastSeq
+	m.toast = &toastState{
+		id:        id,
+		message:   msg,
+		expiresAt: time.Now().Add(ttl),
+	}
+	return tea.Tick(ttl, func(time.Time) tea.Msg {
+		return toastExpiredMsg{id: id}
+	})
+}
+
+func (m *model) resetToDefaults() tea.Cmd {
+	base := m.defaultConfig.Clone()
+	m.cfg = base
+	m.initSettingsInputs()
+	m.initExecutorChoices()
+
+	m.runLocal = base.RunPhases.Local
+	m.runPR = base.RunPhases.PR
+	m.runReview = base.RunPhases.ReviewFix
+	m.followLogs = *base.FollowLogs
+	m.runFeedAutoFollow = *base.FollowLogs
+
+	m.flagAllowUnsafe = base.Flags.AllowUnsafe
+	m.flagDryRun = base.Flags.DryRun
+	m.flagSyncGit = base.Flags.SyncGit
+	m.flagInfinite = base.Flags.InfiniteReviews
+
+	m.tags = nil
+	m.tagInput.SetValue("")
+	m.prompt.SetValue("")
+	m.focusedInput = ""
+	m.focusedFlag = ""
+	m.blurAllInputs()
+	m.refreshTypingState()
+	m.normalizeLogLevel()
+	m.updateDirtyState()
+
+	note := "Configuration reset to defaults"
+	m.status = note
+	if flash := m.flash(note, defaultToastTTL); flash != nil {
+		return flash
+	}
+	return nil
 }
 
 func mkInput(placeholder, value string, width int) textinput.Model {
@@ -234,10 +339,10 @@ func (m *model) initSettingsInputs() {
 	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
-	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(cfg.Timings.WaitMinutes), 6)
-	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds), 6)
-	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes), 6)
-	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(cfg.Timings.MaxLocalIters), 6)
+	m.inWaitMin = mkInput("Wait minutes", formatIntPtr(cfg.Timings.WaitMinutes), 6)
+	m.inPollSec = mkInput("Review poll seconds", formatIntPtr(cfg.Timings.ReviewPollSeconds), 6)
+	m.inIdleMin = mkInput("Idle grace minutes", formatIntPtr(cfg.Timings.IdleGraceMinutes), 6)
+	m.inMaxIters = mkInput("Max local iters", formatIntPtr(cfg.Timings.MaxLocalIters), 6)
 
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring
@@ -298,4 +403,168 @@ func (m *model) settingsInputMap() map[string]*textinput.Model {
 func (m *model) resetLogState() {
 	m.logBuf = nil
 	m.logs.SetContent("")
+}
+
+func (m *model) refreshTypingState() {
+	m.typing = m.hasTypingFocus()
+}
+
+func (m *model) hasTypingFocus() bool {
+	if m.tagInput.Focused() || m.prompt.Focused() {
+		return true
+	}
+	for _, input := range m.settingsInputs {
+		if input != nil && input.Focused() {
+			return true
+		}
+	}
+	if m.prdList.FilterState() == list.Filtering {
+		return true
+	}
+	return false
+}
+
+func (m *model) SetTyping(on bool) {
+	m.typing = on
+}
+
+func (m model) IsTyping() bool {
+	return m.typing
+}
+
+func (m *model) pendingConfigSnapshot() (config.Config, []string) {
+	snapshot := m.cfg.Clone()
+	invalid, parseErrs := m.populateConfigFromInputs(&snapshot)
+	logParseErrors(parseErrs)
+	return snapshot, invalid
+}
+
+func (m *model) updateDirtyState() {
+	snapshot, invalid := m.pendingConfigSnapshot()
+	m.dirty = !snapshot.Equal(m.savedConfig) || len(invalid) > 0
+}
+
+func (m *model) markSaved() {
+	m.savedConfig = m.cfg.Clone()
+	m.updateDirtyState()
+}
+
+func (m *model) handleSaveShortcut() tea.Cmd {
+	if m.currentTabID() == tabIDPRD && strings.TrimSpace(m.selectedPRD) == "" {
+		note := "Select a PRD before saving metadata"
+		m.status = note
+		m.lastSaveErr = fmt.Errorf("save aborted: no PRD selected")
+		if flash := m.flash(note, defaultToastTTL); flash != nil {
+			return flash
+		}
+		return nil
+	}
+
+	if m.selectedPRD != "" {
+		if m.cfg.PRDs == nil {
+			m.cfg.PRDs = make(map[string]config.PRDMeta)
+		}
+		meta := m.cfg.PRDs[m.selectedPRD]
+		meta.LastUsed = time.Now()
+		m.cfg.PRDs[m.selectedPRD] = meta
+	}
+
+	// Let the save result handler set m.status/m.lastSaveErr and flash on success/failure.
+	return m.saveConfig()
+}
+
+func (m *model) beginQuitConfirm() {
+	m.quitConfirmActive = true
+	m.quitConfirmIndex = 0
+	m.blurAllInputs()
+	if m.status == "" {
+		m.status = "Unsaved changes detected; choose an option."
+	}
+}
+
+func (m *model) cancelQuitConfirm() {
+	m.quitConfirmActive = false
+	m.quitConfirmIndex = 0
+}
+
+func (m *model) moveQuitSelection(delta int) {
+	if !m.quitConfirmActive {
+		return
+	}
+	count := len(quitOptions)
+	if count == 0 {
+		return
+	}
+	newIndex, ok := wrapIndex(m.quitConfirmIndex, delta, count)
+	if ok {
+		m.quitConfirmIndex = newIndex
+	}
+}
+
+func (m model) quitSelectionLabel() string {
+	if m.quitConfirmIndex < 0 || m.quitConfirmIndex >= len(quitOptions) {
+		return ""
+	}
+	return quitOptions[m.quitConfirmIndex]
+}
+
+func (m model) currentTabID() string {
+	if len(m.tabs) == 0 || m.tabIndex < 0 || m.tabIndex >= len(m.tabs) {
+		return tabIDRun
+	}
+	return m.tabs[m.tabIndex]
+}
+
+func (m model) tabCount() int {
+	return len(m.tabs)
+}
+
+func (m model) tabTitleAt(index int) string {
+	if index < 0 || index >= len(m.tabs) {
+		return ""
+	}
+	return tabTitle(m.tabs[index])
+}
+
+func (m model) tabTitleForID(id string) string {
+	return tabTitle(id)
+}
+
+func (m *model) setActiveTabByID(id string) {
+	if idx := indexForTabID(m.tabs, id); idx >= 0 {
+		m.tabIndex = idx
+	}
+}
+
+func (m *model) setActiveTabIndex(idx int) bool {
+	if idx < 0 || idx >= len(m.tabs) {
+		return false
+	}
+	m.tabIndex = idx
+	return true
+}
+
+func indexForTabID(tabs []string, id string) int {
+	for i, current := range tabs {
+		if current == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m model) hasTabID(id string) bool {
+	return indexForTabID(m.tabs, id) >= 0
+}
+
+// getLastErrorText returns the most recent error text from the model.
+// It checks lastRunErr first, then falls back to errMsg, and trims whitespace.
+func getLastErrorText(m *model) string {
+	if m.lastRunErr != nil {
+		return strings.TrimSpace(m.lastRunErr.Error())
+	}
+	if m.errMsg != "" {
+		return strings.TrimSpace(m.errMsg)
+	}
+	return ""
 }

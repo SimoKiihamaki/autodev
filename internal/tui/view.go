@@ -35,36 +35,152 @@ func focusStyle(active bool) lipgloss.Style {
 	return style
 }
 
+func tabShortcutLabel(keys KeyMap, idx int) string {
+	if act, ok := gotoTabAction(idx); ok {
+		if combos := keys.Global[act]; len(combos) > 0 {
+			labels := make([]string, 0, len(combos))
+			for _, combo := range combos {
+				labels = append(labels, combo.Display())
+			}
+			return strings.Join(labels, "/")
+		}
+	}
+	return fmt.Sprintf("%d", idx+1)
+}
+
+func actionKeyLabel(keys KeyMap, tabID string, act Action) string {
+	var combos []KeyCombo
+	if keys.PerTab != nil {
+		if perTab := keys.PerTab[tabID]; perTab != nil {
+			combos = perTab[act]
+		}
+	}
+	if len(combos) == 0 {
+		combos = keys.Global[act]
+	}
+	if len(combos) == 0 {
+		return ""
+	}
+	labels := make([]string, 0, len(combos))
+	for _, combo := range combos {
+		labels = append(labels, combo.Display())
+	}
+	return strings.Join(labels, "/")
+}
+
+func annotateUnsaved(text string, dirty bool) string {
+	if !dirty {
+		return text
+	}
+	if strings.Contains(text, "[unsaved]") || strings.Contains(text, "[Unsaved]") {
+		return text
+	}
+	return text + " [unsaved]"
+}
+
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("autodev — PRD→PR TUI") + "\n")
-	for i, name := range tabNames {
-		if tab(i) == m.tab {
-			b.WriteString(tabActive.Render(fmt.Sprintf("[%d] %s  ", i+1, name)))
-		} else {
-			b.WriteString(tabInactive.Render(fmt.Sprintf("[%d] %s  ", i+1, name)))
+	title := "autodev — PRD→PR TUI"
+	if m.dirty {
+		title += " [unsaved]"
+	}
+	b.WriteString(titleStyle.Render(title) + "\n")
+	for i, tabID := range m.tabs {
+		shortcuts := tabShortcutLabel(m.keys, i)
+		label := fmt.Sprintf("[%s] %s  ", shortcuts, tabTitle(tabID))
+		if i == m.tabIndex {
+			b.WriteString(tabActive.Render(label))
+			continue
 		}
+		b.WriteString(tabInactive.Render(label))
 	}
 	b.WriteString("\n\n")
 
-	switch m.tab {
-	case tabRun:
+	switch m.currentTabID() {
+	case tabIDRun:
 		renderRunView(&b, m)
-	case tabPRD:
+	case tabIDPRD:
 		renderPRDView(&b, m)
-	case tabSettings:
+	case tabIDSettings:
 		renderSettingsView(&b, m)
-	case tabEnv:
+	case tabIDEnv:
 		renderEnvView(&b, m)
-	case tabPrompt:
+	case tabIDPrompt:
 		renderPromptView(&b, m)
-	case tabLogs:
+	case tabIDLogs:
 		renderLogsView(&b, m)
-	case tabHelp:
+	case tabIDHelp:
 		renderHelpView(&b, m)
 	}
 
+	if m.quitConfirmActive {
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render("Unsaved changes detected. Choose how to quit:") + "\n")
+		labels := make([]string, len(quitOptions))
+		for i, opt := range quitOptions {
+			label := fmt.Sprintf("[%s]", opt)
+			if i == m.quitConfirmIndex {
+				labels[i] = okStyle.Render(label)
+			} else {
+				labels[i] = helpStyle.Render(label)
+			}
+		}
+		b.WriteString(strings.Join(labels, "  ") + "\n")
+		b.WriteString(helpStyle.Render("Left/Right cycle · Enter confirm · Esc cancel") + "\n")
+	}
+
+	renderHelpOverlay(&b, m)
+	renderStatusBar(&b, m)
+
 	return b.String()
+}
+
+func renderStatusBar(b *strings.Builder, m model) {
+	message, style := statusBarMessage(m)
+	if message == "" {
+		return
+	}
+	if b.Len() > 0 {
+		b.WriteString("\n")
+	}
+	b.WriteString(style.Render(message))
+	b.WriteString("\n")
+}
+
+func statusBarMessage(m model) (string, lipgloss.Style) {
+	if m.toast != nil {
+		return m.toast.message, classifyStatusStyle(m.toast.message)
+	}
+	if note := strings.TrimSpace(m.status); note != "" {
+		return annotateUnsaved(note, m.dirty), classifyStatusStyle(note)
+	}
+	if m.dirty {
+		return "Unsaved changes pending — press Ctrl+S to save", statusWarnStyle
+	}
+	return "", lipgloss.NewStyle()
+}
+
+func classifyStatusStyle(text string) lipgloss.Style {
+	lower := strings.ToLower(text)
+	switch {
+	case strings.Contains(lower, "error"),
+		strings.Contains(lower, "fail"),
+		strings.Contains(lower, "panic"):
+		return statusErrorStyle
+	case strings.Contains(lower, "warn"):
+		return statusWarnStyle
+	case strings.Contains(lower, "saved"),
+		strings.Contains(lower, "success"),
+		strings.Contains(lower, "completed"),
+		strings.Contains(lower, "finished"):
+		return statusSuccessStyle
+	case strings.Contains(lower, "cancel"),
+		strings.Contains(lower, "pending"),
+		strings.Contains(lower, "unsaved"):
+		return statusWarnStyle
+	default:
+		return statusInfoStyle
+	}
 }
 
 func renderRunView(b *strings.Builder, m model) {
@@ -76,13 +192,33 @@ func renderRunView(b *strings.Builder, m model) {
 
 		switch {
 		case m.running:
-			b.WriteString(okStyle.Render("Status: Running (Ctrl+C cancel)") + "\n")
+			b.WriteString(okStyle.Render(annotateUnsaved("Status: Running (Ctrl+C cancel)", m.dirty)) + "\n")
 		case m.errMsg != "":
-			b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
+			b.WriteString(errorStyle.Render(annotateUnsaved("Status: Error: "+m.errMsg, m.dirty)) + "\n")
 		case m.status != "":
-			b.WriteString("Status: " + m.status + "\n")
+			b.WriteString(annotateUnsaved("Status: "+m.status, m.dirty) + "\n")
 		default:
-			b.WriteString("Status: Idle\n")
+			b.WriteString(annotateUnsaved("Status: Idle", m.dirty) + "\n")
+		}
+
+		lastErrText := getLastErrorText(&m)
+		if lastErrText != "" {
+			firstLine := lastErrText
+			if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
+				firstLine = firstLine[:idx]
+			}
+			banner := fmt.Sprintf("Last error: %s", firstLine)
+			b.WriteString(errorBanner.Render(banner) + "\n")
+			hints := make([]string, 0, 2)
+			if retryKeys := actionKeyLabel(m.keys, tabIDRun, ActConfirm); retryKeys != "" {
+				hints = append(hints, fmt.Sprintf("%s retry", retryKeys))
+			}
+			if copyKeys := actionKeyLabel(m.keys, tabIDRun, ActCopyError); copyKeys != "" {
+				hints = append(hints, fmt.Sprintf("%s copy error", copyKeys))
+			}
+			if len(hints) > 0 {
+				b.WriteString(helpStyle.Render(strings.Join(hints, " · ")) + "\n")
+			}
 		}
 
 		phase := m.runPhase
@@ -142,11 +278,14 @@ func renderRunView(b *strings.Builder, m model) {
 		b.WriteString(fmt.Sprintf("Last Complete: %s\n", lastComplete))
 		b.WriteString(fmt.Sprintf("Iteration: %s\n\n", iteration))
 
-		feedMode := "paused"
-		if m.runFeedAutoFollow {
-			feedMode = "auto"
+		followMode := "off"
+		switch {
+		case m.followLogs && m.runFeedAutoFollow:
+			followMode = "auto"
+		case m.followLogs:
+			followMode = "paused"
 		}
-		b.WriteString(sectionTitle.Render(fmt.Sprintf("Live Feed — follow %s", feedMode)) + "\n")
+		b.WriteString(sectionTitle.Render(fmt.Sprintf("Live Feed — follow %s", followMode)) + "\n")
 		b.WriteString(m.runFeed.View() + "\n")
 
 		if m.logFilePath != "" {
@@ -169,11 +308,11 @@ func renderRunView(b *strings.Builder, m model) {
 	b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 	b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
 	if m.errMsg != "" {
-		b.WriteString(errorStyle.Render("Status: Error: "+m.errMsg) + "\n")
+		b.WriteString(errorStyle.Render(annotateUnsaved("Status: Error: "+m.errMsg, m.dirty)) + "\n")
 	} else if m.status != "" {
-		b.WriteString("Status: " + m.status + "\n")
+		b.WriteString(annotateUnsaved("Status: "+m.status, m.dirty) + "\n")
 	} else {
-		b.WriteString("Status: Idle\n")
+		b.WriteString(annotateUnsaved("Status: Idle", m.dirty) + "\n")
 	}
 	b.WriteString(helpStyle.Render("Press Enter to start a run · q quit · Ctrl+C force quit\n"))
 }
@@ -217,7 +356,8 @@ func renderSettingsView(b *strings.Builder, m model) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%d,? switch tabs\n", toggleHint, len(tabNames)))
+		// Use KeyMap to generate help text for the settings tab
+		b.WriteString("\n" + overlayHelpSection("Settings", m.keys.HelpEntriesForTab(tabIDSettings)) + "\n")
 	}
 }
 
@@ -256,9 +396,9 @@ func renderEnvView(b *strings.Builder, m model) {
 	prStyle := focusStyle(m.focusedFlag == "pr")
 	reviewStyle := focusStyle(m.focusedFlag == "review")
 
-	b.WriteString("Phases: " + localStyle.Render("[L] Local="+fmt.Sprint(m.runLocal)) + "  " +
-		prStyle.Render("[P] PR="+fmt.Sprint(m.runPR)) + "  " +
-		reviewStyle.Render("[R] ReviewFix="+fmt.Sprint(m.runReview)) + "\n")
+	b.WriteString("Phases: " + localStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagLocal)+" Local="+fmt.Sprint(m.runLocal)) + "  " +
+		prStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagPR)+" PR="+fmt.Sprint(m.runPR)) + "  " +
+		reviewStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagReview)+" Review Fix="+fmt.Sprint(m.runReview)) + "\n")
 
 	unsafeStyle := focusStyle(m.focusedFlag == "unsafe")
 	dryrunStyle := focusStyle(m.focusedFlag == "dryrun")
@@ -274,7 +414,7 @@ func renderEnvView(b *strings.Builder, m model) {
 		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc blur)") + "\n")
 		return
 	}
-	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save") + "\n")
+	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · "+actionKeyLabel(m.keys, tabIDEnv, ActSave)+" save") + "\n")
 }
 
 func renderPromptView(b *strings.Builder, m model) {
@@ -299,12 +439,93 @@ func renderLogsView(b *strings.Builder, m model) {
 
 func renderHelpView(b *strings.Builder, m model) {
 	b.WriteString(sectionTitle.Render("Help") + "\n")
-	b.WriteString("• PRD tab: ↑/↓ navigate list · Enter select · t tag · Ctrl+S save · r rescan\n")
-	b.WriteString("• Settings: Arrow keys move focus · ←/→ or Enter/Space toggles Codex/Claude when on a switch · Tab steps downward · Esc blur · Ctrl+S save\n")
-	b.WriteString("• Prompt: Arrow keys to focus/edit · Enter for newline · Esc to finish · Ctrl+S save\n")
-	b.WriteString("• Env: ↑/↓ navigate flags · ←/→/Enter toggle focused · Letter keys direct toggle (see NAVIGATION_GUIDE.md for mapping) · Ctrl+S save\n")
-	b.WriteString("• Logs: ↑/↓ scroll · PgUp/PgDn page · Home/End top/bottom · path shown in the Logs tab\n")
-	b.WriteString("• Run: Enter start · Ctrl+C cancel · f toggle follow\n")
-	b.WriteString(fmt.Sprintf("\nGlobal: 1-%d tabs · ? help · q quit · Ctrl+C force quit\n", len(tabNames)))
+
+	writeHelpSection := func(title string, entries []HelpEntry) {
+		if len(entries) == 0 {
+			return
+		}
+		b.WriteString("• " + title + ":\n")
+		for _, entry := range entries {
+			var comboLabels []string
+			for _, combo := range entry.Combos {
+				comboLabels = append(comboLabels, combo.Display())
+			}
+			b.WriteString("  - " + entry.Label + ": " + strings.Join(comboLabels, ", ") + "\n")
+		}
+	}
+
+	writeHelpSection("Global", m.keys.GlobalHelpEntries())
+
+	for _, tabID := range tabIDOrder {
+		entries := m.keys.HelpEntriesForTab(tabID)
+		if len(entries) == 0 || !m.hasTabID(tabID) {
+			continue
+		}
+		writeHelpSection(tabTitle(tabID), entries)
+	}
+
 	b.WriteString("\nSee NAVIGATION_GUIDE.md for detailed instructions.")
+}
+
+func renderHelpOverlay(b *strings.Builder, m model) {
+	if !m.showHelp {
+		return
+	}
+
+	panel := buildHelpOverlayContent(m)
+	if panel == "" {
+		return
+	}
+
+	if b.Len() > 0 {
+		b.WriteString("\n")
+	}
+	b.WriteString(panel)
+}
+
+func buildHelpOverlayContent(m model) string {
+	tabID := m.currentTabID()
+	var sections []string
+
+	if global := overlayHelpSection("Global", m.keys.GlobalHelpEntries()); global != "" {
+		sections = append(sections, global)
+	}
+
+	if tabSection := overlayHelpSection(tabTitle(tabID), m.keys.HelpEntriesForTab(tabID)); tabSection != "" {
+		sections = append(sections, tabSection)
+	}
+
+	if len(sections) == 0 {
+		return ""
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return helpBoxStyle.Render(content)
+}
+
+func overlayHelpSection(title string, entries []HelpEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	lines := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		combos := make([]string, 0, len(entry.Combos))
+		for _, combo := range entry.Combos {
+			combos = append(combos, combo.Display())
+		}
+		comboText := strings.Join(combos, " / ")
+		line := lipgloss.JoinHorizontal(lipgloss.Left,
+			helpKeyStyle.Render(comboText),
+			" ",
+			helpLabelStyle.Render(entry.Label),
+		)
+		lines = append(lines, line)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	return lipgloss.JoinVertical(lipgloss.Left,
+		helpBoxTitle.Render(title),
+		content,
+	)
 }

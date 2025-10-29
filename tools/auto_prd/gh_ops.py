@@ -13,7 +13,6 @@ from .constants import (
     CODERABBIT_REVIEW_LOGINS,
     COPILOT_REVIEW_LOGINS,
     REVIEW_BOT_LOGINS,
-    REVIEW_FALLBACK_MENTION,
 )
 from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
@@ -339,28 +338,8 @@ def acknowledge_review_items(
     for item in items:
         comment_id = item.get("comment_id")
         thread_id = item.get("thread_id")
-        if isinstance(comment_id, int) and comment_id not in processed_ids:
-            author = (item.get("author") or "").strip().lower()
-            mention = f"@{author}" if author else REVIEW_FALLBACK_MENTION
-            reply_body = (
-                f"Fix applied in the latest push -- thanks for the review! {mention}"
-            )
-            try:
-                reply_to_review_comment(owner, name, pr_number, comment_id, reply_body)
-                processed_ids.add(comment_id)
-            except (
-                subprocess.CalledProcessError,
-                OSError,
-                ValueError,
-            ) as exc:  # pragma: no cover - best effort
-                detail = (
-                    extract_called_process_error_details(exc)
-                    if isinstance(exc, subprocess.CalledProcessError)
-                    else str(exc)
-                )
-                logger.warning(
-                    "Failed to reply to review comment %s: %s", comment_id, detail
-                )
+        if isinstance(comment_id, int):
+            processed_ids.add(comment_id)
         if thread_id and not item.get("is_resolved"):
             try:
                 resolve_review_thread(thread_id)
@@ -370,9 +349,7 @@ def acknowledge_review_items(
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
-                logger.warning(
-                    "Failed to resolve review thread %s: %s", thread_id, detail
-                )
+                logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
     return processed_ids
 
 

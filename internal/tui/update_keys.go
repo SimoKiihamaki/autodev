@@ -2,212 +2,667 @@ package tui
 
 import (
 	"strings"
-	"time"
 
-	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
+	clipboard "github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
-	mPtr := &m
-
-	if handled, cmd := mPtr.handleGlobalKey(msg); handled {
-		return *mPtr, cmd
-	}
-
-	switch mPtr.tab {
-	case tabRun:
-		return mPtr.handleRunTabKey(msg)
-	case tabPRD:
-		return mPtr.handlePRDTabKey(msg)
-	case tabSettings:
-		return mPtr.handleSettingsTabKey(msg)
-	case tabEnv:
-		return mPtr.handleEnvTabKey(msg)
-	case tabPrompt:
-		return mPtr.handlePromptTabKey(msg)
-	case tabLogs:
-		var cmd tea.Cmd
-		mPtr.logs, cmd = mPtr.logs.Update(msg)
-		return *mPtr, cmd
+func batchCmd(cmds []tea.Cmd) tea.Cmd {
+	switch len(cmds) {
+	case 0:
+		return nil
+	case 1:
+		return cmds[0]
 	default:
-		return *mPtr, nil
+		return tea.Batch(cmds...)
 	}
 }
 
-func (m *model) handleGlobalKey(msg tea.KeyMsg) (bool, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
+	mPtr := &m
+
+	if mPtr.quitConfirmActive {
+		if handled, cmd := mPtr.handleQuitConfirmation(msg); handled {
+			return *mPtr, cmd
+		}
+		return *mPtr, nil
+	}
+
+	tabID := mPtr.currentTabID()
+	perTabActions := mPtr.keys.TabActions(tabID, msg)
+
+	if handled, cmd := mPtr.handleTabActions(tabID, perTabActions, msg); handled {
+		mPtr.refreshTypingState()
+		return *mPtr, cmd
+	}
+
+	mPtr.refreshTypingState()
+
+	globalActions := mPtr.keys.GlobalActions(msg)
+	for _, act := range globalActions {
+		if mPtr.IsTyping() && mPtr.keys.IsTypingSensitive(act) {
+			continue
+		}
+		if handled, cmd := mPtr.handleGlobalAction(act, msg); handled {
+			mPtr.refreshTypingState()
+			return *mPtr, cmd
+		}
+	}
+
+	return *mPtr, nil
+}
+
+func (m *model) handleTabActions(tabID string, actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	switch tabID {
+	case tabIDRun:
+		return m.handleRunTabActions(actions, msg)
+	case tabIDPRD:
+		return m.handlePRDTabActions(actions, msg)
+	case tabIDSettings:
+		return m.handleSettingsTabActions(actions, msg)
+	case tabIDEnv:
+		return m.handleEnvTabActions(actions, msg)
+	case tabIDPrompt:
+		return m.handlePromptTabActions(actions, msg)
+	case tabIDLogs:
+		return m.handleLogsTabActions(actions, msg)
+	default:
+		return false, nil
+	}
+}
+
+func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	switch act {
+	case ActInterrupt:
 		if m.running && m.cancel != nil {
 			m.cancelling = true
 			m.status = "Cancelling run…"
 			m.cancel()
 			return true, nil
 		}
+		if m.dirty {
+			m.beginQuitConfirm()
+			return true, nil
+		}
 		m.closeLogFile("quit")
 		return true, tea.Quit
-	case "q":
+	case ActQuit:
 		if m.running {
 			return true, nil
 		}
-		m.closeLogFile("quit")
-		return true, tea.Quit
-	case "?":
-		m.tab = tabHelp
-		m.blurAllInputs()
-		return true, nil
-	case "1", "2", "3", "4", "5", "6":
-		if len(msg.Runes) == 0 {
+		if m.dirty {
+			m.beginQuitConfirm()
 			return true, nil
 		}
-		idx := int(msg.Runes[0] - '1')
-		if idx >= 0 && idx < len(tabNames) {
-			m.tab = tab(idx)
+		m.closeLogFile("quit")
+		return true, tea.Quit
+	case ActHelp:
+		m.showHelp = !m.showHelp
+		if m.showHelp {
 			m.blurAllInputs()
 		}
 		return true, nil
+	case ActSave:
+		return true, m.handleSaveShortcut()
+	case ActResetDefaults:
+		return true, m.resetToDefaults()
+	case ActGotoTab1, ActGotoTab2, ActGotoTab3, ActGotoTab4, ActGotoTab5, ActGotoTab6:
+		if idx, ok := tabIndexFromAction(act); ok && m.setActiveTabIndex(idx) {
+			m.blurAllInputs()
+			return true, nil
+		}
 	}
 	return false, nil
 }
 
-func (m *model) handleRunTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		if m.isActiveOrCancelling() {
-			return *m, nil
-		}
-		return *m, m.startRunCmd()
-	case "up", "down":
-		if len(m.runFeedBuf) > 0 || m.running {
+func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	if len(actions) == 0 {
+		return false, nil
+	}
+
+	var cmds []tea.Cmd
+	handled := false
+
+	hasFeed := len(m.runFeedBuf) > 0 || m.running
+
+	for _, act := range actions {
+		switch act {
+		case ActConfirm:
+			if m.isActiveOrCancelling() {
+				note := "Cannot start new run while current run is active"
+				m.status = note
+				if flash := m.flash(note, defaultToastTTL); flash != nil {
+					cmds = append(cmds, flash)
+				}
+				handled = true
+				break
+			}
+			if cmd := m.startRunCmd(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			handled = true
+		case ActCopyError:
+			text := getLastErrorText(m)
+			note := ""
+			if text == "" {
+				note = "No error available to copy"
+			} else {
+				if err := clipboard.WriteAll(text); err != nil {
+					note = "Failed to copy error: " + err.Error()
+				} else {
+					note = "Error copied to clipboard"
+				}
+			}
+			m.status = note
+			if note != "" {
+				if flash := m.flash(note, defaultToastTTL); flash != nil {
+					cmds = append(cmds, flash)
+				}
+			}
+			handled = true
+		case ActNavigateUp, ActNavigateDown:
+			if !hasFeed {
+				continue
+			}
 			var cmd tea.Cmd
 			m.runFeed, cmd = m.runFeed.Update(msg)
+			cmds = append(cmds, cmd)
 			m.updateRunFeedFollowFromViewport()
-			return *m, cmd
-		}
-	case "pgup":
-		if len(m.runFeedBuf) > 0 || m.running {
+			handled = true
+		case ActPageUp:
+			if !hasFeed {
+				continue
+			}
 			m.runFeed.LineUp(10)
 			m.updateRunFeedFollowFromViewport()
-			return *m, nil
-		}
-	case "pgdown":
-		if len(m.runFeedBuf) > 0 || m.running {
+			handled = true
+		case ActPageDown:
+			if !hasFeed {
+				continue
+			}
 			m.runFeed.LineDown(10)
 			m.updateRunFeedFollowFromViewport()
-			return *m, nil
-		}
-	case "home":
-		if len(m.runFeedBuf) > 0 || m.running {
+			handled = true
+		case ActScrollTop:
+			if !hasFeed {
+				continue
+			}
 			m.runFeed.GotoTop()
 			m.updateRunFeedFollowFromViewport()
-			return *m, nil
-		}
-	case "end":
-		if len(m.runFeedBuf) > 0 || m.running {
+			handled = true
+		case ActScrollBottom:
+			if !hasFeed {
+				continue
+			}
 			m.runFeed.GotoBottom()
 			m.updateRunFeedFollowFromViewport()
-			return *m, nil
-		}
-	case "f":
-		if len(m.runFeedBuf) > 0 || m.running {
-			m.runFeedAutoFollow = !m.runFeedAutoFollow
-			if m.runFeedAutoFollow {
+			handled = true
+		case ActToggleFollow:
+			m.followLogs = !m.followLogs
+			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
+			m.runFeedAutoFollow = m.followLogs
+			if m.runFeedAutoFollow && len(m.runFeedBuf) > 0 {
 				m.runFeed.GotoBottom()
 			}
+			m.updateDirtyState()
+			handled = true
 		}
-		return *m, nil
 	}
-	return *m, nil
+
+	if handled {
+		return true, batchCmd(cmds)
+	}
+	return false, nil
 }
 
-func (m *model) handlePRDTabKey(msg tea.KeyMsg) (model, tea.Cmd) {
+func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	if m.tagInput.Focused() {
-		switch msg.String() {
-		case "enter":
-			if tag := strings.TrimSpace(m.tagInput.Value()); tag != "" {
-				m.tags = append(m.tags, tag)
-				m.tagInput.SetValue("")
+		handled := false
+		for _, act := range actions {
+			switch act {
+			case ActConfirm:
+				if tag := strings.TrimSpace(m.tagInput.Value()); tag != "" {
+					m.tags = append(m.tags, tag)
+					m.tagInput.SetValue("")
+					m.tagInput.Blur()
+					m.updateDirtyState()
+				}
+				handled = true
+			case ActCancel:
 				m.tagInput.Blur()
+				handled = true
 			}
-			return *m, nil
-		case "esc":
-			m.tagInput.Blur()
-			return *m, nil
+		}
+		if handled {
+			return true, nil
+		}
+		if msg.Type == tea.KeyCtrlS {
+			return false, nil
 		}
 		var cmd tea.Cmd
 		m.tagInput, cmd = m.tagInput.Update(msg)
-		return *m, cmd
+		return true, cmd
 	}
 
-	switch msg.String() {
-	case "enter":
-		if sel, ok := m.prdList.SelectedItem().(item); ok {
-			m.selectedPRD = sel.path
-			if meta, ok := m.cfg.PRDs[sel.path]; ok {
-				m.tags = append([]string{}, meta.Tags...)
-			} else {
-				m.tags = []string{}
-			}
-		}
-		return *m, nil
-	case "t":
-		m.tagInput.Focus()
-		return *m, nil
-	case "left", "right":
+	if len(actions) == 0 {
 		var cmd tea.Cmd
 		m.prdList, cmd = m.prdList.Update(msg)
-		return *m, cmd
-	case "backspace":
-		if m.prdList.FilterState() == list.Filtering {
+		if isRuneKey(msg) || m.prdList.FilterState() == list.Filtering {
+			return true, cmd
+		}
+		return false, cmd
+	}
+
+	handled := false
+
+	for _, act := range actions {
+		switch act {
+		case ActConfirm:
+			if sel, ok := m.prdList.SelectedItem().(item); ok {
+				m.selectedPRD = sel.path
+				if meta, ok := m.cfg.PRDs[sel.path]; ok {
+					m.tags = append([]string{}, meta.Tags...)
+				} else {
+					m.tags = []string{}
+				}
+				m.updateDirtyState()
+			}
+			handled = true
+		case ActFocusTags:
+			m.tagInput.Focus()
+			handled = true
+		case ActNavigateLeft, ActNavigateRight:
 			var cmd tea.Cmd
 			m.prdList, cmd = m.prdList.Update(msg)
-			return *m, cmd
-		}
-		if len(m.tags) > 0 {
-			m.tags = m.tags[:len(m.tags)-1]
-		}
-		return *m, nil
-	case "s":
-		if m.selectedPRD == "" {
-			m.status = "Select a PRD before saving metadata"
-			return *m, nil
-		}
-		normalized := make([]string, 0, len(m.tags))
-		seen := make(map[string]struct{}, len(m.tags))
-		for _, tag := range m.tags {
-			tag = strings.TrimSpace(tag)
-			if tag == "" {
-				continue
+			cmds = append(cmds, cmd)
+			handled = true
+		case ActListBackspace:
+			if m.prdList.FilterState() == list.Filtering {
+				var cmd tea.Cmd
+				m.prdList, cmd = m.prdList.Update(msg)
+				cmds = append(cmds, cmd)
+			} else if len(m.tags) > 0 {
+				m.tags = m.tags[:len(m.tags)-1]
+				m.updateDirtyState()
 			}
-			lower := strings.ToLower(tag)
-			if _, ok := seen[lower]; ok {
-				continue
-			}
-			seen[lower] = struct{}{}
-			normalized = append(normalized, tag)
+			handled = true
+		case ActRescanPRDs:
+			m.rescanPRDs()
+			cmds = append(cmds, m.scanPRDsCmd())
+			handled = true
 		}
-		if m.cfg.PRDs == nil {
-			m.cfg.PRDs = make(map[string]config.PRDMeta)
-		}
-		meta := m.cfg.PRDs[m.selectedPRD]
-		meta.Tags = normalized
-		meta.LastUsed = time.Now()
-		m.cfg.PRDs[m.selectedPRD] = meta
-		if err := config.Save(m.cfg); err != nil {
-			m.errMsg = err.Error()
-			m.status = "Failed to save PRD metadata"
-		} else {
-			m.errMsg = ""
-			m.status = "Saved PRD metadata for " + abbreviatePath(m.selectedPRD)
-		}
-		return *m, nil
-	case "r":
-		m.rescanPRDs()
-		return *m, m.scanPRDsCmd()
-	default:
-		var cmd tea.Cmd
-		m.prdList, cmd = m.prdList.Update(msg)
-		return *m, cmd
 	}
+
+	if handled {
+		return true, batchCmd(cmds)
+	}
+	if msg.Type == tea.KeyCtrlS {
+		return false, nil
+	}
+	return false, batchCmd(cmds)
+}
+
+func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	var cmds []tea.Cmd
+	handled := false
+
+	if len(actions) == 0 {
+		if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
+			if field := m.getInputField(m.focusedInput); field != nil {
+				if msg.Type == tea.KeyCtrlS {
+					return false, nil
+				}
+				prev := field.Value()
+				var cmd tea.Cmd
+				*field, cmd = field.Update(msg)
+				if field.Value() != prev {
+					m.updateDirtyState()
+				}
+				return true, cmd
+			}
+		}
+		return false, nil
+	}
+
+	for _, act := range actions {
+		switch act {
+		case ActCancel:
+			m.blurAllInputs()
+			handled = true
+		case ActTabForward:
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else {
+				m.navigateSettings("down")
+			}
+			handled = true
+		case ActTabBackward:
+			m.navigateSettings("up")
+			handled = true
+		case ActNavigateUp:
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else {
+				m.navigateSettings("up")
+			}
+			handled = true
+		case ActNavigateDown:
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else {
+				m.navigateSettings("down")
+			}
+			handled = true
+		case ActNavigateLeft:
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else if isExecutorToggle(m.focusedInput) {
+				m.tryNavigateOrCycle("left", -1)
+			} else {
+				m.navigateSettings("left")
+			}
+			handled = true
+		case ActNavigateRight:
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else if isExecutorToggle(m.focusedInput) {
+				m.tryNavigateOrCycle("right", 1)
+			} else {
+				m.navigateSettings("right")
+			}
+			handled = true
+		case ActAltNavigateLeft:
+			if m.focusedInput != "" {
+				m.navigateSettings("left")
+				handled = true
+			}
+		case ActAltNavigateRight:
+			if m.focusedInput != "" {
+				m.navigateSettings("right")
+				handled = true
+			}
+		case ActAltNavigateUp:
+			if m.focusedInput != "" {
+				m.navigateSettings("up")
+				handled = true
+			}
+		case ActAltNavigateDown:
+			if m.focusedInput != "" {
+				m.navigateSettings("down")
+				handled = true
+			}
+		case ActConfirm:
+			// ActConfirm in settings tab has three contextual behaviors:
+			// 1. If no field is focused: focus first field ("repo")
+			// 2. If executor toggle is focused: cycle choice forward
+			// 3. If regular field is focused: navigate to next field
+			if m.focusedInput == "" {
+				m.focusInput("repo")
+			} else if isExecutorToggle(m.focusedInput) {
+				m.cycleExecutorChoice(m.focusedInput, 1)
+			} else {
+				m.navigateSettings("down")
+			}
+			handled = true
+		case ActCycleBackward:
+			if isExecutorToggle(m.focusedInput) {
+				m.cycleExecutorChoice(m.focusedInput, -1)
+				handled = true
+			}
+		}
+	}
+
+	if handled {
+		return true, batchCmd(cmds)
+	}
+
+	if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
+		if field := m.getInputField(m.focusedInput); field != nil {
+			if msg.Type == tea.KeyCtrlS {
+				return false, nil
+			}
+			prev := field.Value()
+			var cmd tea.Cmd
+			*field, cmd = field.Update(msg)
+			if field.Value() != prev {
+				m.updateDirtyState()
+			}
+			return true, cmd
+		}
+	}
+
+	return false, batchCmd(cmds)
+}
+
+func (m *model) handleEnvTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	if len(actions) == 0 {
+		return false, nil
+	}
+
+	handled := false
+
+	for _, act := range actions {
+		switch act {
+		case ActCancel:
+			m.focusedFlag = ""
+			handled = true
+		case ActNavigateUp:
+			m.navigateFlags("up")
+			handled = true
+		case ActNavigateDown:
+			m.navigateFlags("down")
+			handled = true
+		case ActNavigateLeft:
+			if m.focusedFlag != "" {
+				m.navigateFlags("left")
+			}
+			handled = true
+		case ActNavigateRight:
+			if m.focusedFlag != "" {
+				m.navigateFlags("right")
+			}
+			handled = true
+		case ActConfirm:
+			if m.focusedFlag == "" {
+				if len(envFlagNames) == 0 {
+					break
+				}
+				m.focusFlag(envFlagNames[0])
+			} else {
+				m.toggleFocusedFlag()
+			}
+			handled = true
+		case ActToggleFlagLocal, ActToggleFlagPR, ActToggleFlagReview, ActToggleFlagUnsafe, ActToggleFlagDryRun, ActToggleFlagSyncGit, ActToggleFlagInfinite:
+			if flag := flagNameForAction(act); flag != "" {
+				m.focusFlag(flag)
+				m.toggleFocusedFlag()
+				handled = true
+			}
+		}
+	}
+
+	return handled, nil
+}
+
+func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	handled := false
+	var cmds []tea.Cmd
+
+	for _, act := range actions {
+		switch act {
+		case ActConfirm:
+			if !m.prompt.Focused() {
+				m.prompt.Focus()
+				handled = true
+			}
+		case ActCancel:
+			if m.prompt.Focused() {
+				m.prompt.Blur()
+				handled = true
+			}
+		}
+	}
+
+	if handled {
+		return true, batchCmd(cmds)
+	}
+
+	if msg.Type == tea.KeyCtrlS {
+		return false, nil
+	}
+
+	var cmd tea.Cmd
+	m.prompt, cmd = m.prompt.Update(msg)
+	return true, cmd
+}
+
+func (m *model) handleLogsTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	if len(actions) == 0 {
+		return false, nil
+	}
+
+	var cmds []tea.Cmd
+	handled := false
+
+	for _, act := range actions {
+		switch act {
+		case ActNavigateUp, ActNavigateDown:
+			var cmd tea.Cmd
+			m.logs, cmd = m.logs.Update(msg)
+			cmds = append(cmds, cmd)
+			handled = true
+		case ActPageUp:
+			m.logs.LineUp(10)
+			handled = true
+		case ActPageDown:
+			m.logs.LineDown(10)
+			handled = true
+		case ActScrollTop:
+			m.logs.GotoTop()
+			handled = true
+		case ActScrollBottom:
+			m.logs.GotoBottom()
+			handled = true
+		case ActToggleFollow:
+			m.followLogs = !m.followLogs
+			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
+			if m.followLogs {
+				m.logs.GotoBottom()
+			}
+			m.runFeedAutoFollow = m.followLogs && m.runFeed.AtBottom()
+			m.updateDirtyState()
+			handled = true
+		}
+	}
+
+	return handled, batchCmd(cmds)
+}
+
+func (m *model) handleQuitConfirmation(msg tea.KeyMsg) (bool, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyLeft:
+		m.moveQuitSelection(-1)
+		return true, nil
+	case tea.KeyRight:
+		m.moveQuitSelection(1)
+		return true, nil
+	case tea.KeyTab:
+		m.moveQuitSelection(1)
+		return true, nil
+	case tea.KeyShiftTab:
+		m.moveQuitSelection(-1)
+		return true, nil
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.cancelQuitConfirm()
+		return true, nil
+	case tea.KeyEnter:
+		return m.executeQuitSelection()
+	}
+
+	switch strings.ToLower(msg.String()) {
+	case "s":
+		m.quitConfirmIndex = 0
+		return m.executeQuitSelection()
+	case "d":
+		m.quitConfirmIndex = 1
+		return m.executeQuitSelection()
+	case "c":
+		m.cancelQuitConfirm()
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (m *model) executeQuitSelection() (bool, tea.Cmd) {
+	if !m.quitConfirmActive {
+		return false, nil
+	}
+
+	switch m.quitConfirmIndex {
+	case 0: // Save
+		// Set a flag so the save result handler knows to quit after save
+		m.quitAfterSave = true
+		return true, m.saveConfig()
+	case 1: // Discard
+		m.cancelQuitConfirm()
+		m.closeLogFile("quit")
+		return true, tea.Quit
+	default: // Cancel
+		m.cancelQuitConfirm()
+		m.updateDirtyState()
+		return true, nil
+	}
+}
+
+func tabIndexFromAction(act Action) (int, bool) {
+	for i, tabAction := range tabActions {
+		if tabAction == act {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// Flag name constants are now defined in model.go for single source of truth.
+
+func flagNameForAction(act Action) string {
+	switch act {
+	case ActToggleFlagLocal:
+		return FlagNameLocal
+	case ActToggleFlagPR:
+		return FlagNamePR
+	case ActToggleFlagReview:
+		return FlagNameReview
+	case ActToggleFlagUnsafe:
+		return FlagNameUnsafe
+	case ActToggleFlagDryRun:
+		return FlagNameDryRun
+	case ActToggleFlagSyncGit:
+		return FlagNameSyncGit
+	case ActToggleFlagInfinite:
+		return FlagNameInfinite
+	default:
+		return ""
+	}
+}
+
+func isRuneKey(msg tea.KeyMsg) bool {
+	return msg.Type == tea.KeyRunes && len(msg.Runes) > 0
+}
+
+// tryNavigateOrCycle navigates the settings input list, or cycles the current toggle if navigation is blocked.
+func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
+	prev := m.focusedInput
+	m.navigateSettings(direction)
+	if m.focusedInput == prev && isExecutorToggle(m.focusedInput) {
+		m.cycleExecutorChoice(m.focusedInput, cycleDir)
+	}
+	// If navigation is blocked and the current input is NOT an executor toggle,
+	// no action is taken. This is intentional: only toggles are cycled as a fallback,
+	// while other input types remain unchanged when navigation is blocked.
 }

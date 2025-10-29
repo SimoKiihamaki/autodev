@@ -121,18 +121,17 @@ func abbreviatePath(path string) string {
 	home, err := os.UserHomeDir()
 	if err == nil {
 		home = canonicalize(home)
-		sep := string(filepath.Separator)
 		if runtime.GOOS == "windows" {
 			pathLower := strings.ToLower(path)
 			homeLower := strings.ToLower(home)
-			if strings.HasPrefix(pathLower, homeLower+sep) {
+			if strings.HasPrefix(pathLower, homeLower+string(filepath.Separator)) {
 				return "~" + path[len(home):]
 			}
 			if strings.EqualFold(path, home) {
 				return "~"
 			}
 		} else {
-			if strings.HasPrefix(path, home+sep) {
+			if strings.HasPrefix(path, home+string(filepath.Separator)) {
 				return "~" + strings.TrimPrefix(path, home)
 			}
 			if path == home {

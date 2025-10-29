@@ -1,11 +1,25 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// intPtrValue safely returns the value of an int pointer, treating nil as 0
+func intPtrValue(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// formatIntPtr converts an int pointer to a string, treating nil as "0"
+func formatIntPtr(p *int) string {
+	return fmt.Sprint(intPtrValue(p))
+}
 
 const (
 	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
@@ -21,6 +35,7 @@ type logBatchMsg struct {
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
+type toastExpiredMsg struct{ id uint64 }
 
 // readLogsBatch attempts to read a batch of log lines from the log channel.
 // Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.
@@ -29,7 +44,7 @@ func (m *model) readLogsBatch() tea.Cmd {
 		return nil
 	}
 	initialCh := m.logCh
-	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
+	maxBatch := intPtrValue(m.cfg.BatchProcessing.MaxBatchSize)
 	if maxBatch <= 0 {
 		maxBatch = 1
 	}

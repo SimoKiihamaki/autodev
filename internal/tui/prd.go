@@ -14,6 +14,24 @@ import (
 
 type prdScanMsg struct{ items []list.Item }
 
+func normalizeTags(tags []string) []string {
+	normalized := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		cleaned := strings.TrimSpace(tag)
+		if cleaned == "" {
+			continue
+		}
+		key := strings.ToLower(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, cleaned)
+	}
+	return normalized
+}
+
 func (m *model) rescanPRDs() {
 	m.prdList.SetItems([]list.Item{})
 }
@@ -104,6 +122,7 @@ func (m *model) ensureSelectedPRD(items []list.Item) {
 		if m.status == "" && prev != bestPath {
 			m.status = "Auto-selected PRD: " + filepath.Base(bestPath)
 		}
+		m.updateDirtyState()
 		return
 	}
 
@@ -116,6 +135,7 @@ func (m *model) clearPRDSelection(statusMsg string) {
 	}
 	m.tags = nil
 	m.status = statusMsg
+	m.updateDirtyState()
 }
 
 func formatPRDDisplay(path string) string {

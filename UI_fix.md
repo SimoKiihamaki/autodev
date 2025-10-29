@@ -13,6 +13,29 @@ Below is a **decomposed, implementation‑ready task plan** for tightening up th
 
 ---
 
+## Task Tracker
+
+- [x] A1 — Centralize all keybindings into a single source of truth
+- [x] A2 — Guard global shortcuts while the user is typing
+- [x] A3 — Make tab navigation predictable and non-conflicting
+- [x] A4 — Enforce “no overlapping single-letter keys across tabs” (except navigation)
+- [x] A5 — Smooth, consistent field navigation & wrap-around
+- [x] B1 — Standardize tab model and identifiers
+- [x] B2 — Unsaved indicator & quit confirmation
+- [x] C1 — Single function to build runner args/env from config
+- [x] C2 — Audit: TUI state → config.Config fields
+- [x] C3 — Save everywhere with **Ctrl+S**
+- [x] D1 — Follow/Unfollow logs toggle and persistence
+- [x] D2 — Error surfacing from runner
+- [x] E1 — Autogenerate help from KeyMap
+- [x] F1 — Keystroke guard tests
+- [x] F2 — No overlap test across tabs (non-nav single letters)
+- [x] F3 — End-to-end wiring: config → BuildArgs → runner
+- [x] G1 — Status line & transient toasts
+- [x] G2 — Reset keys and defaults
+
+---
+
 ## Epic A — Keyboard model & navigation (no overlaps, smooth typing)
 
 ### A1 — Centralize all keybindings into a single source of truth
