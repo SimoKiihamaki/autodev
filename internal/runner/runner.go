@@ -149,6 +149,11 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 
 	// If repoPath is configured, ensure the script is within the repo
 	if repoPath != "" {
+		// Validate that repoPath is absolute as per function contract
+		if !filepath.IsAbs(repoPath) {
+			return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute repoPath: %q", repoPath)
+		}
+
 		// Resolve symlinks in repoPath as well to handle cases like /var -> /private/var
 		resolvedRepoPath, err := filepath.EvalSymlinks(repoPath)
 		if err != nil {
