@@ -443,6 +443,20 @@ func validatePythonFlags(flags []string) error {
 	allowedGrouped := map[rune]bool{'u': true, 'E': true, 'I': true, 's': true, 'B': true, 'O': true}
 	for i := 0; i < len(flags); i++ {
 		f := flags[i]
+
+		// Handle grouped short options like -uE, -IEu, etc. Forbid c/m anywhere.
+		if strings.HasPrefix(f, "-") && len(f) > 2 {
+			for _, ch := range f[1:] {
+				if ch == 'c' || ch == 'm' {
+					return fmt.Errorf("disallowed Python flag in group %q: -%c", f, ch)
+				}
+				if !allowedGrouped[ch] {
+					return fmt.Errorf("unexpected short flag in group %q: -%c", f, ch)
+				}
+			}
+			continue
+		}
+
 		switch f {
 		case "-c", "--command", "-m", "--module":
 			return fmt.Errorf("disallowed Python flag in PythonCommand: %q (would bypass the runner script)", f)
@@ -470,18 +484,6 @@ func validatePythonFlags(flags []string) error {
 			// -W may have an argument; if next element doesn't start with -, skip it
 			if i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-") {
 				i++ // Skip the argument to -W
-			}
-			continue
-		}
-		// Handle grouped short options like -uE, -IEu, etc. Forbid c/m anywhere.
-		if strings.HasPrefix(f, "-") && len(f) > 2 {
-			for _, ch := range f[1:] {
-				if ch == 'c' || ch == 'm' {
-					return fmt.Errorf("disallowed Python flag in group %q: -%c", f, ch)
-				}
-				if !allowedGrouped[ch] {
-					return fmt.Errorf("unexpected short flag in group %q: -%c", f, ch)
-				}
 			}
 			continue
 		}

@@ -356,8 +356,8 @@ func renderSettingsView(b *strings.Builder, m model) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · %s save · Alt+1–Alt+%d,? switch tabs\n",
-			toggleHint, actionKeyLabel(m.keys, m.currentTabID(), ActSave), m.tabCount()))
+		// Use KeyMap to generate help text for the settings tab
+		b.WriteString("\n" + overlayHelpSection("Settings", m.keys.HelpEntriesForTab(tabIDSettings)) + "\n")
 	}
 }
 
