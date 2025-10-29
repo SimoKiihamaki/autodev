@@ -407,7 +407,8 @@ func (m model) IsTyping() bool {
 
 func (m *model) pendingConfigSnapshot() (config.Config, []string) {
 	snapshot := m.cfg.Clone()
-	invalid, _ := m.populateConfigFromInputs(&snapshot)
+	invalid, parseErrs := m.populateConfigFromInputs(&snapshot)
+	logParseErrors(parseErrs)
 	return snapshot, invalid
 }
 

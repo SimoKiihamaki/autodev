@@ -230,6 +230,11 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) [
 // and environment required to invoke the automation runner. It centralizes all
 // mappings so TUI and tests can validate behavior via a single entry point.
 func BuildArgs(input BuildArgsInput) (Args, error) {
+	// Validate PythonCommand early for security - reject invalid/malicious commands before any processing
+	if err := validatePythonCommandWithConfig(input.Config.PythonCommand, input.Config); err != nil {
+		return Args{}, err
+	}
+
 	scriptArgs := buildScriptArgs(input.Config, input.PRDPath, input.LogFilePath, input.LogLevel)
 
 	// Build env
@@ -280,10 +285,6 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	env = append(env, "PYTHONUNBUFFERED=1")
 
 	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
-	// Validate PythonCommand to prevent command injection
-	if err := validatePythonCommandWithConfig(input.Config.PythonCommand, input.Config); err != nil {
-		return Args{}, err
-	}
 
 	pyParts, err := shlex.Split(input.Config.PythonCommand)
 	if err != nil {

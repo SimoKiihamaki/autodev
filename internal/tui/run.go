@@ -227,11 +227,16 @@ func (m *model) resolvePythonScript(initial bool) bool {
 	return found
 }
 
-func (m *model) hydrateConfigFromInputs() []string {
-	invalid, parseErrs := m.populateConfigFromInputs(&m.cfg)
+// logParseErrors logs numeric parsing errors with consistent formatting
+func logParseErrors(parseErrs []numericParseError) {
 	for _, item := range parseErrs {
 		log.Printf("tui: invalid %s value %q: %v", strings.ToLower(item.label), item.raw, item.err)
 	}
+}
+
+func (m *model) hydrateConfigFromInputs() []string {
+	invalid, parseErrs := m.populateConfigFromInputs(&m.cfg)
+	logParseErrors(parseErrs)
 	return invalid
 }
 
@@ -314,9 +319,7 @@ func (m *model) applyPRDMetadata(dst *config.Config) {
 
 func (m *model) saveConfig() tea.Cmd {
 	invalidNumeric, parseErrs := m.populateConfigFromInputs(&m.cfg)
-	for _, item := range parseErrs {
-		log.Printf("tui: invalid %s value %q: %v", strings.ToLower(item.label), item.raw, item.err)
-	}
+	logParseErrors(parseErrs)
 	m.normalizeLogLevel()
 	err := config.Save(m.cfg)
 	m.lastSaveErr = err

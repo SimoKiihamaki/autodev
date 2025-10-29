@@ -25,8 +25,11 @@ func atoiSafe(s string) (int, error) {
 // wrapIndex normalizes idx into the range [0, n). It gracefully handles
 // negative offsets and values greater than n by applying modular arithmetic.
 // Callers should pass the desired index (after applying an increment or
-// decrement) along with the collection length. The function returns 0 when
-// n <= 0 so callers can safely use it with empty slices.
+// decrement) along with the collection length.
+//
+// IMPORTANT: When n <= 0, this function returns 0. Callers MUST verify
+// that the collection length is positive before using the returned index
+// to avoid out-of-bounds access.
 func wrapIndex(idx, n int) int {
 	if n <= 0 {
 		return 0

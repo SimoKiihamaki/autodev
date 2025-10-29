@@ -302,6 +302,9 @@ func equalTimes(a, b time.Time) bool {
 	if a.IsZero() && b.IsZero() {
 		return true
 	}
+	if a.IsZero() != b.IsZero() {
+		return false
+	}
 	return a.Equal(b)
 }
 

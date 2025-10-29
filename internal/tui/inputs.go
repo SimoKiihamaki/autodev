@@ -24,13 +24,6 @@ var settingsGrid = map[string][2]int{
 	"maxiters":     {8, 3},
 }
 
-// wrapChoiceIndex wraps the executor toggle index when cycling through
-// available choices. It delegates to wrapIndex so negative deltas and values
-// greater than the slice length are handled consistently.
-func wrapChoiceIndex(current, delta, length int) int {
-	return wrapIndex(current+delta, length)
-}
-
 func (m *model) blurAllInputs() {
 	m.inRepo.Blur()
 	m.inBase.Blur()
@@ -330,7 +323,7 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 
 	// Calculate new choice and update via pointer
 	n := len(executorChoices)
-	newIdx := wrapChoiceIndex(idx, direction, n)
+	newIdx := wrapIndex(idx+direction, n)
 	*target = executorChoices[newIdx]
 	m.updateDirtyState()
 }
