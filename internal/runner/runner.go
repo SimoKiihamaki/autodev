@@ -138,55 +138,124 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 }
 
 // validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories
+// Note: scriptPath should be the final resolved path (symlinks resolved) that will be executed
 func validatePythonScriptPath(scriptPath, repoPath string) error {
-	// If script path is absolute, validate it directly
-	if filepath.IsAbs(scriptPath) {
-		// Use filepath.Clean to normalize the path
-		cleaned := filepath.Clean(scriptPath)
-		if repoPath != "" {
-			relPath, err := filepath.Rel(repoPath, cleaned)
-			if err != nil {
-				return fmt.Errorf("PythonScript absolute path cannot be resolved relative to repo: %q", scriptPath)
-			}
-			if strings.HasPrefix(relPath, "..") {
-				return fmt.Errorf("PythonScript absolute path would escape repository directory: %q", scriptPath)
-			}
+	// All paths passed to this function should be absolute and symlinks resolved
+	if !filepath.IsAbs(scriptPath) {
+		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
+	}
+
+	// If repoPath is configured, ensure the script is within the repo
+	if repoPath != "" {
+		// Resolve symlinks in repoPath as well to handle cases like /var -> /private/var
+		resolvedRepoPath, err := filepath.EvalSymlinks(repoPath)
+		if err != nil {
+			// If we can't resolve symlinks in repoPath, try the original path
+			resolvedRepoPath = repoPath
+		}
+
+		relPath, err := filepath.Rel(resolvedRepoPath, scriptPath)
+		if err != nil {
+			return fmt.Errorf("PythonScript path cannot be resolved relative to repo: %q", scriptPath)
+		}
+		if strings.HasPrefix(relPath, "..") {
+			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
 		}
 		return nil
 	}
 
-	// For relative paths, check if they would escape the repo when resolved
-	if repoPath != "" {
-		absScript := filepath.Join(repoPath, scriptPath)
-		relPath, err := filepath.Rel(repoPath, absScript)
-		if err != nil {
-			return fmt.Errorf("PythonScript path cannot be resolved relative to repo: %q", scriptPath)
-		}
-		// If the relative path starts with "..", it would escape the repo directory
-		if strings.HasPrefix(relPath, "..") {
-			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
+	// When repoPath is not configured, restrict to safe directories only
+	tmpDir := os.TempDir()
+	// Resolve temp dir symlinks as well
+	resolvedTmpDir, err := filepath.EvalSymlinks(tmpDir)
+	if err != nil {
+		resolvedTmpDir = tmpDir
+	}
+	if strings.HasPrefix(scriptPath, resolvedTmpDir+string(filepath.Separator)) {
+		// Allow paths within system temp directory (important for testing)
+		return nil
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		resolvedHomeDir, err := filepath.EvalSymlinks(homeDir)
+		if err == nil && strings.HasPrefix(scriptPath, resolvedHomeDir+string(filepath.Separator)) {
+			// Allow paths within user home directory
+			return nil
 		}
 	}
 
-	return nil
+	// Allow paths within current working directory
+	wd, err := os.Getwd()
+	if err == nil {
+		resolvedWD, err := filepath.EvalSymlinks(wd)
+		if err == nil && strings.HasPrefix(scriptPath, resolvedWD+string(filepath.Separator)) {
+			return nil
+		}
+	}
+
+	// Reject absolute paths in other locations when repoPath is not configured
+	return fmt.Errorf("PythonScript path requires repoPath configuration or must be within safe directories: %q", scriptPath)
+}
+
+// resolveScriptPath resolves the script path to the absolute path that will be executed
+func resolveScriptPath(scriptPath, repoPath string) (string, error) {
+	// If path is already absolute, use it directly
+	if filepath.IsAbs(scriptPath) {
+		// Try to resolve symlinks, but fall back to the cleaned absolute path if not possible
+		resolved, err := filepath.EvalSymlinks(scriptPath)
+		if err != nil {
+			// If symlink resolution fails, check if the file exists at the original path
+			if _, statErr := os.Stat(scriptPath); statErr != nil {
+				return "", fmt.Errorf("cannot resolve absolute script path: %q: %w", scriptPath, err)
+			}
+			// File exists but symlink resolution failed, use the cleaned absolute path
+			return filepath.Clean(scriptPath), nil
+		}
+		return resolved, nil
+	}
+
+	// For relative paths, repoPath must be configured
+	if repoPath == "" {
+		return "", fmt.Errorf("relative script path requires repoPath configuration: %q", scriptPath)
+	}
+
+	// Join with repoPath and resolve to absolute path
+	candidate := filepath.Join(repoPath, scriptPath)
+	absPath, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("cannot make script path absolute: %q: %w", scriptPath, err)
+	}
+
+	// Try to resolve symlinks, but fall back to the cleaned absolute path if not possible
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		// If symlink resolution fails, check if the file exists at the original path
+		if _, statErr := os.Stat(absPath); statErr != nil {
+			return "", fmt.Errorf("cannot resolve script path symlinks: %q: %w", scriptPath, err)
+		}
+		// File exists but symlink resolution failed, use the cleaned absolute path
+		return filepath.Clean(absPath), nil
+	}
+
+	return resolved, nil
 }
 
 func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
 	script := cfg.PythonScript
 
-	// Validate script path for security
-	if err := validatePythonScriptPath(script, cfg.RepoPath); err != nil {
+	// Resolve the final script path that will be executed
+	resolvedScript, err := resolveScriptPath(script, cfg.RepoPath)
+	if err != nil {
 		return nil, err
 	}
 
-	if !filepath.IsAbs(script) && strings.TrimSpace(cfg.RepoPath) != "" {
-		candidate := filepath.Join(cfg.RepoPath, script)
-		if abs, err := filepath.Abs(candidate); err == nil {
-			if _, statErr := os.Stat(abs); statErr == nil {
-				script = abs
-			}
-		}
+	// Validate the resolved script path for security (prevents TOCTOU)
+	if err := validatePythonScriptPath(resolvedScript, cfg.RepoPath); err != nil {
+		return nil, err
 	}
+
+	script = resolvedScript
 	args := []string{script, "--prd", prdPath}
 	if cfg.RepoPath != "" {
 		args = append(args, "--repo", cfg.RepoPath)

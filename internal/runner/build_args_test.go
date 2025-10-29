@@ -68,6 +68,13 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	if err := os.WriteFile(scriptAbs, []byte("print('stub')\n"), 0o644); err != nil {
 		t.Fatalf("write script: %v", err)
 	}
+
+	// Resolve symlinks in script path since security code does symlink resolution
+	resolvedScript, err := filepath.EvalSymlinks(scriptAbs)
+	if err != nil {
+		// If symlink resolution fails, use the original path
+		resolvedScript = scriptAbs
+	}
 	prd := filepath.Join(repo, "spec.md")
 	if err := os.WriteFile(prd, []byte("# spec"), 0o644); err != nil {
 		t.Fatalf("write prd: %v", err)
@@ -108,7 +115,7 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 		{
 			name: "defaults_map_core_fields",
 			expectArgs: [][]string{
-				{scriptAbs},
+				{resolvedScript},
 				{"--prd", prd},
 				{"--repo", repo},
 				{"--base", "develop"},
@@ -171,7 +178,7 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 				cfg.PythonCommand = "python3 -O -u"
 			},
 			expectArgs: [][]string{
-				{scriptAbs},
+				{resolvedScript},
 			},
 			extraCheck: func(t *testing.T, plan Args, cfg config.Config) {
 				t.Helper()
