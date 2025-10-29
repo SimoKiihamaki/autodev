@@ -331,6 +331,7 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 //
 // Returns:
 //   - []string:   The argument list to be used for invoking the Python script.
+//   - string:     The fully resolved absolute path to the Python script that will be executed.
 //   - error:      An error if argument construction or validation fails.
 //
 // Security considerations:
@@ -340,7 +341,7 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 //     script to be executed is within the intended repository and not replaced by a malicious file.
 //   - The function uses validatePythonScriptPath to enforce that the resolved script path is safe.
 //   - Any failure in path resolution or validation results in an error, preventing execution.
-func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
+func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, string, error) {
 	script := cfg.PythonScript
 
 	// Resolve repoPath symlinks first to prevent TOCTOU issues
@@ -349,19 +350,21 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		var err error
 		resolvedRepoPath, err = filepath.EvalSymlinks(cfg.RepoPath)
 		if err != nil {
-			return nil, fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", cfg.RepoPath, err)
+			return nil, "", fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", cfg.RepoPath, err)
 		}
 	}
 
 	// Resolve the final script path that will be executed
 	resolvedScript, err := resolveScriptPath(script, cfg.RepoPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+
+	ensureProcessSafeScriptDir(filepath.Dir(resolvedScript))
 
 	// Validate the resolved script path for security (prevents TOCTOU)
 	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	script = resolvedScript
@@ -441,7 +444,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	level = strings.ToUpper(level)
 	args = append(args, "--log-level", level)
 
-	return args, nil
+	return args, script, nil
 }
 
 // BuildArgs converts the provided configuration into the final command, arguments,
@@ -471,7 +474,7 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		}
 	}
 
-	scriptArgs, err := buildScriptArgs(cfg, input.PRDPath, input.LogFilePath, input.LogLevel)
+	scriptArgs, resolvedScript, err := buildScriptArgs(cfg, input.PRDPath, input.LogFilePath, input.LogLevel)
 	if err != nil {
 		return Args{}, err
 	}
@@ -522,6 +525,7 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
 	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
+	env = ensureScriptDirWhitelisted(env, filepath.Dir(resolvedScript))
 
 	pyParts, err := shlex.Split(cfg.PythonCommand)
 	if err != nil {
@@ -827,6 +831,101 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 		}
 	}
 	return newEnv
+}
+
+var safeScriptDirsMu sync.Mutex
+
+func ensureProcessSafeScriptDir(scriptDir string) {
+	scriptDir = strings.TrimSpace(scriptDir)
+	if scriptDir == "" {
+		return
+	}
+	cleanDir := filepath.Clean(scriptDir)
+	if !filepath.IsAbs(cleanDir) {
+		return
+	}
+
+	safeScriptDirsMu.Lock()
+	defer safeScriptDirsMu.Unlock()
+
+	current := os.Getenv(safeScriptDirsEnv)
+	merged, changed := mergeSafeScriptDir(current, cleanDir)
+	if changed || merged != current {
+		_ = os.Setenv(safeScriptDirsEnv, merged)
+	}
+}
+
+func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
+	if scriptDir == "" || !filepath.IsAbs(scriptDir) {
+		return existing, false
+	}
+
+	sep := string(os.PathListSeparator)
+	seen := make(map[string]struct{})
+	parts := make([]string, 0, 4)
+	if existing != "" {
+		for _, part := range strings.Split(existing, sep) {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			clean := filepath.Clean(part)
+			if !filepath.IsAbs(clean) {
+				continue
+			}
+			if _, ok := seen[clean]; ok {
+				continue
+			}
+			seen[clean] = struct{}{}
+			parts = append(parts, clean)
+		}
+	}
+
+	cleanDir := filepath.Clean(scriptDir)
+	if _, ok := seen[cleanDir]; !ok {
+		seen[cleanDir] = struct{}{}
+		parts = append(parts, cleanDir)
+		return strings.Join(parts, sep), true
+	}
+	return strings.Join(parts, sep), false
+}
+
+// ensureScriptDirWhitelisted makes sure AUTO_PRD_SAFE_SCRIPT_DIRS contains the provided directory.
+// This mirrors the manual export recommended in docs (option 2) so globally installed binaries still
+// trust the bundled automation script. Existing values are preserved and the new directory is appended
+// only when missing.
+func ensureScriptDirWhitelisted(env []string, scriptDir string) []string {
+	scriptDir = strings.TrimSpace(scriptDir)
+	if scriptDir == "" {
+		return env
+	}
+	cleanDir := filepath.Clean(scriptDir)
+	if !filepath.IsAbs(cleanDir) {
+		// Safety: refuse to add relative paths; caller should provide absolute.
+		return env
+	}
+
+	var (
+		existing string
+		idx      = -1
+	)
+	for i, kv := range env {
+		if strings.HasPrefix(kv, safeScriptDirsEnv+"=") {
+			existing = kv[len(safeScriptDirsEnv)+1:]
+			idx = i
+			break
+		}
+	}
+
+	value, _ := mergeSafeScriptDir(existing, cleanDir)
+	entry := safeScriptDirsEnv + "=" + value
+	if idx >= 0 {
+		newEnv := make([]string, len(env))
+		copy(newEnv, env)
+		newEnv[idx] = entry
+		return newEnv
+	}
+	return append(env, entry)
 }
 
 func (o Options) Run(ctx context.Context) error {

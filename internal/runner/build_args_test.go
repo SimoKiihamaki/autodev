@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
@@ -73,7 +74,7 @@ outer:
 }
 
 func TestBuildArgsArgumentMapping(t *testing.T) {
-	t.Parallel()
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	toolsDir := filepath.Join(repo, "tools")
@@ -215,7 +216,6 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 
 			cfg := baseCfg.Clone()
 			input := baseInput
@@ -255,12 +255,28 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 			if tc.extraCheck != nil {
 				tc.extraCheck(t, plan, cfg)
 			}
+
+			val, ok := env[safeScriptDirsEnv]
+			if !ok {
+				t.Fatalf("env missing %s entry", safeScriptDirsEnv)
+			}
+			wantDir := filepath.Dir(resolvedScript)
+			found := false
+			for _, part := range strings.Split(val, string(os.PathListSeparator)) {
+				if filepath.Clean(part) == wantDir {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s=%q does not include script dir %s", safeScriptDirsEnv, val, wantDir)
+			}
 		})
 	}
 }
 
 func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
-	t.Parallel()
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	toolsDir := filepath.Join(repo, "tools")
@@ -327,7 +343,6 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			cfg := baseCfg.Clone()
 			if tc.configure != nil {
 				tc.configure(&cfg)
@@ -355,6 +370,7 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 }
 
 func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
 	exePath, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
@@ -403,6 +419,7 @@ func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
 }
 
 func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir .git: %v", err)
