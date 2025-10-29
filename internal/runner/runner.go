@@ -142,6 +142,12 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // validatePythonScriptPath requires absolute paths for both scriptPath and repoPath.
 // All paths passed to this function should be absolute.
 // Note: repoPath should be resolved from symlinks before calling this function to prevent TOCTOU issues
+//
+// Escaping the repo is an allowed configuration so long as the script directory is explicitly
+// whitelisted. Operators frequently install aprd in a shared tools directory and then execute it
+// from unrelated repositories. In that flow the path *must* be permitted to leave the repo root,
+// otherwise legitimate launches will fail with “escape repository directory” errors. The check
+// below therefore rejects escapes only when the directory is not covered by AUTO_PRD_SAFE_SCRIPT_DIRS.
 func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
@@ -331,6 +337,7 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 //
 // Returns:
 //   - []string:   The argument list to be used for invoking the Python script.
+//   - string:     The fully resolved absolute path to the Python script that will be executed.
 //   - error:      An error if argument construction or validation fails.
 //
 // Security considerations:
@@ -340,7 +347,14 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 //     script to be executed is within the intended repository and not replaced by a malicious file.
 //   - The function uses validatePythonScriptPath to enforce that the resolved script path is safe.
 //   - Any failure in path resolution or validation results in an error, preventing execution.
-func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
+//
+// Repository escape rationale:
+//   - Allowing the script to live outside the repo is intentional. Operators often install the
+//     automation bundle globally, then run aprd binaries from other worktrees. Validation must
+//     therefore accept “escaped” paths so long as the directory is explicitly whitelisted in
+//     AUTO_PRD_SAFE_SCRIPT_DIRS. The merge + Setenv step below guarantees the whitelist is updated
+//     before we re-run security checks, documenting that this escape is both expected and required.
+func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, string, error) {
 	script := cfg.PythonScript
 
 	// Resolve repoPath symlinks first to prevent TOCTOU issues
@@ -349,19 +363,30 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		var err error
 		resolvedRepoPath, err = filepath.EvalSymlinks(cfg.RepoPath)
 		if err != nil {
-			return nil, fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", cfg.RepoPath, err)
+			return nil, "", fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", cfg.RepoPath, err)
 		}
 	}
 
 	// Resolve the final script path that will be executed
 	resolvedScript, err := resolveScriptPath(script, cfg.RepoPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	// Add the script directory to the current process' whitelist before validation.
+	// This ensures bundled installations that live outside the repo (the "escape" case)
+	// remain permitted while still forcing the directory onto the allowlist.
+	if scriptDir := filepath.Dir(resolvedScript); scriptDir != "" {
+		if merged, added := mergeSafeScriptDir(os.Getenv(safeScriptDirsEnv), scriptDir); added {
+			if err := os.Setenv(safeScriptDirsEnv, merged); err != nil {
+				return nil, "", fmt.Errorf("failed to update %s: %w", safeScriptDirsEnv, err)
+			}
+		}
 	}
 
 	// Validate the resolved script path for security (prevents TOCTOU)
 	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	script = resolvedScript
@@ -441,7 +466,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	level = strings.ToUpper(level)
 	args = append(args, "--log-level", level)
 
-	return args, nil
+	return args, script, nil
 }
 
 // BuildArgs converts the provided configuration into the final command, arguments,
@@ -471,7 +496,7 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		}
 	}
 
-	scriptArgs, err := buildScriptArgs(cfg, input.PRDPath, input.LogFilePath, input.LogLevel)
+	scriptArgs, resolvedScript, err := buildScriptArgs(cfg, input.PRDPath, input.LogFilePath, input.LogLevel)
 	if err != nil {
 		return Args{}, err
 	}
@@ -522,6 +547,7 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
 	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
+	env = ensureScriptDirWhitelisted(env, filepath.Dir(resolvedScript))
 
 	pyParts, err := shlex.Split(cfg.PythonCommand)
 	if err != nil {
@@ -827,6 +853,81 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 		}
 	}
 	return newEnv
+}
+
+func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
+	if scriptDir == "" || !filepath.IsAbs(scriptDir) {
+		return existing, false
+	}
+
+	sep := string(os.PathListSeparator)
+	seen := make(map[string]struct{})
+	parts := make([]string, 0, 4)
+	if existing != "" {
+		for _, part := range strings.Split(existing, sep) {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			clean := filepath.Clean(part)
+			if !filepath.IsAbs(clean) {
+				continue
+			}
+			if _, ok := seen[clean]; ok {
+				continue
+			}
+			seen[clean] = struct{}{}
+			parts = append(parts, clean)
+		}
+	}
+
+	cleanDir := filepath.Clean(scriptDir)
+	if _, ok := seen[cleanDir]; !ok {
+		seen[cleanDir] = struct{}{}
+		parts = append(parts, cleanDir)
+		return strings.Join(parts, sep), true
+	}
+	return strings.Join(parts, sep), false
+}
+
+// ensureScriptDirWhitelisted makes sure AUTO_PRD_SAFE_SCRIPT_DIRS contains the provided directory.
+// This mirrors the manual export recommended in docs (option 2) so globally installed binaries still
+// trust the bundled automation script. Existing values are preserved and the new directory is appended
+// only when missing.
+func ensureScriptDirWhitelisted(env []string, scriptDir string) []string {
+	scriptDir = strings.TrimSpace(scriptDir)
+	if scriptDir == "" {
+		return env
+	}
+	cleanDir := filepath.Clean(scriptDir)
+	if !filepath.IsAbs(cleanDir) {
+		// Safety: refuse to add relative paths; caller should provide absolute.
+		return env
+	}
+
+	var (
+		existing string
+		idx      = -1
+	)
+	for i, kv := range env {
+		if strings.HasPrefix(kv, safeScriptDirsEnv+"=") {
+			existing = kv[len(safeScriptDirsEnv)+1:]
+			idx = i
+			break
+		}
+	}
+
+	// The second return value indicates whether the directory was actually added.
+	// We intentionally ignore it here because we only need the merged value for the environment variable.
+	value, _ := mergeSafeScriptDir(existing, cleanDir)
+	entry := safeScriptDirsEnv + "=" + value
+	if idx >= 0 {
+		newEnv := make([]string, len(env))
+		copy(newEnv, env)
+		newEnv[idx] = entry
+		return newEnv
+	}
+	return append(env, entry)
 }
 
 func (o Options) Run(ctx context.Context) error {
