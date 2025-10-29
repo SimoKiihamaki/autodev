@@ -375,6 +375,15 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 					t.Fatalf("env[%s] unexpectedly present: %q", unexpected, val)
 				}
 			}
+
+			// Resolve symlinks in script path since security code does symlink resolution
+			resolvedScript, err := filepath.EvalSymlinks(script)
+			if err != nil {
+				// If symlink resolution fails, use the original path
+				resolvedScript = script
+			}
+			// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+			assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 		})
 	}
 }
@@ -423,9 +432,19 @@ func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
 		LogFilePath: filepath.Join(prdDir, "run.log"),
 	}
 
-	if _, err := BuildArgs(input); err != nil {
+	plan, err := BuildArgs(input)
+	if err != nil {
 		t.Fatalf("BuildArgs rejected installed script without repo path: %v", err)
 	}
+
+	// Resolve symlinks in script path since security code does symlink resolution
+	resolvedScript, err := filepath.EvalSymlinks(script)
+	if err != nil {
+		// If symlink resolution fails, use the original path
+		resolvedScript = script
+	}
+	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
 
 func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
@@ -488,4 +507,13 @@ func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
 	if gotResolved != wantResolved {
 		t.Fatalf("expected inferred repo %q (resolved %q), got %q (resolved %q)", repo, wantResolved, repoArg, gotResolved)
 	}
+
+	// Resolve symlinks in script path since security code does symlink resolution
+	resolvedScript, err := filepath.EvalSymlinks(script)
+	if err != nil {
+		// If symlink resolution fails, use the original path
+		resolvedScript = script
+	}
+	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
