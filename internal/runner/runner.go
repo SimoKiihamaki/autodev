@@ -169,20 +169,22 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	tmpDir := os.TempDir()
 	// Restrict to a specific subdirectory within the temp directory for safety
 	autodevTmpDir := filepath.Join(tmpDir, "autodev")
-	resolvedAutodevTmpDir, err := filepath.EvalSymlinks(autodevTmpDir)
-	if err != nil {
-		return fmt.Errorf("autodev temp directory does not exist or cannot resolve symlinks: %v", err)
-	}
-	// Only allow scripts within $TMPDIR/autodev, not the whole temp directory
-	if isPrefixOf(resolvedAutodevTmpDir, scriptPath) {
-		// Allow paths within autodev subdirectory of temp directory (important for testing)
-		return nil
+	if stat, err := os.Stat(autodevTmpDir); err == nil && stat.IsDir() {
+		resolvedAutodevTmpDir, err := filepath.EvalSymlinks(autodevTmpDir)
+		if err == nil && isPrefixOf(resolvedAutodevTmpDir, scriptPath) {
+			// Allow paths within autodev subdirectory of temp directory (important for testing)
+			return nil
+		}
 	}
 
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		// Restrict to a specific safe subdirectory within the home directory
 		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
+		info, statErr := os.Stat(autodevDir)
+		if statErr != nil || !info.IsDir() {
+			return fmt.Errorf("autodev directory does not exist or is not a directory: %v", statErr)
+		}
 		resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
 		if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
 			// Allow paths only within ~/.local/share/autodev
