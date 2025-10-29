@@ -893,6 +893,8 @@ func ensureScriptDirWhitelisted(env []string, scriptDir string) []string {
 		}
 	}
 
+	// The second return value indicates whether the directory was actually added.
+	// We intentionally ignore it here because we only need the merged value for the environment variable.
 	value, _ := mergeSafeScriptDir(existing, cleanDir)
 	entry := safeScriptDirsEnv + "=" + value
 	if idx >= 0 {

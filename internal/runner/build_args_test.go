@@ -73,6 +73,15 @@ outer:
 	return false
 }
 
+// resolveScriptPathForTest resolves symlinks for a script path, returning the original path if resolution fails.
+func resolveScriptPathForTest(script string) string {
+	resolved, err := filepath.EvalSymlinks(script)
+	if err != nil {
+		return script
+	}
+	return resolved
+}
+
 // assertScriptDirWhitelisted checks that AUTO_PRD_SAFE_SCRIPT_DIRS contains the expected directory
 func assertScriptDirWhitelisted(t *testing.T, env []string, expectedDir string) {
 	t.Helper()
@@ -111,11 +120,7 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	}
 
 	// Resolve symlinks in script path since security code does symlink resolution
-	resolvedScript, err := filepath.EvalSymlinks(scriptAbs)
-	if err != nil {
-		// If symlink resolution fails, use the original path
-		resolvedScript = scriptAbs
-	}
+	resolvedScript := resolveScriptPathForTest(scriptAbs)
 	prd := filepath.Join(repo, "spec.md")
 	if err := os.WriteFile(prd, []byte("# spec"), 0o644); err != nil {
 		t.Fatalf("write prd: %v", err)
@@ -377,11 +382,7 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 			}
 
 			// Resolve symlinks in script path since security code does symlink resolution
-			resolvedScript, err := filepath.EvalSymlinks(script)
-			if err != nil {
-				// If symlink resolution fails, use the original path
-				resolvedScript = script
-			}
+			resolvedScript := resolveScriptPathForTest(script)
 			// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
 			assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 		})
@@ -438,11 +439,7 @@ func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
 	}
 
 	// Resolve symlinks in script path since security code does symlink resolution
-	resolvedScript, err := filepath.EvalSymlinks(script)
-	if err != nil {
-		// If symlink resolution fails, use the original path
-		resolvedScript = script
-	}
+	resolvedScript := resolveScriptPathForTest(script)
 	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
 	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
@@ -509,11 +506,7 @@ func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
 	}
 
 	// Resolve symlinks in script path since security code does symlink resolution
-	resolvedScript, err := filepath.EvalSymlinks(script)
-	if err != nil {
-		// If symlink resolution fails, use the original path
-		resolvedScript = script
-	}
+	resolvedScript := resolveScriptPathForTest(script)
 	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
 	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
