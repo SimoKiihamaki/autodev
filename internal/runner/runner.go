@@ -360,8 +360,6 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		return nil, "", err
 	}
 
-	ensureProcessSafeScriptDir(filepath.Dir(resolvedScript))
-
 	// Validate the resolved script path for security (prevents TOCTOU)
 	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
 		return nil, "", err
@@ -831,28 +829,6 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 		}
 	}
 	return newEnv
-}
-
-var safeScriptDirsMu sync.Mutex
-
-func ensureProcessSafeScriptDir(scriptDir string) {
-	scriptDir = strings.TrimSpace(scriptDir)
-	if scriptDir == "" {
-		return
-	}
-	cleanDir := filepath.Clean(scriptDir)
-	if !filepath.IsAbs(cleanDir) {
-		return
-	}
-
-	safeScriptDirsMu.Lock()
-	defer safeScriptDirsMu.Unlock()
-
-	current := os.Getenv(safeScriptDirsEnv)
-	merged, changed := mergeSafeScriptDir(current, cleanDir)
-	if changed || merged != current {
-		_ = os.Setenv(safeScriptDirsEnv, merged)
-	}
 }
 
 func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {

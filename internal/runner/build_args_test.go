@@ -73,6 +73,29 @@ outer:
 	return false
 }
 
+// assertScriptDirWhitelisted checks that AUTO_PRD_SAFE_SCRIPT_DIRS contains the expected directory
+func assertScriptDirWhitelisted(t *testing.T, env []string, expectedDir string) {
+	t.Helper()
+
+	found := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, safeScriptDirsEnv+"=") {
+			value := kv[len(safeScriptDirsEnv)+1:]
+			for _, part := range strings.Split(value, string(os.PathListSeparator)) {
+				if filepath.Clean(part) == filepath.Clean(expectedDir) {
+					found = true
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("env missing expected directory %q in %s", expectedDir, safeScriptDirsEnv)
+	}
+}
+
 func TestBuildArgsArgumentMapping(t *testing.T) {
 	t.Setenv(safeScriptDirsEnv, "")
 
@@ -256,21 +279,8 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 				tc.extraCheck(t, plan, cfg)
 			}
 
-			val, ok := env[safeScriptDirsEnv]
-			if !ok {
-				t.Fatalf("env missing %s entry", safeScriptDirsEnv)
-			}
-			wantDir := filepath.Dir(resolvedScript)
-			found := false
-			for _, part := range strings.Split(val, string(os.PathListSeparator)) {
-				if filepath.Clean(part) == wantDir {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Fatalf("%s=%q does not include script dir %s", safeScriptDirsEnv, val, wantDir)
-			}
+			// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+			assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 		})
 	}
 }
