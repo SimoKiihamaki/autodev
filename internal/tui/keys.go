@@ -314,12 +314,12 @@ func DefaultKeyMap() KeyMap {
 		ActHelp:          {key("?"), key("f1")},
 		ActSave:          {ctrl("s")},
 		ActResetDefaults: {ctrl("backspace")},
-		ActGotoTab1:      {alt("1")},
-		ActGotoTab2:      {alt("2")},
-		ActGotoTab3:      {alt("3")},
-		ActGotoTab4:      {alt("4")},
-		ActGotoTab5:      {alt("5")},
-		ActGotoTab6:      {alt("6")},
+		ActGotoTab1:      {key("1")},
+		ActGotoTab2:      {key("2")},
+		ActGotoTab3:      {key("3")},
+		ActGotoTab4:      {key("4")},
+		ActGotoTab5:      {key("5")},
+		ActGotoTab6:      {key("6")},
 	}
 
 	perTab := map[string]map[Action][]KeyCombo{

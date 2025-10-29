@@ -250,8 +250,21 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 
 	if len(actions) == 0 {
 		var cmd tea.Cmd
+		prevFilter := m.prdList.FilterState()
 		m.prdList, cmd = m.prdList.Update(msg)
-		if isRuneKey(msg) || m.prdList.FilterState() == list.Filtering {
+		if prevFilter == list.Filtering {
+			return true, cmd
+		}
+		if isDigitKey(msg) {
+			if m.prdList.FilterState() == list.Filtering {
+				m.prdList.ResetFilter()
+			}
+			return false, cmd
+		}
+		if m.prdList.FilterState() == list.Filtering {
+			return true, cmd
+		}
+		if isRuneKey(msg) {
 			return true, cmd
 		}
 		return false, cmd
@@ -511,6 +524,10 @@ func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, 
 		return true, batchCmd(cmds)
 	}
 
+	if !m.prompt.Focused() {
+		return false, nil
+	}
+
 	if msg.Type == tea.KeyCtrlS {
 		return false, nil
 	}
@@ -653,6 +670,14 @@ func flagNameForAction(act Action) string {
 
 func isRuneKey(msg tea.KeyMsg) bool {
 	return msg.Type == tea.KeyRunes && len(msg.Runes) > 0
+}
+
+func isDigitKey(msg tea.KeyMsg) bool {
+	if msg.Type != tea.KeyRunes || len(msg.Runes) != 1 {
+		return false
+	}
+	r := msg.Runes[0]
+	return r >= '0' && r <= '9'
 }
 
 // tryNavigateOrCycle navigates the settings input list, or cycles the current toggle if navigation is blocked.

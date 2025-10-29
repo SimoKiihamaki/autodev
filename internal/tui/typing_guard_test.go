@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -13,6 +14,11 @@ func newModelForTypingGuardTest() model {
 	m.tabs = defaultTabIDs()
 	m.tagInput = mkInput("Add tag", "", 24)
 	m.prompt = textarea.New()
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	m.prdList = list.New([]list.Item{}, delegate, 0, 0)
+	m.prdList.SetFilteringEnabled(true)
+	m.prdList.DisableQuitKeybindings()
 	return m
 }
 
@@ -20,8 +26,12 @@ func runeKey(r rune) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
 }
 
-func altRuneKey(r rune) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: true}
+func enterKey() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyEnter}
+}
+
+func escKey() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyEsc}
 }
 
 func ctrlBackspaceKey() tea.KeyMsg {
@@ -33,7 +43,7 @@ func TestTypingGuardBlocksGlobalShortcuts(t *testing.T) {
 
 	keyQuit := runeKey('q')
 	keyHelp := runeKey('?')
-	keyGotoFirstTab := altRuneKey('1')
+	keyGotoFirstTab := runeKey('1')
 	keyResetDefaults := ctrlBackspaceKey()
 
 	t.Run("while_typing_globals_ignored", func(t *testing.T) {
@@ -151,4 +161,83 @@ func TestTypingGuardBlocksGlobalShortcuts(t *testing.T) {
 			t.Fatalf("reset defaults did not restore defaults; got base branch %q want %q", updated.cfg.BaseBranch, updated.defaultConfig.BaseBranch)
 		}
 	})
+}
+
+func TestNumberKeysSwitchTabsFromPRDTab(t *testing.T) {
+	t.Parallel()
+
+	m := newModelForTypingGuardTest()
+	m.tabIndex = 1 // PRD tab
+	m.blurAllInputs()
+	m.SetTyping(false)
+	m.refreshTypingState()
+
+	updated, _ := m.handleKeyMsg(runeKey('1'))
+	if updated.tabIndex != 0 {
+		t.Fatalf("expected number key to switch to tab 0, got %d", updated.tabIndex)
+	}
+}
+
+func TestNumberKeysSwitchTabsFromPromptWhenNotFocused(t *testing.T) {
+	t.Parallel()
+
+	m := newModelForTypingGuardTest()
+	m.tabIndex = 4 // prompt tab
+	m.prompt.Blur()
+	m.blurAllInputs()
+	m.SetTyping(false)
+	m.refreshTypingState()
+
+	updated, _ := m.handleKeyMsg(runeKey('1'))
+	if updated.tabIndex != 0 {
+		t.Fatalf("expected number key to switch to tab 0, got %d", updated.tabIndex)
+	}
+}
+
+func TestPromptFocusBlocksNumberKeys(t *testing.T) {
+	t.Parallel()
+
+	m := newModelForTypingGuardTest()
+	m.tabIndex = 4 // prompt tab
+	m.prompt.Blur()
+	m.blurAllInputs()
+
+	var cmd tea.Cmd
+	m, cmd = m.handleKeyMsg(enterKey())
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, ok := msg.(tea.QuitMsg); ok {
+				t.Fatalf("enter unexpectedly produced quit message")
+			}
+		}
+	}
+	if !m.prompt.Focused() {
+		t.Fatalf("prompt should be focused after enter")
+	}
+
+	updated, _ := m.handleKeyMsg(runeKey('1'))
+	if updated.tabIndex != m.tabIndex {
+		t.Fatalf("number key should not switch tabs while prompt focused; got %d want %d", updated.tabIndex, m.tabIndex)
+	}
+}
+
+func TestPromptEscReenablesNumberKeys(t *testing.T) {
+	t.Parallel()
+
+	m := newModelForTypingGuardTest()
+	m.tabIndex = 4
+	m, _ = m.handleKeyMsg(enterKey())
+	if !m.prompt.Focused() {
+		t.Fatalf("prompt should be focused after enter")
+	}
+
+	m, _ = m.handleKeyMsg(escKey())
+	if m.prompt.Focused() {
+		t.Fatalf("prompt should blur after esc")
+	}
+
+	updated, _ := m.handleKeyMsg(runeKey('1'))
+	if updated.tabIndex != 0 {
+		t.Fatalf("expected number key to switch to tab 0 after esc, got %d", updated.tabIndex)
+	}
 }
