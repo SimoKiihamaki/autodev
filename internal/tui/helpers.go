@@ -27,16 +27,21 @@ func atoiSafe(s string) (int, error) {
 // Callers should pass the desired index (after applying an increment or
 // decrement) along with the collection length.
 //
-// IMPORTANT: When n <= 0, this function returns -1 to make misuse explicit
+// When n <= 0, this function returns (0, false) to make misuse explicit
 // rather than silently returning a valid-looking but potentially unsafe index.
-// Callers MUST check for a negative return value before using it for slice/array access.
-func wrapIndex(idx, n int) int {
+// The returned bool indicates whether the index is valid for use in slice/array access.
+func wrapIndex(idx, n int) (int, bool) {
 	if n <= 0 {
-		return -1
+		return 0, false
 	}
 	idx %= n
 	if idx < 0 {
 		idx += n
 	}
-	return idx
+	return idx, true
+}
+
+// boolPtr returns a pointer to a bool value.
+func boolPtr(b bool) *bool {
+	return &b
 }

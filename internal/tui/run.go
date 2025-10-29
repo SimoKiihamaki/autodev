@@ -293,7 +293,7 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.RunPhases.Local = m.runLocal
 	dst.RunPhases.PR = m.runPR
 	dst.RunPhases.ReviewFix = m.runReview
-	dst.FollowLogs = m.followLogs
+	dst.FollowLogs = boolPtr(m.followLogs)
 	localExec := m.execLocalChoice.configValue()
 	dst.PhaseExecutors.Implement = localExec
 	dst.PhaseExecutors.Fix = localExec

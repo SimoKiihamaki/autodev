@@ -153,7 +153,6 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 				if flash := m.flash(note, defaultToastTTL); flash != nil {
 					cmds = append(cmds, flash)
 				}
-				cmds = append(cmds, func() tea.Msg { return statusMsg{note: note} })
 			}
 			handled = true
 		case ActNavigateUp, ActNavigateDown:
@@ -195,7 +194,7 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			handled = true
 		case ActToggleFollow:
 			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = m.followLogs
+			m.cfg.FollowLogs = boolPtr(m.followLogs)
 			m.runFeedAutoFollow = m.followLogs
 			if m.runFeedAutoFollow && len(m.runFeedBuf) > 0 {
 				m.runFeed.GotoBottom()
@@ -539,7 +538,7 @@ func (m *model) handleLogsTabActions(actions []Action, msg tea.KeyMsg) (bool, te
 			handled = true
 		case ActToggleFollow:
 			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = m.followLogs
+			m.cfg.FollowLogs = boolPtr(m.followLogs)
 			if m.followLogs {
 				m.logs.GotoBottom()
 			}

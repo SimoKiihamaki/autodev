@@ -139,30 +139,34 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 
 // validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories
 func validatePythonScriptPath(scriptPath, repoPath string) error {
-	// Check for obvious path traversal attempts
-	if strings.Contains(scriptPath, "..") {
-		return fmt.Errorf("PythonScript path contains parent directory references: %q", scriptPath)
-	}
-
 	// If script path is absolute, validate it directly
 	if filepath.IsAbs(scriptPath) {
-		// Ensure absolute path doesn't contain suspicious patterns
-		if strings.Contains(scriptPath, "/../") || strings.Contains(scriptPath, `\\..`) {
-			return fmt.Errorf("PythonScript absolute path contains suspicious patterns: %q", scriptPath)
+		// Use filepath.Clean to normalize the path and check for parent directory references
+		cleaned := filepath.Clean(scriptPath)
+		if strings.Contains(cleaned, "..") {
+			return fmt.Errorf("PythonScript absolute path contains parent directory references: %q", scriptPath)
 		}
 		return nil
 	}
 
-	// For relative paths, ensure they're reasonable
-	if strings.HasPrefix(scriptPath, "/") || strings.HasPrefix(scriptPath, "\\") {
-		return fmt.Errorf("PythonScript relative path appears to be absolute: %q", scriptPath)
+	// For relative paths, check if they would escape the repo when resolved
+	if repoPath != "" {
+		absScript := filepath.Join(repoPath, scriptPath)
+		relPath, err := filepath.Rel(repoPath, absScript)
+		if err != nil {
+			return fmt.Errorf("PythonScript path cannot be resolved relative to repo: %q", scriptPath)
+		}
+		// If the relative path starts with "..", it would escape the repo directory
+		if strings.HasPrefix(relPath, "..") {
+			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
+		}
 	}
 
-	// Check for suspicious path components
-	parts := strings.Split(scriptPath, string(filepath.Separator))
+	// Check for suspicious path components after normalization
+	parts := strings.Split(filepath.Clean(scriptPath), string(filepath.Separator))
 	for _, part := range parts {
-		if part == ".." || part == "." {
-			return fmt.Errorf("PythonScript path contains suspicious path components: %q", scriptPath)
+		if part == ".." {
+			return fmt.Errorf("PythonScript path contains parent directory references: %q", scriptPath)
 		}
 	}
 

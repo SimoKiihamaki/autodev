@@ -135,8 +135,8 @@ func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][
 	}
 
 	for offset := 1; offset <= rows; offset++ {
-		nextRow := wrapIndex(row+step*offset, rows)
-		if nextRow < 0 || nextRow == row {
+		nextRow, ok := wrapIndex(row+step*offset, rows)
+		if !ok || nextRow == row {
 			continue
 		}
 
@@ -263,13 +263,13 @@ func (m *model) navigateFlags(direction string) {
 
 	switch direction {
 	case "up":
-		newIndex := wrapIndex(currentIndex-1, len(flags))
-		if newIndex >= 0 {
+		newIndex, ok := wrapIndex(currentIndex-1, len(flags))
+		if ok {
 			m.focusFlag(flags[newIndex])
 		}
 	case "down":
-		newIndex := wrapIndex(currentIndex+1, len(flags))
-		if newIndex >= 0 {
+		newIndex, ok := wrapIndex(currentIndex+1, len(flags))
+		if ok {
 			m.focusFlag(flags[newIndex])
 		}
 	case "left", "right":
@@ -331,8 +331,8 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 		}
 	}
 
-	newIdx := wrapIndex(idx+direction, n)
-	if newIdx >= 0 {
+	newIdx, ok := wrapIndex(idx+direction, n)
+	if ok {
 		*target = executorChoices[newIdx]
 		m.updateDirtyState()
 	}

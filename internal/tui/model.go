@@ -202,8 +202,8 @@ func New() model {
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
 	m.runReview = cfg.RunPhases.ReviewFix
-	m.followLogs = cfg.FollowLogs
-	m.runFeedAutoFollow = cfg.FollowLogs
+	m.followLogs = *cfg.FollowLogs
+	m.runFeedAutoFollow = *cfg.FollowLogs
 
 	m.flagAllowUnsafe = cfg.Flags.AllowUnsafe
 	m.flagDryRun = cfg.Flags.DryRun
@@ -267,8 +267,8 @@ func (m *model) resetToDefaults() tea.Cmd {
 	m.runLocal = base.RunPhases.Local
 	m.runPR = base.RunPhases.PR
 	m.runReview = base.RunPhases.ReviewFix
-	m.followLogs = base.FollowLogs
-	m.runFeedAutoFollow = base.FollowLogs
+	m.followLogs = *base.FollowLogs
+	m.runFeedAutoFollow = *base.FollowLogs
 
 	m.flagAllowUnsafe = base.Flags.AllowUnsafe
 	m.flagDryRun = base.Flags.DryRun
@@ -287,12 +287,10 @@ func (m *model) resetToDefaults() tea.Cmd {
 
 	note := "Configuration reset to defaults"
 	m.status = note
-	cmds := make([]tea.Cmd, 0, 2)
 	if flash := m.flash(note, defaultToastTTL); flash != nil {
-		cmds = append(cmds, flash)
+		return flash
 	}
-	cmds = append(cmds, func() tea.Msg { return statusMsg{note: note} })
-	return tea.Batch(cmds...)
+	return nil
 }
 
 func mkInput(placeholder, value string, width int) textinput.Model {
@@ -432,12 +430,10 @@ func (m *model) handleSaveShortcut() tea.Cmd {
 		note := "Select a PRD before saving metadata"
 		m.status = note
 		m.lastSaveErr = fmt.Errorf("save aborted: no PRD selected")
-		cmds := make([]tea.Cmd, 0, 2)
 		if flash := m.flash(note, defaultToastTTL); flash != nil {
-			cmds = append(cmds, flash)
+			return flash
 		}
-		cmds = append(cmds, func() tea.Msg { return statusMsg{note: note} })
-		return tea.Batch(cmds...)
+		return nil
 	}
 
 	if m.selectedPRD != "" {
@@ -475,8 +471,8 @@ func (m *model) moveQuitSelection(delta int) {
 	if count == 0 {
 		return
 	}
-	newIndex := wrapIndex(m.quitConfirmIndex+delta, count)
-	if newIndex >= 0 {
+	newIndex, ok := wrapIndex(m.quitConfirmIndex+delta, count)
+	if ok {
 		m.quitConfirmIndex = newIndex
 	}
 }

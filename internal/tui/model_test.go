@@ -216,7 +216,7 @@ func TestResetToDefaultsMarksDirty(t *testing.T) {
 	custom.Flags.AllowUnsafe = true
 	custom.Flags.DryRun = true
 	custom.RunPhases = config.Phases{Local: false, PR: false, ReviewFix: true}
-	custom.FollowLogs = false
+	custom.FollowLogs = boolPtr(false)
 	custom.PhaseExecutors = config.PhaseExec{
 		Implement: "codex",
 		Fix:       "codex",
@@ -238,8 +238,8 @@ func TestResetToDefaultsMarksDirty(t *testing.T) {
 	m.runLocal = custom.RunPhases.Local
 	m.runPR = custom.RunPhases.PR
 	m.runReview = custom.RunPhases.ReviewFix
-	m.followLogs = custom.FollowLogs
-	m.runFeedAutoFollow = custom.FollowLogs
+	m.followLogs = *custom.FollowLogs
+	m.runFeedAutoFollow = *custom.FollowLogs
 	m.flagAllowUnsafe = custom.Flags.AllowUnsafe
 	m.flagDryRun = custom.Flags.DryRun
 	m.flagSyncGit = custom.Flags.SyncGit

@@ -349,7 +349,7 @@ func TestToggleFollowUpdatesPreference(t *testing.T) {
 		t.Fatal("expected followLogs to be disabled after toggle")
 	}
 
-	if m.cfg.FollowLogs {
+	if *m.cfg.FollowLogs {
 		t.Fatal("expected config FollowLogs to reflect toggle state")
 	}
 
@@ -366,7 +366,7 @@ func TestToggleFollowUpdatesPreference(t *testing.T) {
 		t.Fatal("expected followLogs to be enabled after second toggle")
 	}
 
-	if !m.cfg.FollowLogs {
+	if !*m.cfg.FollowLogs {
 		t.Fatal("expected config FollowLogs to be enabled after second toggle")
 	}
 

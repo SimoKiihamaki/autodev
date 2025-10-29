@@ -75,7 +75,7 @@ type Config struct {
 	BaseBranch        string             `yaml:"base_branch"`
 	Branch            string             `yaml:"branch"`
 	CodexModel        string             `yaml:"codex_model"`
-	FollowLogs        bool               `yaml:"follow_logs"`
+	FollowLogs        *bool              `yaml:"follow_logs"`
 	Flags             Flags              `yaml:"flags"`
 	Timings           Timings            `yaml:"timings"`
 	BatchProcessing   BatchProcessing    `yaml:"batch_processing"`
@@ -96,7 +96,7 @@ func Defaults() Config {
 		BaseBranch:     "main",
 		Branch:         "",
 		CodexModel:     "gpt-5-codex",
-		FollowLogs:     true,
+		FollowLogs:     boolPtr(true),
 		Flags: Flags{
 			AllowUnsafe:     false,
 			DryRun:          false,
@@ -193,12 +193,8 @@ func Load() (Config, error) {
 	setStringDefault(&c.BaseBranch, defaults.BaseBranch)
 	setStringDefault(&c.CodexModel, defaults.CodexModel)
 
-	// For boolean fields like FollowLogs, we need special handling
-	// Since we can't distinguish explicit false from missing false, we'll keep FollowLogs true
-	// as the default, but users who explicitly set false will need to accept this limitation
-	if !c.FollowLogs && strings.Contains(string(b), "follow_logs: false") {
-		// User explicitly set follow_logs to false, keep it as false
-	} else {
+	// For FollowLogs pointer, if not set, use default
+	if c.FollowLogs == nil {
 		c.FollowLogs = defaults.FollowLogs
 	}
 
@@ -262,6 +258,9 @@ func (c Config) Clone() Config {
 	if c.AllowedPythonDirs != nil {
 		copyCfg.AllowedPythonDirs = append([]string(nil), c.AllowedPythonDirs...)
 	}
+	if c.FollowLogs != nil {
+		copyCfg.FollowLogs = boolPtr(*c.FollowLogs)
+	}
 	if c.PRDs != nil {
 		clone := make(map[string]PRDMeta, len(c.PRDs))
 		for k, meta := range c.PRDs {
@@ -287,8 +286,15 @@ func (c Config) Equal(other Config) bool {
 		c.RepoPath != other.RepoPath ||
 		c.BaseBranch != other.BaseBranch ||
 		c.Branch != other.Branch ||
-		c.CodexModel != other.CodexModel ||
-		c.FollowLogs != other.FollowLogs {
+		c.CodexModel != other.CodexModel {
+		return false
+	}
+
+	// Handle FollowLogs pointer comparison
+	if (c.FollowLogs == nil) != (other.FollowLogs == nil) {
+		return false
+	}
+	if c.FollowLogs != nil && other.FollowLogs != nil && *c.FollowLogs != *other.FollowLogs {
 		return false
 	}
 
@@ -371,4 +377,9 @@ func (c Config) GetAllowedPythonDirs() []string {
 		return []string{}
 	}
 	return append([]string(nil), c.AllowedPythonDirs...)
+}
+
+// boolPtr returns a pointer to a bool value.
+func boolPtr(b bool) *bool {
+	return &b
 }

@@ -48,7 +48,7 @@ func TestConfigEqual(t *testing.T) {
 	}
 
 	modified = base.Clone()
-	modified.FollowLogs = !base.FollowLogs
+	modified.FollowLogs = boolPtr(!*base.FollowLogs)
 	if base.Equal(modified) {
 		t.Fatalf("expected differing follow_logs to report inequality")
 	}
