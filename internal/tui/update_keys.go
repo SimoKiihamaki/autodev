@@ -653,9 +653,7 @@ func isRuneKey(msg tea.KeyMsg) bool {
 	return msg.Type == tea.KeyRunes && len(msg.Runes) > 0
 }
 
-// tryNavigateOrCycle attempts navigation within the settings input list; if focus remains unchanged
-// (i.e., navigation is blocked or does not change the focused input, such as at grid boundaries or other non-navigable states),
-// cycles the current toggle instead. This provides fallback behavior whenever directional movement is blocked or at the start/end of the list.
+// tryNavigateOrCycle navigates the settings input list, or cycles the current toggle if navigation is blocked.
 func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	prev := m.focusedInput
 	m.navigateSettings(direction)
