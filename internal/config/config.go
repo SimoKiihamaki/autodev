@@ -174,7 +174,7 @@ func Load() (Config, error) {
 
 	// Helper function to set default if field is empty or contains only whitespace
 	setStringDefaultIfEmptyOrWhitespace := func(field *string, defaultValue string) {
-		if strings.TrimSpace(*field) == "" {
+		if field != nil && strings.TrimSpace(*field) == "" {
 			*field = defaultValue
 		}
 	}

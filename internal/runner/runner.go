@@ -160,7 +160,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		if err != nil {
 			return fmt.Errorf("PythonScript path cannot be resolved relative to repo: %q", scriptPath)
 		}
-		if strings.HasPrefix(relPath, "..") {
+		if filepath.IsAbs(relPath) || strings.Contains(relPath, "..") {
 			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
 		}
 		return nil
@@ -172,8 +172,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	autodevTmpDir := filepath.Join(tmpDir, "autodev")
 	resolvedAutodevTmpDir, err := filepath.EvalSymlinks(autodevTmpDir)
 	if err != nil {
-		// Fall back to original path if symlink resolution fails (consistent with other directory checks)
-		resolvedAutodevTmpDir = autodevTmpDir
+		return fmt.Errorf("autodev temp directory does not exist or cannot resolve symlinks: %v", err)
 	}
 	// Only allow scripts within $TMPDIR/autodev, not the whole temp directory
 	if isPrefixOf(resolvedAutodevTmpDir, scriptPath) {
@@ -189,20 +188,6 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
 			// Allow paths only within ~/.local/share/autodev
 			return nil
-		}
-	}
-
-	// Allow paths within current working directory
-	wd, err := os.Getwd()
-	if err == nil {
-		resolvedWD, err := filepath.EvalSymlinks(wd)
-		if err == nil {
-			// Use consistent path separator handling and ensure proper containment
-			cleanWD := filepath.Clean(resolvedWD)
-			cleanScriptPath := filepath.Clean(scriptPath)
-			if isPrefixOf(cleanWD, cleanScriptPath) {
-				return nil
-			}
 		}
 	}
 
