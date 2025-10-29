@@ -188,9 +188,9 @@ func Load() (Config, error) {
 	setStringDefaultIfEmptyOrWhitespace(&c.BaseBranch, defaults.BaseBranch)
 	setStringDefaultIfEmptyOrWhitespace(&c.CodexModel, defaults.CodexModel)
 
-	// For FollowLogs pointer, if not set, use default
+	// For FollowLogs pointer, if not set, use default (avoid pointer aliasing)
 	if c.FollowLogs == nil {
-		c.FollowLogs = defaults.FollowLogs
+		c.FollowLogs = utils.BoolPtr(*defaults.FollowLogs)
 	}
 
 	// Apply defaults for int pointer fields only when nil (preserves explicit zeros)

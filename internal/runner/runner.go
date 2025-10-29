@@ -465,10 +465,14 @@ func validatePythonFlags(flags []string) error {
 			continue
 		}
 		if f == "-X" {
-			// -X must be followed by an option and is acceptable (e.g., -X dev)
-			// Validate that the next flag exists if we're not at the end
+			// -X must be followed by an option and is only allowed for a safe allowlist (e.g., only "dev")
 			if i+1 >= len(flags) {
 				return fmt.Errorf("Python flag -X requires an option argument")
+			}
+			xArg := flags[i+1]
+			allowedX := map[string]bool{"dev": true}
+			if !allowedX[xArg] {
+				return fmt.Errorf("disallowed argument to -X: %q (only -X dev is allowed)", xArg)
 			}
 			i++ // Skip the argument to -X
 			continue
