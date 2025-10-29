@@ -131,7 +131,13 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 		switch act {
 		case ActConfirm:
 			if m.isActiveOrCancelling() {
-				continue
+				note := "Cannot start new run while current run is active"
+				m.status = note
+				if flash := m.flash(note, defaultToastTTL); flash != nil {
+					cmds = append(cmds, flash)
+				}
+				handled = true
+				break
 			}
 			if cmd := m.startRunCmd(); cmd != nil {
 				cmds = append(cmds, cmd)

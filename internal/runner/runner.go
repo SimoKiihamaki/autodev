@@ -185,17 +185,12 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	if err == nil {
 		// Restrict to a specific safe subdirectory within the home directory
 		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
-		info, statErr := os.Stat(autodevDir)
-		if statErr != nil {
-			return fmt.Errorf("autodev directory does not exist or is not accessible: %v", statErr)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("autodev path exists but is not a directory: %q", autodevDir)
-		}
-		resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
-		if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
-			// Allow paths only within ~/.local/share/autodev
-			return nil
+		if info, statErr := os.Stat(autodevDir); statErr == nil && info.IsDir() {
+			resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
+			if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
+				// Allow paths only within ~/.local/share/autodev
+				return nil
+			}
 		}
 	}
 
