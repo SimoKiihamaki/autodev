@@ -138,9 +138,9 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 }
 
 // validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories.
-// validatePythonScriptPath requires absolute paths with resolved symlinks for both scriptPath and repoPath.
-// All paths passed to this function should be absolute and symlinks resolved.
-// Note: scriptPath should be the final resolved path (symlinks resolved) that will be executed
+// validatePythonScriptPath requires absolute paths for both scriptPath and repoPath.
+// All paths passed to this function should be absolute.
+// Note: repoPath should be resolved from symlinks before calling this function to prevent TOCTOU issues
 func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
@@ -154,18 +154,14 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 			return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute repoPath: %q", repoPath)
 		}
 
-		// Resolve symlinks in repoPath as well to handle cases like /var -> /private/var
-		resolvedRepoPath, err := filepath.EvalSymlinks(repoPath)
-		if err != nil {
-			return fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", repoPath, err)
-		}
-
-		relPath, err := filepath.Rel(resolvedRepoPath, scriptPath)
+		// repoPath should already be resolved from symlinks before calling this function
+		// to prevent TOCTOU (Time-of-Check-Time-of-Use) vulnerabilities
+		relPath, err := filepath.Rel(repoPath, scriptPath)
 		if err != nil {
 			return fmt.Errorf("PythonScript path cannot be resolved relative to repo: %q", scriptPath)
 		}
 		if filepath.IsAbs(relPath) {
-			return fmt.Errorf("PythonScript path cannot be made relative to repository root (possible different drives/volumes on Windows): %q (repo: %q)", scriptPath, resolvedRepoPath)
+			return fmt.Errorf("PythonScript path cannot be made relative to repository root (possible different drives/volumes on Windows): %q (repo: %q)", scriptPath, repoPath)
 		}
 		if strings.Contains(relPath, "..") {
 			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
@@ -190,8 +186,11 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		// Restrict to a specific safe subdirectory within the home directory
 		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
 		info, statErr := os.Stat(autodevDir)
-		if statErr != nil || !info.IsDir() {
-			return fmt.Errorf("autodev directory does not exist or is not a directory: %v", statErr)
+		if statErr != nil {
+			return fmt.Errorf("autodev directory does not exist or is not accessible: %v", statErr)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("autodev path exists but is not a directory: %q", autodevDir)
 		}
 		resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
 		if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
@@ -237,6 +236,16 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, error) {
 	script := cfg.PythonScript
 
+	// Resolve repoPath symlinks first to prevent TOCTOU issues
+	var resolvedRepoPath string
+	if cfg.RepoPath != "" {
+		var err error
+		resolvedRepoPath, err = filepath.EvalSymlinks(cfg.RepoPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot resolve symlinks in repoPath: %q: %v", cfg.RepoPath, err)
+		}
+	}
+
 	// Resolve the final script path that will be executed
 	resolvedScript, err := resolveScriptPath(script, cfg.RepoPath)
 	if err != nil {
@@ -244,7 +253,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	}
 
 	// Validate the resolved script path for security (prevents TOCTOU)
-	if err := validatePythonScriptPath(resolvedScript, cfg.RepoPath); err != nil {
+	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
 		return nil, err
 	}
 
