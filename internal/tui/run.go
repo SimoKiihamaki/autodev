@@ -249,8 +249,9 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.PythonScript = strings.TrimSpace(m.inPyScript.Value())
 	dst.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
 
-	invalid := make([]string, 0, 4)
-	parseErrs := make([]numericParseError, 0, 4)
+	const numNumericFields = 4 // Update if more numeric fields are added
+	invalid := make([]string, 0, numNumericFields)
+	parseErrs := make([]numericParseError, 0, numNumericFields)
 
 	setNumeric := func(raw, label string, apply func(int)) {
 		val, err := atoiSafe(raw)

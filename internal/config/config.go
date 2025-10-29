@@ -172,20 +172,20 @@ func Load() (Config, error) {
 	// Apply defaults only for fields that weren't explicitly set
 	defaults := Defaults()
 
-	// Helper function to set default only if field is zero value
-	setStringDefault := func(field *string, defaultValue string) {
+	// Helper function to set default if field is empty or contains only whitespace
+	setStringDefaultIfEmptyOrWhitespace := func(field *string, defaultValue string) {
 		if strings.TrimSpace(*field) == "" {
 			*field = defaultValue
 		}
 	}
 
 	// Apply defaults for string fields
-	setStringDefault(&c.ExecutorPolicy, defaults.ExecutorPolicy)
-	setStringDefault(&c.LogLevel, defaults.LogLevel)
-	setStringDefault(&c.PythonCommand, defaults.PythonCommand)
-	setStringDefault(&c.PythonScript, defaults.PythonScript)
-	setStringDefault(&c.BaseBranch, defaults.BaseBranch)
-	setStringDefault(&c.CodexModel, defaults.CodexModel)
+	setStringDefaultIfEmptyOrWhitespace(&c.ExecutorPolicy, defaults.ExecutorPolicy)
+	setStringDefaultIfEmptyOrWhitespace(&c.LogLevel, defaults.LogLevel)
+	setStringDefaultIfEmptyOrWhitespace(&c.PythonCommand, defaults.PythonCommand)
+	setStringDefaultIfEmptyOrWhitespace(&c.PythonScript, defaults.PythonScript)
+	setStringDefaultIfEmptyOrWhitespace(&c.BaseBranch, defaults.BaseBranch)
+	setStringDefaultIfEmptyOrWhitespace(&c.CodexModel, defaults.CodexModel)
 
 	// For FollowLogs pointer, if not set, use default
 	if c.FollowLogs == nil {
