@@ -628,33 +628,24 @@ func tabIndexFromAction(act Action) (int, bool) {
 	return 0, false
 }
 
-// Flag name constants to maintain single source of truth
-const (
-	flagNameLocal    = "local"
-	flagNamePR       = "pr"
-	flagNameReview   = "review"
-	flagNameUnsafe   = "unsafe"
-	flagNameDryRun   = "dryrun"
-	flagNameSyncGit  = "syncgit"
-	flagNameInfinite = "infinite"
-)
+// Flag name constants are now defined in model.go for single source of truth.
 
 func flagNameForAction(act Action) string {
 	switch act {
 	case ActToggleFlagLocal:
-		return flagNameLocal
+		return FlagNameLocal
 	case ActToggleFlagPR:
-		return flagNamePR
+		return FlagNamePR
 	case ActToggleFlagReview:
-		return flagNameReview
+		return FlagNameReview
 	case ActToggleFlagUnsafe:
-		return flagNameUnsafe
+		return FlagNameUnsafe
 	case ActToggleFlagDryRun:
-		return flagNameDryRun
+		return FlagNameDryRun
 	case ActToggleFlagSyncGit:
-		return flagNameSyncGit
+		return FlagNameSyncGit
 	case ActToggleFlagInfinite:
-		return flagNameInfinite
+		return FlagNameInfinite
 	default:
 		return ""
 	}

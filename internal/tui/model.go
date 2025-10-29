@@ -20,6 +20,17 @@ import (
 const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
 const defaultToastTTL = 4 * time.Second
 
+// Flag name constants to maintain single source of truth
+const (
+	FlagNameLocal    = "local"
+	FlagNamePR       = "pr"
+	FlagNameReview   = "review"
+	FlagNameUnsafe   = "unsafe"
+	FlagNameDryRun   = "dryrun"
+	FlagNameSyncGit  = "syncgit"
+	FlagNameInfinite = "infinite"
+)
+
 type item struct {
 	title, desc string
 	path        string
@@ -174,13 +185,13 @@ var settingsInputNames = []string{
 }
 
 var envFlagNames = []string{
-	flagNameLocal,
-	flagNamePR,
-	flagNameReview,
-	flagNameUnsafe,
-	flagNameDryRun,
-	flagNameSyncGit,
-	flagNameInfinite,
+	FlagNameLocal,
+	FlagNamePR,
+	FlagNameReview,
+	FlagNameUnsafe,
+	FlagNameDryRun,
+	FlagNameSyncGit,
+	FlagNameInfinite,
 }
 
 func New() model {
