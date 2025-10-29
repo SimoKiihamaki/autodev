@@ -318,22 +318,37 @@ func (m *model) applyPRDMetadata(dst *config.Config) {
 }
 
 func (m *model) saveConfig() tea.Cmd {
-	invalidNumeric, parseErrs := m.populateConfigFromInputs(&m.cfg)
-	logParseErrors(parseErrs)
-	m.normalizeLogLevel()
-	err := config.Save(m.cfg)
-	m.lastSaveErr = err
-	if err != nil {
-		m.status = "Failed to save config: " + err.Error()
-		m.updateDirtyState()
-	} else {
-		if len(invalidNumeric) > 0 {
-			m.status = fmt.Sprintf("Config saved (defaults used for: %s)", strings.Join(invalidNumeric, ", "))
+	return func() tea.Msg {
+		invalidNumeric, parseErrs := m.populateConfigFromInputs(&m.cfg)
+		logParseErrors(parseErrs)
+		m.normalizeLogLevel()
+		err := config.Save(m.cfg)
+		m.lastSaveErr = err
+		if err != nil {
+			m.status = "Failed to save config: " + err.Error()
+			m.updateDirtyState()
 		} else {
-			m.status = "Config saved"
+			// Update tags from saved metadata when save succeeds
+			if m.selectedPRD != "" {
+				if meta, ok := m.cfg.PRDs[m.selectedPRD]; ok {
+					m.tags = append([]string{}, meta.Tags...)
+				}
+			}
+
+			if len(invalidNumeric) > 0 {
+				m.status = fmt.Sprintf("Config saved (defaults used for: %s)", strings.Join(invalidNumeric, ", "))
+			} else {
+				m.status = "Config saved"
+			}
+			if !strings.HasPrefix(m.status, "[saved]") {
+				m.status = "[saved] " + m.status
+			}
+			if m.selectedPRD != "" {
+				m.status = fmt.Sprintf("%s · %s", m.status, abbreviatePath(m.selectedPRD))
+			}
+			m.errMsg = ""
+			m.markSaved()
 		}
-		m.errMsg = ""
-		m.markSaved()
+		return statusMsg{note: m.status}
 	}
-	return func() tea.Msg { return statusMsg{note: m.status} }
 }

@@ -203,6 +203,7 @@ func New() model {
 	m.runPR = cfg.RunPhases.PR
 	m.runReview = cfg.RunPhases.ReviewFix
 	m.followLogs = cfg.FollowLogs
+	m.runFeedAutoFollow = cfg.FollowLogs
 
 	m.flagAllowUnsafe = cfg.Flags.AllowUnsafe
 	m.flagDryRun = cfg.Flags.DryRun
@@ -448,34 +449,8 @@ func (m *model) handleSaveShortcut() tea.Cmd {
 		m.cfg.PRDs[m.selectedPRD] = meta
 	}
 
-	cmd := m.saveConfig()
-	if m.lastSaveErr == nil {
-		if m.selectedPRD != "" {
-			if meta, ok := m.cfg.PRDs[m.selectedPRD]; ok {
-				m.tags = append([]string{}, meta.Tags...)
-			}
-		}
-		note := strings.TrimSpace(m.status)
-		if note == "" {
-			note = "Config saved"
-		}
-		if !strings.HasPrefix(note, "[saved]") {
-			note = "[saved] " + note
-		}
-		if m.selectedPRD != "" {
-			note = fmt.Sprintf("%s · %s", note, abbreviatePath(m.selectedPRD))
-		}
-		m.status = note
-	}
-	note := strings.TrimSpace(m.status)
-	if note == "" {
-		return cmd
-	}
-	cmds := []tea.Cmd{cmd}
-	if flash := m.flash(note, defaultToastTTL); flash != nil {
-		cmds = append(cmds, flash)
-	}
-	return tea.Batch(cmds...)
+	// Let the save result handler set m.status/m.lastSaveErr and flash on success/failure.
+	return m.saveConfig()
 }
 
 func (m *model) beginQuitConfirm() {

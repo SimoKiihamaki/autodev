@@ -153,9 +153,66 @@ func (kc KeyCombo) Display() string {
 }
 
 func (kc KeyCombo) Matches(msg tea.KeyMsg) bool {
-	want := strings.ToLower(kc.String())
-	have := strings.ToLower(msg.String())
-	return want == have
+	return normalizeCombo(kc) == normalizeMsg(msg)
+}
+
+// normalizeCombo returns a canonical "mod+mod+key" form with sorted mods.
+func normalizeCombo(kc KeyCombo) string {
+	mods := make([]string, 0, 3)
+	if kc.Ctrl {
+		mods = append(mods, "ctrl")
+	}
+	if kc.Alt {
+		mods = append(mods, "alt")
+	}
+	if kc.Shift {
+		mods = append(mods, "shift")
+	}
+	sort.Strings(mods)
+	base := normalizeBaseKey(strings.ToLower(strings.TrimSpace(kc.Key)))
+	if base != "" {
+		mods = append(mods, base)
+	}
+	return strings.Join(mods, "+")
+}
+
+// normalizeMsg canonicalizes tea.KeyMsg string form into the same scheme.
+func normalizeMsg(msg tea.KeyMsg) string {
+	raw := strings.ToLower(strings.TrimSpace(msg.String()))
+	parts := strings.Split(raw, "+")
+	mods, base := make([]string, 0, 3), ""
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		switch p {
+		case "ctrl", "alt", "shift":
+			mods = append(mods, p)
+		default:
+			base = normalizeBaseKey(p)
+		}
+	}
+	sort.Strings(mods)
+	if base != "" {
+		mods = append(mods, base)
+	}
+	return strings.Join(mods, "+")
+}
+
+// normalizeBaseKey maps common aliases and whitespace to a single token.
+func normalizeBaseKey(k string) string {
+	switch k {
+	case " ": // some terms return a single space
+		return "space"
+	case "space":
+		return "space"
+	case "pgdn", "pgdown":
+		return "pgdown"
+	case "pgup":
+		return "pgup"
+	case "esc", "escape":
+		return "esc"
+	default:
+		return k
+	}
 }
 
 type KeyMap struct {
@@ -300,7 +357,7 @@ func DefaultKeyMap() KeyMap {
 			ActAltNavigateRight: {alt("right")},
 			ActAltNavigateUp:    {alt("up")},
 			ActAltNavigateDown:  {alt("down")},
-			ActCycleBackward:    {key("space")},
+			ActCycleBackward:    {key(" ")},
 		},
 		tabIDEnv: {
 			ActCancel:             {key("esc")},
