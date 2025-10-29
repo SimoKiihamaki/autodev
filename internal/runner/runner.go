@@ -42,7 +42,7 @@ func isPrefixOf(prefix, path string) bool {
 	}
 	// Ensure prefix ends with a path separator using filepath.Separator for cross-platform consistency
 	if !strings.HasSuffix(cleanPrefix, string(filepath.Separator)) {
-		cleanPrefix = cleanPrefix + string(filepath.Separator)
+		cleanPrefix += string(filepath.Separator)
 	}
 	return strings.HasPrefix(cleanPath, cleanPrefix)
 }
@@ -424,7 +424,7 @@ func isRegexPattern(pattern string) bool {
 
 // validatePythonFlags enforces a safe allowlist and rejects flags like -c/-m that change execution target.
 func validatePythonFlags(flags []string) error {
-	allowedGrouped := map[rune]bool{'u': true, 'E': true, 'I': true, 's': true, 'B': true, 'O': true}
+	allowedGrouped := map[rune]bool{'u': true, 'E': true, 'I': true, 's': true, 'B': true}
 	for i := 0; i < len(flags); i++ {
 		f := flags[i]
 

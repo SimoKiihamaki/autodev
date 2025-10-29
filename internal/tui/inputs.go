@@ -301,6 +301,11 @@ func (m *model) getInputField(inputName string) *textinput.Model {
 	return m.settingsInputs[inputName]
 }
 
+// cycleExecutorChoice cycles through executor options (codex, claude, etc.) for a specific phase.
+// This function is triggered when the user attempts to navigate horizontally (left/right) while
+// focused on an executor toggle field. When normal navigation is blocked (e.g., at grid boundaries),
+// this fallback behavior allows cycling through executor choices instead, providing intuitive access
+// to all available executors without requiring separate key bindings.
 func (m *model) cycleExecutorChoice(name string, direction int) {
 	// Get a pointer to the appropriate executor choice field
 	var target *executorChoice

@@ -44,7 +44,7 @@ func wrapIndex(current, delta, n int) (int, bool) {
 	// Check for potential overflow - only for extreme delta values
 	// This handles the case where delta is extremely large (positive or negative)
 	// For typical UI navigation (delta = -1, 1, etc.), this won't trigger
-	if delta > 0 && current > 0 && delta >= math.MaxInt-current {
+	if delta > 0 && current > 0 && delta > math.MaxInt-current {
 		return 0, false // Would overflow on addition
 	}
 	// Note: Overflow check for negative delta removed since modulo operation handles negative results correctly
