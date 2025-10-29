@@ -22,21 +22,20 @@ func atoiSafe(s string) (int, error) {
 	return n, nil
 }
 
-// wrapIndex normalizes idx into the range [0, n). It gracefully handles
+// wrapIndex normalizes (current + delta) into the range [0, n). It gracefully handles
 // negative offsets and values greater than n by applying modular arithmetic.
-// Callers should pass the desired index (after applying an increment or
-// decrement) along with the collection length.
+// Callers should pass the current index, the desired increment or decrement (delta),
+// and the collection length.
 //
 // When n <= 0, this function returns (0, false) to make misuse explicit
 // rather than silently returning a valid-looking but potentially unsafe index.
 // The returned bool indicates whether the index is valid for use in slice/array access.
-func wrapIndex(idx, n int) (int, bool) {
+func wrapIndex(current, delta, n int) (int, bool) {
 	// n must be > 0 for modulo operation to be safe
 	if n <= 0 {
 		return 0, false
 	}
-	// n is guaranteed > 0 here, so modulo operation is safe
-	idx %= n
+	idx := (current + delta) % n
 	if idx < 0 {
 		idx += n
 	}

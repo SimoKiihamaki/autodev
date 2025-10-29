@@ -468,7 +468,7 @@ func (m *model) moveQuitSelection(delta int) {
 	if count == 0 {
 		return
 	}
-	newIndex, ok := wrapIndex(m.quitConfirmIndex+delta, count)
+	newIndex, ok := wrapIndex(m.quitConfirmIndex, delta, count)
 	if ok {
 		m.quitConfirmIndex = newIndex
 	}

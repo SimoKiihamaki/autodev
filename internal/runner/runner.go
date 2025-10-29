@@ -169,7 +169,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// Resolve temp dir symlinks as well
 	resolvedTmpDir, err := filepath.EvalSymlinks(tmpDir)
 	if err != nil {
-		resolvedTmpDir = tmpDir
+		return fmt.Errorf("failed to resolve temp directory symlinks: %w", err)
 	}
 	if strings.HasPrefix(scriptPath, resolvedTmpDir+string(filepath.Separator)) {
 		// Allow paths within system temp directory (important for testing)
@@ -178,9 +178,11 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
-		resolvedHomeDir, err := filepath.EvalSymlinks(homeDir)
-		if err == nil && strings.HasPrefix(scriptPath, resolvedHomeDir+string(filepath.Separator)) {
-			// Allow paths within user home directory
+		// Restrict to a specific safe subdirectory within the home directory
+		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
+		resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
+		if err == nil && strings.HasPrefix(scriptPath, resolvedAutodevDir+string(filepath.Separator)) {
+			// Allow paths only within ~/.local/share/autodev
 			return nil
 		}
 	}
