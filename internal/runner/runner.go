@@ -214,15 +214,9 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 	// If path is already absolute, use it directly
 	if filepath.IsAbs(scriptPath) {
-		// Try to resolve symlinks, but fall back to the cleaned absolute path if not possible
 		resolved, err := filepath.EvalSymlinks(scriptPath)
 		if err != nil {
-			// If symlink resolution fails, check if the file exists at the original path
-			if _, statErr := os.Stat(scriptPath); statErr != nil {
-				return "", fmt.Errorf("cannot resolve absolute script path: %q: %w", scriptPath, err)
-			}
-			// File exists but symlink resolution failed, use the cleaned absolute path
-			return filepath.Clean(scriptPath), nil
+			return "", fmt.Errorf("failed to resolve absolute script path symlinks: %q: %w", scriptPath, err)
 		}
 		return resolved, nil
 	}
@@ -239,17 +233,10 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 		return "", fmt.Errorf("cannot make script path absolute: %q: %w", scriptPath, err)
 	}
 
-	// Try to resolve symlinks, but fall back to the cleaned absolute path if not possible
 	resolved, err := filepath.EvalSymlinks(absPath)
 	if err != nil {
-		// If symlink resolution fails, check if the file exists at the original path
-		if _, statErr := os.Stat(absPath); statErr != nil {
-			return "", fmt.Errorf("cannot resolve script path symlinks: %q: %w", scriptPath, err)
-		}
-		// File exists but symlink resolution failed, use the cleaned absolute path
-		return filepath.Clean(absPath), nil
+		return "", fmt.Errorf("failed to resolve script path symlinks: %q: %w", scriptPath, err)
 	}
-
 	return resolved, nil
 }
 
@@ -453,6 +440,7 @@ func isRegexPattern(pattern string) bool {
 
 // validatePythonFlags enforces a safe allowlist and rejects flags like -c/-m that change execution target.
 func validatePythonFlags(flags []string) error {
+	allowedGrouped := map[rune]bool{'u': true, 'E': true, 'I': true, 's': true, 'B': true, 'O': true}
 	for i := 0; i < len(flags); i++ {
 		f := flags[i]
 		switch f {
@@ -485,12 +473,26 @@ func validatePythonFlags(flags []string) error {
 			}
 			continue
 		}
-		// Reject anything else by default; extend if needed.
-		if !uFlagPattern.MatchString(f) {
-			return fmt.Errorf("unexpected flag in PythonCommand: %q", f)
+		// Handle grouped short options like -uE, -IEu, etc. Forbid c/m anywhere.
+		if strings.HasPrefix(f, "-") && len(f) > 2 {
+			for _, ch := range f[1:] {
+				if ch == 'c' || ch == 'm' {
+					return fmt.Errorf("disallowed Python flag in group %q: -%c", f, ch)
+				}
+				if !allowedGrouped[ch] {
+					return fmt.Errorf("unexpected short flag in group %q: -%c", f, ch)
+				}
+			}
+			continue
 		}
+		return fmt.Errorf("unexpected flag in PythonCommand: %q", f)
 	}
 	return nil
+}
+
+// ValidatePythonFlagsForTest is a test helper that exports validatePythonFlags for testing
+func ValidatePythonFlagsForTest(flags []string) error {
+	return validatePythonFlags(flags)
 }
 
 // validatePythonCommandWithConfig performs critical security validation of the PythonCommand string.
