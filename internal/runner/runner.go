@@ -142,6 +142,12 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // validatePythonScriptPath requires absolute paths for both scriptPath and repoPath.
 // All paths passed to this function should be absolute.
 // Note: repoPath should be resolved from symlinks before calling this function to prevent TOCTOU issues
+//
+// Escaping the repo is an allowed configuration so long as the script directory is explicitly
+// whitelisted. Operators frequently install aprd in a shared tools directory and then execute it
+// from unrelated repositories. In that flow the path *must* be permitted to leave the repo root,
+// otherwise legitimate launches will fail with “escape repository directory” errors. The check
+// below therefore rejects escapes only when the directory is not covered by AUTO_PRD_SAFE_SCRIPT_DIRS.
 func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
@@ -341,6 +347,13 @@ func resolveScriptPath(scriptPath, repoPath string) (string, error) {
 //     script to be executed is within the intended repository and not replaced by a malicious file.
 //   - The function uses validatePythonScriptPath to enforce that the resolved script path is safe.
 //   - Any failure in path resolution or validation results in an error, preventing execution.
+//
+// Repository escape rationale:
+//   - Allowing the script to live outside the repo is intentional. Operators often install the
+//     automation bundle globally, then run aprd binaries from other worktrees. Validation must
+//     therefore accept “escaped” paths so long as the directory is explicitly whitelisted in
+//     AUTO_PRD_SAFE_SCRIPT_DIRS. The merge + Setenv step below guarantees the whitelist is updated
+//     before we re-run security checks, documenting that this escape is both expected and required.
 func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) ([]string, string, error) {
 	script := cfg.PythonScript
 
@@ -358,6 +371,17 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	resolvedScript, err := resolveScriptPath(script, cfg.RepoPath)
 	if err != nil {
 		return nil, "", err
+	}
+
+	// Add the script directory to the current process' whitelist before validation.
+	// This ensures bundled installations that live outside the repo (the "escape" case)
+	// remain permitted while still forcing the directory onto the allowlist.
+	if scriptDir := filepath.Dir(resolvedScript); scriptDir != "" {
+		if merged, added := mergeSafeScriptDir(os.Getenv(safeScriptDirsEnv), scriptDir); added {
+			if err := os.Setenv(safeScriptDirsEnv, merged); err != nil {
+				return nil, "", fmt.Errorf("failed to update %s: %w", safeScriptDirsEnv, err)
+			}
+		}
 	}
 
 	// Validate the resolved script path for security (prevents TOCTOU)

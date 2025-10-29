@@ -444,6 +444,60 @@ func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
 	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
 
+func TestBuildArgsAllowsAbsoluteScriptOutsideRepo(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
+
+	targetRepo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(targetRepo, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	prdPath := filepath.Join(targetRepo, "plan.md")
+	if err := os.WriteFile(prdPath, []byte("# plan\n"), 0o600); err != nil {
+		t.Fatalf("write prd: %v", err)
+	}
+
+	externalDir := t.TempDir()
+	scriptDir := filepath.Join(externalDir, "autodev-tools")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir script dir: %v", err)
+	}
+	scriptPath := filepath.Join(scriptDir, "auto_prd_to_pr_v3.py")
+	if err := os.WriteFile(scriptPath, []byte("print('ok')\n"), 0o600); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	cfg := config.Defaults()
+	cfg.RepoPath = targetRepo
+	cfg.PythonScript = scriptPath
+
+	input := BuildArgsInput{
+		Config:  cfg,
+		PRDPath: prdPath,
+	}
+
+	if _, err := BuildArgs(input); err != nil {
+		t.Fatalf("BuildArgs rejected absolute script outside repo: %v", err)
+	}
+
+	// The script directory should now be present in AUTO_PRD_SAFE_SCRIPT_DIRS.
+	value := os.Getenv(safeScriptDirsEnv)
+	found := false
+	expectedDir := filepath.Clean(resolveScriptPathForTest(scriptDir))
+	for _, part := range filepath.SplitList(value) {
+		cleanPart := filepath.Clean(part)
+		if resolvedPart, err := filepath.EvalSymlinks(cleanPart); err == nil {
+			cleanPart = filepath.Clean(resolvedPart)
+		}
+		if cleanPart == expectedDir {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("%s missing script directory %q; value=%q", safeScriptDirsEnv, scriptDir, value)
+	}
+}
+
 func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
 	t.Setenv(safeScriptDirsEnv, "")
 	repo := t.TempDir()
