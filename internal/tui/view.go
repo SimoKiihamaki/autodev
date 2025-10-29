@@ -203,11 +203,11 @@ func renderRunView(b *strings.Builder, m model) {
 
 		lastErrText := getLastErrorText(&m)
 		if lastErrText != "" {
-			primary := lastErrText
-			if idx := strings.IndexByte(primary, '\n'); idx >= 0 {
-				primary = primary[:idx]
+			firstLine := lastErrText
+			if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
+				firstLine = firstLine[:idx]
 			}
-			banner := fmt.Sprintf("Last error: %s", primary)
+			banner := fmt.Sprintf("Last error: %s", firstLine)
 			b.WriteString(errorBanner.Render(banner) + "\n")
 			hints := make([]string, 0, 2)
 			if retryKeys := actionKeyLabel(m.keys, tabIDRun, ActConfirm); retryKeys != "" {

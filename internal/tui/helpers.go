@@ -35,6 +35,10 @@ func wrapIndex(current, delta, n int) (int, bool) {
 	if n <= 0 {
 		return 0, false
 	}
+	// Validate that current is within bounds [0, n)
+	if current < 0 || current >= n {
+		return 0, false
+	}
 	idx := (current + delta) % n
 	if idx < 0 {
 		idx += n

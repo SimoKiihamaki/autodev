@@ -137,7 +137,9 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	return tmpPath, cleanup, nil
 }
 
-// validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories
+// validatePythonScriptPath validates that the PythonScript path is safe and doesn't escape expected directories.
+// validatePythonScriptPath requires absolute paths with resolved symlinks for both scriptPath and repoPath.
+// All paths passed to this function should be absolute and symlinks resolved.
 // Note: scriptPath should be the final resolved path (symlinks resolved) that will be executed
 func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// All paths passed to this function should be absolute and symlinks resolved

@@ -609,40 +609,41 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 }
 
 func tabIndexFromAction(act Action) (int, bool) {
-	switch act {
-	case ActGotoTab1:
-		return 0, true
-	case ActGotoTab2:
-		return 1, true
-	case ActGotoTab3:
-		return 2, true
-	case ActGotoTab4:
-		return 3, true
-	case ActGotoTab5:
-		return 4, true
-	case ActGotoTab6:
-		return 5, true
-	default:
-		return 0, false
+	for i, tabAction := range tabActions {
+		if tabAction == act {
+			return i, true
+		}
 	}
+	return 0, false
 }
+
+// Flag name constants to maintain single source of truth
+const (
+	flagNameLocal    = "local"
+	flagNamePR       = "pr"
+	flagNameReview   = "review"
+	flagNameUnsafe   = "unsafe"
+	flagNameDryRun   = "dryrun"
+	flagNameSyncGit  = "syncgit"
+	flagNameInfinite = "infinite"
+)
 
 func flagNameForAction(act Action) string {
 	switch act {
 	case ActToggleFlagLocal:
-		return "local"
+		return flagNameLocal
 	case ActToggleFlagPR:
-		return "pr"
+		return flagNamePR
 	case ActToggleFlagReview:
-		return "review"
+		return flagNameReview
 	case ActToggleFlagUnsafe:
-		return "unsafe"
+		return flagNameUnsafe
 	case ActToggleFlagDryRun:
-		return "dryrun"
+		return flagNameDryRun
 	case ActToggleFlagSyncGit:
-		return "syncgit"
+		return flagNameSyncGit
 	case ActToggleFlagInfinite:
-		return "infinite"
+		return flagNameInfinite
 	default:
 		return ""
 	}

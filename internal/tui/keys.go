@@ -55,23 +55,21 @@ const (
 	ActResetDefaults      Action = "reset_defaults"
 )
 
+// tabActions maps tab indices to their corresponding actions for single source of truth
+var tabActions = []Action{
+	ActGotoTab1,
+	ActGotoTab2,
+	ActGotoTab3,
+	ActGotoTab4,
+	ActGotoTab5,
+	ActGotoTab6,
+}
+
 func gotoTabAction(index int) (Action, bool) {
-	switch index {
-	case 0:
-		return ActGotoTab1, true
-	case 1:
-		return ActGotoTab2, true
-	case 2:
-		return ActGotoTab3, true
-	case 3:
-		return ActGotoTab4, true
-	case 4:
-		return ActGotoTab5, true
-	case 5:
-		return ActGotoTab6, true
-	default:
-		return "", false
+	if index >= 0 && index < len(tabActions) {
+		return tabActions[index], true
 	}
+	return "", false
 }
 
 type KeyCombo struct {

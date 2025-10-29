@@ -432,7 +432,9 @@ func intPtr(i int) *int {
 	return &i
 }
 
-// equalIntPointers safely compares two int pointers, treating nil and 0 as different states
+// equalIntPointers safely compares two int pointers.
+// Two nil pointers are considered equal, a nil pointer is different from any non-nil pointer,
+// and two non-nil pointers are equal if they point to the same int value.
 func equalIntPointers(a, b *int) bool {
 	if a == nil && b == nil {
 		return true
