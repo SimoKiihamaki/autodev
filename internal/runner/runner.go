@@ -280,17 +280,17 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	}
 
 	// Timings
-	if cfg.Timings.WaitMinutes > 0 {
-		args = append(args, "--wait-minutes", fmt.Sprint(cfg.Timings.WaitMinutes))
+	if cfg.Timings.WaitMinutes != nil && *cfg.Timings.WaitMinutes > 0 {
+		args = append(args, "--wait-minutes", fmt.Sprint(*cfg.Timings.WaitMinutes))
 	}
-	if cfg.Timings.ReviewPollSeconds > 0 {
-		args = append(args, "--review-poll-seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds))
+	if cfg.Timings.ReviewPollSeconds != nil && *cfg.Timings.ReviewPollSeconds > 0 {
+		args = append(args, "--review-poll-seconds", fmt.Sprint(*cfg.Timings.ReviewPollSeconds))
 	}
-	if cfg.Timings.IdleGraceMinutes > 0 {
-		args = append(args, "--idle-grace-minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes))
+	if cfg.Timings.IdleGraceMinutes != nil && *cfg.Timings.IdleGraceMinutes > 0 {
+		args = append(args, "--idle-grace-minutes", fmt.Sprint(*cfg.Timings.IdleGraceMinutes))
 	}
-	if cfg.Timings.MaxLocalIters > 0 {
-		args = append(args, "--max-local-iters", fmt.Sprint(cfg.Timings.MaxLocalIters))
+	if cfg.Timings.MaxLocalIters != nil && *cfg.Timings.MaxLocalIters > 0 {
+		args = append(args, "--max-local-iters", fmt.Sprint(*cfg.Timings.MaxLocalIters))
 	}
 
 	// Phases selection
@@ -407,6 +407,11 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
+	// Validate Python flags for security
+	if err := validatePythonFlags(pyFlags); err != nil {
+		return Args{}, err
+	}
+
 	// Compute capacity dynamically: add 1 only if "-u" will be appended
 	needUnbuffered := !hasUnbufferedFlag(pyFlags)
 	capacity := len(pyFlags) + len(scriptArgs)
@@ -432,6 +437,42 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 // regex matching instead of simple string operations.
 func isRegexPattern(pattern string) bool {
 	return strings.ContainsAny(pattern, "[]+*()^$?{}\\|")
+}
+
+// validatePythonFlags enforces a safe allowlist and rejects flags like -c/-m that change execution target.
+func validatePythonFlags(flags []string) error {
+	for i, f := range flags {
+		switch f {
+		case "-c", "--command", "-m", "--module":
+			return fmt.Errorf("disallowed Python flag in PythonCommand: %q (would bypass the runner script)", f)
+		}
+		if strings.HasPrefix(f, "--") {
+			// No long flags are needed for the interpreter in this tool; be conservative.
+			return fmt.Errorf("disallowed long flag in PythonCommand: %q", f)
+		}
+		// Allow common safe short flags: -u (we also enforce), -E, -I, -s, -B, -X <opt>
+		// Also allow common optimization flags: -O, -OO
+		if f == "-u" || f == "-E" || f == "-I" || f == "-s" || f == "-B" || f == "-O" || f == "-OO" {
+			continue
+		}
+		if f == "-X" {
+			// -X must be followed by an option and is acceptable (e.g., -X dev)
+			// Validate that the next flag exists if we're not at the end
+			if i+1 >= len(flags) {
+				return fmt.Errorf("Python flag -X requires an option argument")
+			}
+			continue
+		}
+		// Allow -W flag (may have argument, will be validated below)
+		if f == "-W" {
+			continue
+		}
+		// Reject anything else by default; extend if needed.
+		if !uFlagPattern.MatchString(f) {
+			return fmt.Errorf("unexpected flag in PythonCommand: %q", f)
+		}
+	}
+	return nil
 }
 
 // validatePythonCommandWithConfig performs critical security validation of the PythonCommand string.

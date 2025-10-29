@@ -38,6 +38,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if typed.note != "" {
 			m.status = typed.note
 		}
+		// Handle quit after save if the flag is set
+		if m.quitAfterSave {
+			m.quitAfterSave = false
+			if m.lastSaveErr == nil {
+				m.cancelQuitConfirm()
+				m.closeLogFile("quit")
+				return m, tea.Quit
+			}
+			// On error, show the error and don't quit
+			m.cancelQuitConfirm()
+		}
 		return m, nil
 
 	case runStartMsg:

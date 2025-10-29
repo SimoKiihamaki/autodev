@@ -594,18 +594,9 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 
 	switch m.quitConfirmIndex {
 	case 0: // Save
-		cmd := m.saveConfig()
-		if m.lastSaveErr != nil {
-			m.updateDirtyState()
-			return true, cmd
-		}
-		m.cancelQuitConfirm()
-		m.closeLogFile("quit")
-		m.updateDirtyState()
-		if cmd != nil {
-			return true, tea.Batch(cmd, tea.Quit)
-		}
-		return true, tea.Quit
+		// Set a flag so the save result handler knows to quit after save
+		m.quitAfterSave = true
+		return true, m.saveConfig()
 	case 1: // Discard
 		m.cancelQuitConfirm()
 		m.closeLogFile("quit")

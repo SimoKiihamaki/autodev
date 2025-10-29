@@ -265,25 +265,25 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 		if v < 0 {
 			v = 0
 		}
-		dst.Timings.WaitMinutes = v
+		dst.Timings.WaitMinutes = &v
 	})
 	setNumeric(m.inPollSec.Value(), "Review poll seconds", func(v int) {
 		if v <= 0 {
 			v = 15
 		}
-		dst.Timings.ReviewPollSeconds = v
+		dst.Timings.ReviewPollSeconds = &v
 	})
 	setNumeric(m.inIdleMin.Value(), "Idle grace minutes", func(v int) {
 		if v < 0 {
 			v = 0
 		}
-		dst.Timings.IdleGraceMinutes = v
+		dst.Timings.IdleGraceMinutes = &v
 	})
 	setNumeric(m.inMaxIters.Value(), "Max local iters", func(v int) {
 		if v < 0 {
 			v = 0
 		}
-		dst.Timings.MaxLocalIters = v
+		dst.Timings.MaxLocalIters = &v
 	})
 
 	dst.Flags.AllowUnsafe = m.flagAllowUnsafe

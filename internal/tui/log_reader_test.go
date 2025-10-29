@@ -12,7 +12,7 @@ func TestReadLogsBatchBlocksUntilFirstLine(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Defaults()
-	cfg.BatchProcessing.MaxBatchSize = 3
+	cfg.BatchProcessing.MaxBatchSize = &[]int{3}[0]
 
 	logCh := make(chan runner.Line, 8)
 	m := model{cfg: cfg, logCh: logCh}
@@ -58,7 +58,7 @@ func TestReadLogsBatchDrainsUpToBatchSize(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Defaults()
-	cfg.BatchProcessing.MaxBatchSize = 2
+	cfg.BatchProcessing.MaxBatchSize = &[]int{2}[0]
 
 	logCh := make(chan runner.Line, 8)
 	m := model{cfg: cfg, logCh: logCh}
@@ -84,8 +84,8 @@ func TestReadLogsBatchDrainsUpToBatchSize(t *testing.T) {
 	if batch.closed {
 		t.Fatalf("unexpected closed batch")
 	}
-	if len(batch.lines) != cfg.BatchProcessing.MaxBatchSize {
-		t.Fatalf("batch size=%d, want %d", len(batch.lines), cfg.BatchProcessing.MaxBatchSize)
+	if len(batch.lines) != *cfg.BatchProcessing.MaxBatchSize {
+		t.Fatalf("batch size=%d, want %d", len(batch.lines), *cfg.BatchProcessing.MaxBatchSize)
 	}
 
 	cmd = m.readLogsBatch()
@@ -109,7 +109,7 @@ func TestReadLogsBatchHandlesChannelClosure(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Defaults()
-	cfg.BatchProcessing.MaxBatchSize = 4
+	cfg.BatchProcessing.MaxBatchSize = &[]int{4}[0]
 
 	// Case 1: channel closed before any data
 	emptyCh := make(chan runner.Line)

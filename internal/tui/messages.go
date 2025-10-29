@@ -7,6 +7,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// intPtrValue safely returns the value of an int pointer, treating nil as 0
+func intPtrValue(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 const (
 	// criticalLogSendTimeout is the timeout for sending critical error/panic messages
 	// Uses a longer timeout to ensure critical diagnostics are not dropped
@@ -30,7 +38,7 @@ func (m *model) readLogsBatch() tea.Cmd {
 		return nil
 	}
 	initialCh := m.logCh
-	maxBatch := m.cfg.BatchProcessing.MaxBatchSize
+	maxBatch := intPtrValue(m.cfg.BatchProcessing.MaxBatchSize)
 	if maxBatch <= 0 {
 		maxBatch = 1
 	}

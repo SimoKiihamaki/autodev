@@ -34,18 +34,18 @@ type Flags struct {
 }
 
 type Timings struct {
-	WaitMinutes       int `yaml:"wait_minutes"`
-	ReviewPollSeconds int `yaml:"review_poll_seconds"`
-	IdleGraceMinutes  int `yaml:"idle_grace_minutes"`
-	MaxLocalIters     int `yaml:"max_local_iters"`
+	WaitMinutes       *int `yaml:"wait_minutes"`
+	ReviewPollSeconds *int `yaml:"review_poll_seconds"`
+	IdleGraceMinutes  *int `yaml:"idle_grace_minutes"`
+	MaxLocalIters     *int `yaml:"max_local_iters"`
 }
 
 // BatchProcessing configures how log messages are batched for performance.
 // BatchTimeoutMs: 5 provides responsive UI while minimizing CPU wake-ups for better power efficiency.
 // MaxBatchSize: 25 balances throughput with memory overhead by limiting concurrent messages.
 type BatchProcessing struct {
-	MaxBatchSize   int `yaml:"max_batch_size"`
-	BatchTimeoutMs int `yaml:"batch_timeout_ms"`
+	MaxBatchSize   *int `yaml:"max_batch_size"`
+	BatchTimeoutMs *int `yaml:"batch_timeout_ms"`
 }
 
 type PRDMeta struct {
@@ -104,14 +104,14 @@ func Defaults() Config {
 			InfiniteReviews: false,
 		},
 		Timings: Timings{
-			WaitMinutes:       0,
-			ReviewPollSeconds: 120,
-			IdleGraceMinutes:  10,
-			MaxLocalIters:     50,
+			WaitMinutes:       intPtr(0),
+			ReviewPollSeconds: intPtr(120),
+			IdleGraceMinutes:  intPtr(10),
+			MaxLocalIters:     intPtr(50),
 		},
 		BatchProcessing: BatchProcessing{
-			MaxBatchSize:   DefaultMaxBatchSize,
-			BatchTimeoutMs: 5,
+			MaxBatchSize:   intPtr(DefaultMaxBatchSize),
+			BatchTimeoutMs: intPtr(5),
 		},
 		PhaseExecutors:    PhaseExec{},
 		RunPhases:         Phases{Local: true, PR: true, ReviewFix: true},
@@ -179,12 +179,6 @@ func Load() (Config, error) {
 		}
 	}
 
-	setIntDefault := func(field *int, defaultValue int) {
-		if *field == 0 {
-			*field = defaultValue
-		}
-	}
-
 	// Apply defaults for string fields
 	setStringDefault(&c.ExecutorPolicy, defaults.ExecutorPolicy)
 	setStringDefault(&c.LogLevel, defaults.LogLevel)
@@ -198,13 +192,25 @@ func Load() (Config, error) {
 		c.FollowLogs = defaults.FollowLogs
 	}
 
-	// Apply defaults for int fields
-	setIntDefault(&c.Timings.WaitMinutes, defaults.Timings.WaitMinutes)
-	setIntDefault(&c.Timings.ReviewPollSeconds, defaults.Timings.ReviewPollSeconds)
-	setIntDefault(&c.Timings.IdleGraceMinutes, defaults.Timings.IdleGraceMinutes)
-	setIntDefault(&c.Timings.MaxLocalIters, defaults.Timings.MaxLocalIters)
-	setIntDefault(&c.BatchProcessing.MaxBatchSize, defaults.BatchProcessing.MaxBatchSize)
-	setIntDefault(&c.BatchProcessing.BatchTimeoutMs, defaults.BatchProcessing.BatchTimeoutMs)
+	// Apply defaults for int pointer fields only when nil (preserves explicit zeros)
+	if c.Timings.WaitMinutes == nil {
+		c.Timings.WaitMinutes = defaults.Timings.WaitMinutes
+	}
+	if c.Timings.ReviewPollSeconds == nil {
+		c.Timings.ReviewPollSeconds = defaults.Timings.ReviewPollSeconds
+	}
+	if c.Timings.IdleGraceMinutes == nil {
+		c.Timings.IdleGraceMinutes = defaults.Timings.IdleGraceMinutes
+	}
+	if c.Timings.MaxLocalIters == nil {
+		c.Timings.MaxLocalIters = defaults.Timings.MaxLocalIters
+	}
+	if c.BatchProcessing.MaxBatchSize == nil {
+		c.BatchProcessing.MaxBatchSize = defaults.BatchProcessing.MaxBatchSize
+	}
+	if c.BatchProcessing.BatchTimeoutMs == nil {
+		c.BatchProcessing.BatchTimeoutMs = defaults.BatchProcessing.BatchTimeoutMs
+	}
 
 	// Initialize slices/maps if nil
 	if c.AllowedPythonDirs == nil {
@@ -228,9 +234,13 @@ func Load() (Config, error) {
 	}
 
 	// Validate and set default MaxBatchSize if still invalid
-	if c.BatchProcessing.MaxBatchSize <= 0 {
-		log.Printf("Warning: max_batch_size must be > 0, got %d; using default value %d. Note: Invalid values are corrected in memory but not persisted to the config file.", c.BatchProcessing.MaxBatchSize, DefaultMaxBatchSize)
-		c.BatchProcessing.MaxBatchSize = DefaultMaxBatchSize
+	if c.BatchProcessing.MaxBatchSize == nil || *c.BatchProcessing.MaxBatchSize <= 0 {
+		var currentValue int
+		if c.BatchProcessing.MaxBatchSize != nil {
+			currentValue = *c.BatchProcessing.MaxBatchSize
+		}
+		log.Printf("Warning: max_batch_size must be > 0, got %d; using default value %d. Note: Invalid values are corrected in memory but not persisted to the config file.", currentValue, DefaultMaxBatchSize)
+		c.BatchProcessing.MaxBatchSize = intPtr(DefaultMaxBatchSize)
 	}
 
 	return c, nil
@@ -261,6 +271,27 @@ func (c Config) Clone() Config {
 	if c.FollowLogs != nil {
 		copyCfg.FollowLogs = boolPtr(*c.FollowLogs)
 	}
+
+	// Clone pointer fields
+	if c.Timings.WaitMinutes != nil {
+		copyCfg.Timings.WaitMinutes = intPtr(*c.Timings.WaitMinutes)
+	}
+	if c.Timings.ReviewPollSeconds != nil {
+		copyCfg.Timings.ReviewPollSeconds = intPtr(*c.Timings.ReviewPollSeconds)
+	}
+	if c.Timings.IdleGraceMinutes != nil {
+		copyCfg.Timings.IdleGraceMinutes = intPtr(*c.Timings.IdleGraceMinutes)
+	}
+	if c.Timings.MaxLocalIters != nil {
+		copyCfg.Timings.MaxLocalIters = intPtr(*c.Timings.MaxLocalIters)
+	}
+	if c.BatchProcessing.MaxBatchSize != nil {
+		copyCfg.BatchProcessing.MaxBatchSize = intPtr(*c.BatchProcessing.MaxBatchSize)
+	}
+	if c.BatchProcessing.BatchTimeoutMs != nil {
+		copyCfg.BatchProcessing.BatchTimeoutMs = intPtr(*c.BatchProcessing.BatchTimeoutMs)
+	}
+
 	if c.PRDs != nil {
 		clone := make(map[string]PRDMeta, len(c.PRDs))
 		for k, meta := range c.PRDs {
@@ -301,10 +332,18 @@ func (c Config) Equal(other Config) bool {
 	if c.Flags != other.Flags {
 		return false
 	}
-	if c.Timings != other.Timings {
+
+	// Compare Timings pointer fields
+	if !equalIntPointers(c.Timings.WaitMinutes, other.Timings.WaitMinutes) ||
+		!equalIntPointers(c.Timings.ReviewPollSeconds, other.Timings.ReviewPollSeconds) ||
+		!equalIntPointers(c.Timings.IdleGraceMinutes, other.Timings.IdleGraceMinutes) ||
+		!equalIntPointers(c.Timings.MaxLocalIters, other.Timings.MaxLocalIters) {
 		return false
 	}
-	if c.BatchProcessing != other.BatchProcessing {
+
+	// Compare BatchProcessing pointer fields
+	if !equalIntPointers(c.BatchProcessing.MaxBatchSize, other.BatchProcessing.MaxBatchSize) ||
+		!equalIntPointers(c.BatchProcessing.BatchTimeoutMs, other.BatchProcessing.BatchTimeoutMs) {
 		return false
 	}
 	if c.PhaseExecutors != other.PhaseExecutors {
@@ -386,4 +425,23 @@ func (c Config) GetAllowedPythonDirs() []string {
 // boolPtr returns a pointer to a bool value.
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// intPtr returns a pointer to an int value.
+func intPtr(i int) *int {
+	return &i
+}
+
+// equalIntPointers safely compares two int pointers, treating nil as equivalent to 0
+func equalIntPointers(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil && b != nil {
+		return *b == 0
+	}
+	if a != nil && b == nil {
+		return *a == 0
+	}
+	return *a == *b
 }

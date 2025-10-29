@@ -90,10 +90,10 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	baseCfg.CodexModel = "gpt-5.1-codex"
 	baseCfg.LogLevel = "debug"
 	baseCfg.Timings = config.Timings{
-		WaitMinutes:       7,
-		ReviewPollSeconds: 33,
-		IdleGraceMinutes:  5,
-		MaxLocalIters:     11,
+		WaitMinutes:       &[]int{7}[0],
+		ReviewPollSeconds: &[]int{33}[0],
+		IdleGraceMinutes:  &[]int{5}[0],
+		MaxLocalIters:     &[]int{11}[0],
 	}
 	baseCfg.RunPhases = config.Phases{Local: true, PR: false, ReviewFix: false}
 

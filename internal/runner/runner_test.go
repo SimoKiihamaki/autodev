@@ -41,10 +41,10 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 	cfg.CodexModel = "gpt-5-codex"
 	cfg.Flags.DryRun = true
 	cfg.Flags.SyncGit = true
-	cfg.Timings.WaitMinutes = 3
-	cfg.Timings.ReviewPollSeconds = 45
-	cfg.Timings.IdleGraceMinutes = 2
-	cfg.Timings.MaxLocalIters = 7
+	cfg.Timings.WaitMinutes = &[]int{3}[0]
+	cfg.Timings.ReviewPollSeconds = &[]int{45}[0]
+	cfg.Timings.IdleGraceMinutes = &[]int{2}[0]
+	cfg.Timings.MaxLocalIters = &[]int{7}[0]
 	cfg.RunPhases.Local = true
 	cfg.RunPhases.PR = false
 	cfg.RunPhases.ReviewFix = true
