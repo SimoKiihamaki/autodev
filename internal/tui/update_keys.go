@@ -2,9 +2,8 @@ package tui
 
 import (
 	"strings"
-	"time"
 
-	"github.com/SimoKiihamaki/autodev/internal/config"
+	clipboard "github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -22,6 +21,13 @@ func batchCmd(cmds []tea.Cmd) tea.Cmd {
 
 func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
 	mPtr := &m
+
+	if mPtr.quitConfirmActive {
+		if handled, cmd := mPtr.handleQuitConfirmation(msg); handled {
+			return *mPtr, cmd
+		}
+		return *mPtr, nil
+	}
 
 	tabID := mPtr.currentTabID()
 	perTabActions := mPtr.keys.TabActions(tabID, msg)
@@ -75,21 +81,34 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.cancel()
 			return true, nil
 		}
+		if m.dirty {
+			m.beginQuitConfirm()
+			return true, nil
+		}
 		m.closeLogFile("quit")
 		return true, tea.Quit
 	case ActQuit:
 		if m.running {
 			return true, nil
 		}
+		if m.dirty {
+			m.beginQuitConfirm()
+			return true, nil
+		}
 		m.closeLogFile("quit")
 		return true, tea.Quit
 	case ActHelp:
-		m.tab = tabHelp
-		m.blurAllInputs()
+		m.showHelp = !m.showHelp
+		if m.showHelp {
+			m.blurAllInputs()
+		}
 		return true, nil
+	case ActSave:
+		return true, m.handleSaveShortcut()
+	case ActResetDefaults:
+		return true, m.resetToDefaults()
 	case ActGotoTab1, ActGotoTab2, ActGotoTab3, ActGotoTab4, ActGotoTab5, ActGotoTab6:
-		if idx, ok := tabIndexFromAction(act); ok && idx >= 0 && idx < len(tabNames) {
-			m.tab = tab(idx)
+		if idx, ok := tabIndexFromAction(act); ok && m.setActiveTabIndex(idx) {
 			m.blurAllInputs()
 			return true, nil
 		}
@@ -115,6 +134,32 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			}
 			if cmd := m.startRunCmd(); cmd != nil {
 				cmds = append(cmds, cmd)
+			}
+			handled = true
+		case ActCopyError:
+			text := ""
+			if m.lastRunErr != nil {
+				text = m.lastRunErr.Error()
+			} else {
+				text = m.errMsg
+			}
+			text = strings.TrimSpace(text)
+			note := ""
+			if text == "" {
+				note = "No error available to copy"
+			} else {
+				if err := clipboard.WriteAll(text); err != nil {
+					note = "Failed to copy error: " + err.Error()
+				} else {
+					note = "Error copied to clipboard"
+				}
+			}
+			m.status = note
+			if note != "" {
+				if flash := m.flash(note, defaultToastTTL); flash != nil {
+					cmds = append(cmds, flash)
+				}
+				cmds = append(cmds, func() tea.Msg { return statusMsg{note: note} })
 			}
 			handled = true
 		case ActNavigateUp, ActNavigateDown:
@@ -155,12 +200,13 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			m.updateRunFeedFollowFromViewport()
 			handled = true
 		case ActToggleFollow:
-			if hasFeed {
-				m.runFeedAutoFollow = !m.runFeedAutoFollow
-				if m.runFeedAutoFollow {
-					m.runFeed.GotoBottom()
-				}
+			m.followLogs = !m.followLogs
+			m.cfg.FollowLogs = m.followLogs
+			m.runFeedAutoFollow = m.followLogs
+			if m.runFeedAutoFollow && len(m.runFeedBuf) > 0 {
+				m.runFeed.GotoBottom()
 			}
+			m.updateDirtyState()
 			handled = true
 		}
 	}
@@ -183,6 +229,7 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 					m.tags = append(m.tags, tag)
 					m.tagInput.SetValue("")
 					m.tagInput.Blur()
+					m.updateDirtyState()
 				}
 				handled = true
 			case ActCancel:
@@ -192,6 +239,9 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 		}
 		if handled {
 			return true, nil
+		}
+		if msg.Type == tea.KeyCtrlS {
+			return false, nil
 		}
 		var cmd tea.Cmd
 		m.tagInput, cmd = m.tagInput.Update(msg)
@@ -219,6 +269,7 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 				} else {
 					m.tags = []string{}
 				}
+				m.updateDirtyState()
 			}
 			handled = true
 		case ActFocusTags:
@@ -236,41 +287,7 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 				cmds = append(cmds, cmd)
 			} else if len(m.tags) > 0 {
 				m.tags = m.tags[:len(m.tags)-1]
-			}
-			handled = true
-		case ActSave:
-			if m.selectedPRD == "" {
-				m.status = "Select a PRD before saving metadata"
-				handled = true
-				continue
-			}
-			normalized := make([]string, 0, len(m.tags))
-			seen := make(map[string]struct{}, len(m.tags))
-			for _, tag := range m.tags {
-				tag = strings.TrimSpace(tag)
-				if tag == "" {
-					continue
-				}
-				lower := strings.ToLower(tag)
-				if _, ok := seen[lower]; ok {
-					continue
-				}
-				seen[lower] = struct{}{}
-				normalized = append(normalized, tag)
-			}
-			if m.cfg.PRDs == nil {
-				m.cfg.PRDs = make(map[string]config.PRDMeta)
-			}
-			meta := m.cfg.PRDs[m.selectedPRD]
-			meta.Tags = normalized
-			meta.LastUsed = time.Now()
-			m.cfg.PRDs[m.selectedPRD] = meta
-			if err := config.Save(m.cfg); err != nil {
-				m.errMsg = err.Error()
-				m.status = "Failed to save PRD metadata"
-			} else {
-				m.errMsg = ""
-				m.status = "Saved PRD metadata for " + abbreviatePath(m.selectedPRD)
+				m.updateDirtyState()
 			}
 			handled = true
 		case ActRescanPRDs:
@@ -283,6 +300,9 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 	if handled {
 		return true, batchCmd(cmds)
 	}
+	if msg.Type == tea.KeyCtrlS {
+		return false, nil
+	}
 	return false, batchCmd(cmds)
 }
 
@@ -293,8 +313,15 @@ func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool
 	if len(actions) == 0 {
 		if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
 			if field := m.getInputField(m.focusedInput); field != nil {
+				if msg.Type == tea.KeyCtrlS {
+					return false, nil
+				}
+				prev := field.Value()
 				var cmd tea.Cmd
 				*field, cmd = field.Update(msg)
+				if field.Value() != prev {
+					m.updateDirtyState()
+				}
 				return true, cmd
 			}
 		}
@@ -368,14 +395,13 @@ func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool
 				m.navigateSettings("down")
 				handled = true
 			}
-		case ActSave:
-			cmds = append(cmds, m.saveConfig())
-			handled = true
 		case ActConfirm:
 			if m.focusedInput == "" {
 				m.focusInput("repo")
 			} else if isExecutorToggle(m.focusedInput) {
 				m.cycleExecutorChoice(m.focusedInput, 1)
+			} else {
+				m.navigateSettings("down")
 			}
 			handled = true
 		case ActCycleBackward:
@@ -392,8 +418,15 @@ func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool
 
 	if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
 		if field := m.getInputField(m.focusedInput); field != nil {
+			if msg.Type == tea.KeyCtrlS {
+				return false, nil
+			}
+			prev := field.Value()
 			var cmd tea.Cmd
 			*field, cmd = field.Update(msg)
+			if field.Value() != prev {
+				m.updateDirtyState()
+			}
 			return true, cmd
 		}
 	}
@@ -439,8 +472,6 @@ func (m *model) handleEnvTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 				m.toggleFocusedFlag()
 			}
 			handled = true
-		case ActSave:
-			return true, m.saveConfig()
 		case ActToggleFlagLocal, ActToggleFlagPR, ActToggleFlagReview, ActToggleFlagUnsafe, ActToggleFlagDryRun, ActToggleFlagSyncGit, ActToggleFlagInfinite:
 			if flag := flagNameForAction(act); flag != "" {
 				m.focusFlag(flag)
@@ -469,14 +500,15 @@ func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, 
 				m.prompt.Blur()
 				handled = true
 			}
-		case ActSave:
-			cmds = append(cmds, m.saveConfig())
-			handled = true
 		}
 	}
 
 	if handled {
 		return true, batchCmd(cmds)
+	}
+
+	if msg.Type == tea.KeyCtrlS {
+		return false, nil
 	}
 
 	var cmd tea.Cmd
@@ -511,10 +543,85 @@ func (m *model) handleLogsTabActions(actions []Action, msg tea.KeyMsg) (bool, te
 		case ActScrollBottom:
 			m.logs.GotoBottom()
 			handled = true
+		case ActToggleFollow:
+			m.followLogs = !m.followLogs
+			m.cfg.FollowLogs = m.followLogs
+			if m.followLogs {
+				m.logs.GotoBottom()
+			}
+			m.runFeedAutoFollow = m.followLogs && m.runFeed.AtBottom()
+			m.updateDirtyState()
+			handled = true
 		}
 	}
 
 	return handled, batchCmd(cmds)
+}
+
+func (m *model) handleQuitConfirmation(msg tea.KeyMsg) (bool, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyLeft:
+		m.moveQuitSelection(-1)
+		return true, nil
+	case tea.KeyRight:
+		m.moveQuitSelection(1)
+		return true, nil
+	case tea.KeyTab:
+		m.moveQuitSelection(1)
+		return true, nil
+	case tea.KeyShiftTab:
+		m.moveQuitSelection(-1)
+		return true, nil
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.cancelQuitConfirm()
+		return true, nil
+	case tea.KeyEnter:
+		return m.executeQuitSelection()
+	}
+
+	switch strings.ToLower(msg.String()) {
+	case "s":
+		m.quitConfirmIndex = 0
+		return m.executeQuitSelection()
+	case "d":
+		m.quitConfirmIndex = 1
+		return m.executeQuitSelection()
+	case "c":
+		m.cancelQuitConfirm()
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (m *model) executeQuitSelection() (bool, tea.Cmd) {
+	if !m.quitConfirmActive {
+		return false, nil
+	}
+
+	switch m.quitConfirmIndex {
+	case 0: // Save
+		cmd := m.saveConfig()
+		if m.lastSaveErr != nil {
+			m.updateDirtyState()
+			return true, cmd
+		}
+		m.cancelQuitConfirm()
+		m.closeLogFile("quit")
+		m.updateDirtyState()
+		if cmd != nil {
+			return true, tea.Batch(cmd, tea.Quit)
+		}
+		return true, tea.Quit
+	case 1: // Discard
+		m.cancelQuitConfirm()
+		m.closeLogFile("quit")
+		return true, tea.Quit
+	default: // Cancel
+		m.cancelQuitConfirm()
+		m.updateDirtyState()
+		return true, nil
+	}
 }
 
 func tabIndexFromAction(act Action) (int, bool) {

@@ -17,22 +17,22 @@ Below is a **decomposed, implementation‑ready task plan** for tightening up th
 
 - [x] A1 — Centralize all keybindings into a single source of truth
 - [x] A2 — Guard global shortcuts while the user is typing
-- [ ] A3 — Make tab navigation predictable and non-conflicting
-- [ ] A4 — Enforce “no overlapping single-letter keys across tabs” (except navigation)
-- [ ] A5 — Smooth, consistent field navigation & wrap-around
-- [ ] B1 — Standardize tab model and identifiers
-- [ ] B2 — Unsaved indicator & quit confirmation
-- [ ] C1 — Single function to build runner args/env from config
-- [ ] C2 — Audit: TUI state → config.Config fields
-- [ ] C3 — Save everywhere with **Ctrl+S**
-- [ ] D1 — Follow/Unfollow logs toggle and persistence
-- [ ] D2 — Error surfacing from runner
-- [ ] E1 — Autogenerate help from KeyMap
-- [ ] F1 — Keystroke guard tests
-- [ ] F2 — No overlap test across tabs (non-nav single letters)
-- [ ] F3 — End-to-end wiring: config → BuildArgs → runner
-- [ ] G1 — Status line & transient toasts
-- [ ] G2 — Reset keys and defaults
+- [x] A3 — Make tab navigation predictable and non-conflicting
+- [x] A4 — Enforce “no overlapping single-letter keys across tabs” (except navigation)
+- [x] A5 — Smooth, consistent field navigation & wrap-around
+- [x] B1 — Standardize tab model and identifiers
+- [x] B2 — Unsaved indicator & quit confirmation
+- [x] C1 — Single function to build runner args/env from config
+- [x] C2 — Audit: TUI state → config.Config fields
+- [x] C3 — Save everywhere with **Ctrl+S**
+- [x] D1 — Follow/Unfollow logs toggle and persistence
+- [x] D2 — Error surfacing from runner
+- [x] E1 — Autogenerate help from KeyMap
+- [x] F1 — Keystroke guard tests
+- [x] F2 — No overlap test across tabs (non-nav single letters)
+- [x] F3 — End-to-end wiring: config → BuildArgs → runner
+- [x] G1 — Status line & transient toasts
+- [x] G2 — Reset keys and defaults
 
 ---
 

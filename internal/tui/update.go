@@ -17,6 +17,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m.handleResize(typed), nil
 
+	case toastExpiredMsg:
+		if m.toast != nil && m.toast.id == typed.id {
+			m.toast = nil
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKeyMsg(typed)
 
@@ -39,11 +45,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancelling = false
 		m.errMsg = ""
 		m.status = "Running…"
-		m.tab = tabRun
-		m.runFeedAutoFollow = true
+		m.lastRunErr = nil
+		m.setActiveTabByID(tabIDRun)
+		m.runFeedAutoFollow = m.followLogs
 		// Clear log buffer and logs display for new run.
 		m.resetLogState()
-		return m, nil
+		cmd := m.flash("Run started", defaultToastTTL)
+		return m, cmd
 
 	case runFinishMsg:
 		return m.handleRunFinish(typed)
@@ -56,12 +64,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.errMsg = typed.err.Error()
 		m.status = "Error."
+		m.lastRunErr = typed.err
 		m.closeLogFile("failed")
 		m.cancel = nil
 		m.runResult = nil
 		m.logCh = nil
 		m.cancelling = false
-		return m, nil
+		note := "Run failed."
+		if typed.err != nil {
+			if trimmed := strings.TrimSpace(typed.err.Error()); trimmed != "" {
+				note = "Run failed: " + trimmed
+			}
+		}
+		return m, m.flash(note, defaultToastTTL)
 	}
 
 	return m, nil
@@ -139,7 +154,7 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
+func (m *model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	m.running = false
 	if m.cancel != nil {
 		m.cancel()
@@ -157,6 +172,7 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	case errors.Is(msg.err, context.Canceled):
 		m.errMsg = ""
 		m.status = "Run canceled."
+		m.lastRunErr = nil
 		logReason = "canceled"
 		// Reset log buffer, logs, and run dashboard state after cancellation to clean up state.
 		m.resetLogState()
@@ -164,7 +180,12 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	default:
 		m.errMsg = msg.err.Error()
 		m.status = "Run failed."
+		m.lastRunErr = msg.err
 		logReason = "failed"
+	}
+
+	if msg.err == nil {
+		m.lastRunErr = nil
 	}
 
 	// No need to update logs or run feed here:
@@ -172,5 +193,19 @@ func (m model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 	// so viewport state is always current.
 
 	m.closeLogFile(logReason)
-	return m, nil
+	note := strings.TrimSpace(m.status)
+	if note == "" {
+		switch logReason {
+		case "completed":
+			note = "Run finished."
+		case "canceled":
+			note = "Run canceled."
+		case "failed":
+			note = "Run failed."
+		default:
+			note = "Run finished."
+		}
+	}
+	cmd := m.flash(note, defaultToastTTL)
+	return *m, cmd
 }

@@ -31,6 +31,12 @@ var (
 	}
 )
 
+type numericParseError struct {
+	label string
+	raw   string
+	err   error
+}
+
 // safeSendCritical is used for error/panic messages that must not be dropped.
 // It safely sends a critical log line to the channel with timeout and panic recovery.
 func safeSendCritical(logCh chan runner.Line, line runner.Line) {
@@ -87,16 +93,24 @@ func (m *model) startRunCmd() tea.Cmd {
 
 	if m.selectedPRD == "" {
 		m.errMsg = "Select a PRD first (PRD tab)"
+		m.lastRunErr = errors.New(m.errMsg)
 		return func() tea.Msg { return statusMsg{note: "No PRD selected"} }
 	}
 	if err := m.preflightChecks(); err != nil {
 		m.errMsg = err.Error()
+		m.lastRunErr = err
 		return func() tea.Msg { return statusMsg{note: err.Error()} }
 	}
 	if err := config.Save(m.cfg); err != nil {
+		m.lastSaveErr = err
 		m.errMsg = "Failed to save config: " + err.Error()
+		m.lastRunErr = err
+		m.updateDirtyState()
 		return func() tea.Msg { return statusMsg{note: "Config save failed"} }
 	}
+	m.lastSaveErr = nil
+	m.lastRunErr = nil
+	m.markSaved()
 	m.prepareRunLogFile()
 
 	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
@@ -107,7 +121,7 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.resetLogState()
 	m.resetRunDashboard()
 	m.runResult = make(chan error, 1)
-	m.tab = tabRun
+	m.setActiveTabByID(tabIDRun)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
@@ -207,24 +221,37 @@ func (m *model) resolvePythonScript(initial bool) bool {
 			m.status = note
 		}
 	}
+	if changed {
+		m.updateDirtyState()
+	}
 	return found
 }
 
 func (m *model) hydrateConfigFromInputs() []string {
-	m.cfg.RepoPath = strings.TrimSpace(m.inRepo.Value())
-	m.cfg.BaseBranch = strings.TrimSpace(m.inBase.Value())
-	m.cfg.Branch = strings.TrimSpace(m.inBranch.Value())
-	m.cfg.CodexModel = strings.TrimSpace(m.inCodexModel.Value())
-	m.cfg.PythonCommand = strings.TrimSpace(m.inPyCmd.Value())
-	m.cfg.PythonScript = strings.TrimSpace(m.inPyScript.Value())
-	m.cfg.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
+	invalid, parseErrs := m.populateConfigFromInputs(&m.cfg)
+	for _, item := range parseErrs {
+		log.Printf("tui: invalid %s value %q: %v", strings.ToLower(item.label), item.raw, item.err)
+	}
+	return invalid
+}
+
+func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numericParseError) {
+	dst.RepoPath = strings.TrimSpace(m.inRepo.Value())
+	dst.BaseBranch = strings.TrimSpace(m.inBase.Value())
+	dst.Branch = strings.TrimSpace(m.inBranch.Value())
+	dst.CodexModel = strings.TrimSpace(m.inCodexModel.Value())
+	dst.PythonCommand = strings.TrimSpace(m.inPyCmd.Value())
+	dst.PythonScript = strings.TrimSpace(m.inPyScript.Value())
+	dst.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
 
 	invalid := make([]string, 0, 4)
+	parseErrs := make([]numericParseError, 0, 4)
+
 	setNumeric := func(raw, label string, apply func(int)) {
 		val, err := atoiSafe(raw)
 		if err != nil {
 			invalid = append(invalid, label)
-			log.Printf("tui: invalid %s value %q: %v", strings.ToLower(label), raw, err)
+			parseErrs = append(parseErrs, numericParseError{label: label, raw: raw, err: err})
 		}
 		apply(val)
 	}
@@ -233,53 +260,77 @@ func (m *model) hydrateConfigFromInputs() []string {
 		if v < 0 {
 			v = 0
 		}
-		m.cfg.Timings.WaitMinutes = v
+		dst.Timings.WaitMinutes = v
 	})
 	setNumeric(m.inPollSec.Value(), "Review poll seconds", func(v int) {
 		if v <= 0 {
 			v = 15
 		}
-		m.cfg.Timings.ReviewPollSeconds = v
+		dst.Timings.ReviewPollSeconds = v
 	})
 	setNumeric(m.inIdleMin.Value(), "Idle grace minutes", func(v int) {
 		if v < 0 {
 			v = 0
 		}
-		m.cfg.Timings.IdleGraceMinutes = v
+		dst.Timings.IdleGraceMinutes = v
 	})
 	setNumeric(m.inMaxIters.Value(), "Max local iters", func(v int) {
 		if v < 0 {
 			v = 0
 		}
-		m.cfg.Timings.MaxLocalIters = v
+		dst.Timings.MaxLocalIters = v
 	})
-	m.cfg.Flags.AllowUnsafe = m.flagAllowUnsafe
-	m.cfg.Flags.DryRun = m.flagDryRun
-	m.cfg.Flags.SyncGit = m.flagSyncGit
-	m.cfg.Flags.InfiniteReviews = m.flagInfinite
-	m.cfg.RunPhases.Local = m.runLocal
-	m.cfg.RunPhases.PR = m.runPR
-	m.cfg.RunPhases.ReviewFix = m.runReview
-	localExec := m.execLocalChoice.configValue()
-	m.cfg.PhaseExecutors.Implement = localExec
-	m.cfg.PhaseExecutors.Fix = localExec
-	m.cfg.PhaseExecutors.PR = m.execPRChoice.configValue()
-	m.cfg.PhaseExecutors.ReviewFix = m.execReviewChoice.configValue()
 
-	return invalid
+	dst.Flags.AllowUnsafe = m.flagAllowUnsafe
+	dst.Flags.DryRun = m.flagDryRun
+	dst.Flags.SyncGit = m.flagSyncGit
+	dst.Flags.InfiniteReviews = m.flagInfinite
+	dst.RunPhases.Local = m.runLocal
+	dst.RunPhases.PR = m.runPR
+	dst.RunPhases.ReviewFix = m.runReview
+	dst.FollowLogs = m.followLogs
+	localExec := m.execLocalChoice.configValue()
+	dst.PhaseExecutors.Implement = localExec
+	dst.PhaseExecutors.Fix = localExec
+	dst.PhaseExecutors.PR = m.execPRChoice.configValue()
+	dst.PhaseExecutors.ReviewFix = m.execReviewChoice.configValue()
+
+	m.applyPRDMetadata(dst)
+
+	return invalid, parseErrs
+}
+
+func (m *model) applyPRDMetadata(dst *config.Config) {
+	if dst == nil || m.selectedPRD == "" {
+		return
+	}
+	if dst.PRDs == nil {
+		dst.PRDs = make(map[string]config.PRDMeta)
+	}
+	meta := dst.PRDs[m.selectedPRD]
+	meta.Tags = normalizeTags(m.tags)
+	dst.PRDs[m.selectedPRD] = meta
 }
 
 func (m *model) saveConfig() tea.Cmd {
-	invalidNumeric := m.hydrateConfigFromInputs()
+	invalidNumeric, parseErrs := m.populateConfigFromInputs(&m.cfg)
+	for _, item := range parseErrs {
+		log.Printf("tui: invalid %s value %q: %v", strings.ToLower(item.label), item.raw, item.err)
+	}
 	m.normalizeLogLevel()
-	if err := config.Save(m.cfg); err != nil {
+	err := config.Save(m.cfg)
+	m.lastSaveErr = err
+	if err != nil {
 		m.status = "Failed to save config: " + err.Error()
+		m.updateDirtyState()
 	} else {
 		if len(invalidNumeric) > 0 {
 			m.status = fmt.Sprintf("Config saved (defaults used for: %s)", strings.Join(invalidNumeric, ", "))
 		} else {
 			m.status = "Config saved"
 		}
+		m.errMsg = ""
+		m.markSaved()
 	}
 	return func() tea.Msg { return statusMsg{note: m.status} }
 }

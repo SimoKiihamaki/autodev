@@ -75,6 +75,7 @@ type Config struct {
 	BaseBranch        string             `yaml:"base_branch"`
 	Branch            string             `yaml:"branch"`
 	CodexModel        string             `yaml:"codex_model"`
+	FollowLogs        bool               `yaml:"follow_logs"`
 	Flags             Flags              `yaml:"flags"`
 	Timings           Timings            `yaml:"timings"`
 	BatchProcessing   BatchProcessing    `yaml:"batch_processing"`
@@ -95,6 +96,7 @@ func Defaults() Config {
 		BaseBranch:     "main",
 		Branch:         "",
 		CodexModel:     "gpt-5-codex",
+		FollowLogs:     true,
 		Flags: Flags{
 			AllowUnsafe:     false,
 			DryRun:          false,
@@ -160,7 +162,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	var c Config
+	c := Defaults()
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return Config{}, err
 	}
@@ -196,6 +198,111 @@ func Save(c Config) error {
 		return err
 	}
 	return os.WriteFile(p, b, 0o600)
+}
+
+// Clone returns a deep copy of the configuration so callers can mutate the
+// returned value without affecting the receiver's internal maps or slices.
+func (c Config) Clone() Config {
+	copyCfg := c
+	if c.AllowedPythonDirs != nil {
+		copyCfg.AllowedPythonDirs = append([]string(nil), c.AllowedPythonDirs...)
+	}
+	if c.PRDs != nil {
+		clone := make(map[string]PRDMeta, len(c.PRDs))
+		for k, meta := range c.PRDs {
+			metaCopy := meta
+			if meta.Tags != nil {
+				metaCopy.Tags = append([]string(nil), meta.Tags...)
+			}
+			clone[k] = metaCopy
+		}
+		copyCfg.PRDs = clone
+	}
+	return copyCfg
+}
+
+// Equal reports whether two configurations contain the same values. It treats
+// nil and empty slices/maps as equivalent so callers can rely on it for "dirty"
+// state detection without spurious diffs.
+func (c Config) Equal(other Config) bool {
+	if c.ExecutorPolicy != other.ExecutorPolicy ||
+		c.LogLevel != other.LogLevel ||
+		c.PythonCommand != other.PythonCommand ||
+		c.PythonScript != other.PythonScript ||
+		c.RepoPath != other.RepoPath ||
+		c.BaseBranch != other.BaseBranch ||
+		c.Branch != other.Branch ||
+		c.CodexModel != other.CodexModel ||
+		c.FollowLogs != other.FollowLogs {
+		return false
+	}
+
+	if c.Flags != other.Flags {
+		return false
+	}
+	if c.Timings != other.Timings {
+		return false
+	}
+	if c.BatchProcessing != other.BatchProcessing {
+		return false
+	}
+	if c.PhaseExecutors != other.PhaseExecutors {
+		return false
+	}
+	if c.RunPhases != other.RunPhases {
+		return false
+	}
+
+	if !equalStringSlices(c.AllowedPythonDirs, other.AllowedPythonDirs) {
+		return false
+	}
+
+	if !equalPRDMetaMaps(c.PRDs, other.PRDs) {
+		return false
+	}
+
+	return true
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalPRDMetaMaps(a, b map[string]PRDMeta) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	for key, metaA := range a {
+		metaB, ok := b[key]
+		if !ok {
+			return false
+		}
+		if !equalStringSlices(metaA.Tags, metaB.Tags) {
+			return false
+		}
+		if !equalTimes(metaA.LastUsed, metaB.LastUsed) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalTimes(a, b time.Time) bool {
+	if a.IsZero() && b.IsZero() {
+		return true
+	}
+	return a.Equal(b)
 }
 
 // GetAllowedPythonDirs returns the list of allowed Python directories from the config.

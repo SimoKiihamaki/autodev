@@ -38,7 +38,7 @@ func (m *model) resetRunDashboard() {
 	m.runIterCurrent = 0
 	m.runIterTotal = 0
 	m.runIterLabel = ""
-	m.runFeedAutoFollow = true
+	m.runFeedAutoFollow = m.followLogs
 }
 
 func (m *model) setRunCurrent(action string) {
@@ -63,19 +63,20 @@ func (m *model) handleRunFeedLine(displayLine, rawLine string) {
 		tail := m.runFeedBuf[len(m.runFeedBuf)-feedBufCap:]
 		m.runFeedBuf = append([]string(nil), tail...)
 	}
-	shouldFollow := m.runFeedAutoFollow || m.runFeed.AtBottom()
+	shouldFollow := m.runFeedAutoFollow
 
 	m.runFeed.SetContent(strings.Join(m.runFeedBuf, "\n"))
 	if shouldFollow {
 		m.runFeed.GotoBottom()
-		m.runFeedAutoFollow = true
 	}
+
+	m.runFeedAutoFollow = m.followLogs && m.runFeed.AtBottom()
 
 	m.consumeRunSummary(rawLine)
 }
 
 func (m *model) updateRunFeedFollowFromViewport() {
-	m.runFeedAutoFollow = m.runFeed.AtBottom()
+	m.runFeedAutoFollow = m.followLogs && m.runFeed.AtBottom()
 }
 
 func (m *model) formatLogLine(line runner.Line) (string, string) {

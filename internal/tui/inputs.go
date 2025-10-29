@@ -24,12 +24,11 @@ var settingsGrid = map[string][2]int{
 	"maxiters":     {8, 3},
 }
 
-// wrapIndex calculates the wrapped index for circular navigation in executor toggle cycling.
-// Used by cycleExecutorChoice to wrap between executor options (Codex/Claude).
-// The formula (((current+delta) % length) + length) % length ensures the result is always in [0, length)
-// by correctly handling negative (current+delta) values for circular navigation.
-func wrapIndex(current, delta, length int) int {
-	return ((current+delta)%length + length) % length
+// wrapChoiceIndex wraps the executor toggle index when cycling through
+// available choices. It delegates to wrapIndex so negative deltas and values
+// greater than the slice length are handled consistently.
+func wrapChoiceIndex(current, delta, length int) int {
+	return wrapIndex(current+delta, length)
 }
 
 func (m *model) blurAllInputs() {
@@ -127,37 +126,34 @@ func (m *model) navigateHorizontal(direction string, row, col int, reverseGrid [
 }
 
 func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][]string) {
-	var startRow, endRow, step int
-	if direction == "up" {
-		if row == 0 {
-			return
-		}
-		startRow = row - 1
-		endRow = -1
+	rows := len(reverseGrid)
+	if rows == 0 {
+		return
+	}
+
+	step := 1
+	switch direction {
+	case "up":
 		step = -1
-	} else { // "down"
-		if row >= len(reverseGrid)-1 {
-			return
-		}
-		startRow = row + 1
-		endRow = len(reverseGrid)
+	case "down":
 		step = 1
+	default:
+		return
 	}
 
-	// First try same column
-	for r := startRow; r != endRow; r += step {
-		if col < len(reverseGrid[r]) && reverseGrid[r][col] != "" {
-			m.focusInput(reverseGrid[r][col])
+	for offset := 1; offset <= rows; offset++ {
+		nextRow := wrapIndex(row+step*offset, rows)
+		if nextRow == row {
+			continue
+		}
+
+		if col < len(reverseGrid[nextRow]) && reverseGrid[nextRow][col] != "" {
+			m.focusInput(reverseGrid[nextRow][col])
 			return
 		}
-	}
 
-	// Then search horizontally in each row
-	for r := startRow; r != endRow; r += step {
-		if hasAnyCell(reverseGrid[r]) {
-			if m.searchHorizontalInRow(reverseGrid, r, col) {
-				return
-			}
+		if m.searchHorizontalInRow(reverseGrid, nextRow, col) {
+			return
 		}
 	}
 }
@@ -242,15 +238,6 @@ func (m *model) searchHorizontalInRow(reverseGrid [][]string, targetRow, startCo
 	return false
 }
 
-func hasAnyCell(row []string) bool {
-	for _, v := range row {
-		if v != "" {
-			return true
-		}
-	}
-	return false
-}
-
 func (m *model) focusFlag(flagName string) {
 	m.focusedFlag = flagName
 }
@@ -283,10 +270,10 @@ func (m *model) navigateFlags(direction string) {
 
 	switch direction {
 	case "up":
-		newIndex := (currentIndex - 1 + len(flags)) % len(flags)
+		newIndex := wrapIndex(currentIndex-1, len(flags))
 		m.focusFlag(flags[newIndex])
 	case "down":
-		newIndex := (currentIndex + 1) % len(flags)
+		newIndex := wrapIndex(currentIndex+1, len(flags))
 		m.focusFlag(flags[newIndex])
 	case "left", "right":
 		m.toggleFocusedFlag()
@@ -310,6 +297,7 @@ func (m *model) toggleFocusedFlag() {
 	case "infinite":
 		m.flagInfinite = !m.flagInfinite
 	}
+	m.updateDirtyState()
 }
 
 func (m *model) getInputField(inputName string) *textinput.Model {
@@ -342,8 +330,9 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 
 	// Calculate new choice and update via pointer
 	n := len(executorChoices)
-	newIdx := wrapIndex(idx, direction, n)
+	newIdx := wrapChoiceIndex(idx, direction, n)
 	*target = executorChoices[newIdx]
+	m.updateDirtyState()
 }
 
 func isExecutorToggle(name string) bool {

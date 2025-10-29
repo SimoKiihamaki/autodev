@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Helper functions to create styled log lines for testing
@@ -138,6 +140,7 @@ func TestHandleRunFeedLine_LongStreamingSession(t *testing.T) {
 	m := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0, feedBufCap),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 
@@ -191,6 +194,7 @@ func TestHandleRunFeedLine_FlushBoundaries(t *testing.T) {
 	m := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 
@@ -214,6 +218,7 @@ func TestHandleRunFeedLine_EmptyBufferFirstFlush(t *testing.T) {
 	m := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 
@@ -241,6 +246,7 @@ func TestHandleRunFeedLine_TrimmingFlush(t *testing.T) {
 	m := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 
@@ -279,6 +285,7 @@ func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
 	m := model{
 		runFeed:           viewport.New(80, 24),
 		runFeedBuf:        make([]string, 0),
+		followLogs:        true,
 		runFeedAutoFollow: true,
 	}
 
@@ -318,6 +325,53 @@ func TestHandleRunFeedLine_AutoFollowBehavior(t *testing.T) {
 
 	if m.runFeedAutoFollow {
 		t.Fatal("auto follow should remain false when user has scrolled away")
+	}
+}
+
+func TestToggleFollowUpdatesPreference(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	m := model{
+		cfg:               cfg,
+		runFeed:           viewport.New(80, 24),
+		runFeedBuf:        make([]string, 0),
+		followLogs:        true,
+		runFeedAutoFollow: true,
+	}
+
+	handled, _ := m.handleRunTabActions([]Action{ActToggleFollow}, tea.KeyMsg{})
+	if !handled {
+		t.Fatal("expected toggle follow action to be handled")
+	}
+
+	if m.followLogs {
+		t.Fatal("expected followLogs to be disabled after toggle")
+	}
+
+	if m.cfg.FollowLogs {
+		t.Fatal("expected config FollowLogs to reflect toggle state")
+	}
+
+	if m.runFeedAutoFollow {
+		t.Fatal("runFeedAutoFollow should be disabled when follow logs is off")
+	}
+
+	handled, _ = m.handleRunTabActions([]Action{ActToggleFollow}, tea.KeyMsg{})
+	if !handled {
+		t.Fatal("expected second toggle follow action to be handled")
+	}
+
+	if !m.followLogs {
+		t.Fatal("expected followLogs to be enabled after second toggle")
+	}
+
+	if !m.cfg.FollowLogs {
+		t.Fatal("expected config FollowLogs to be enabled after second toggle")
+	}
+
+	if !m.runFeedAutoFollow {
+		t.Fatal("runFeedAutoFollow should resume when follow logs is re-enabled")
 	}
 }
 

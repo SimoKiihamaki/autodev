@@ -21,6 +21,7 @@ type logBatchMsg struct {
 type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
+type toastExpiredMsg struct{ id uint64 }
 
 // readLogsBatch attempts to read a batch of log lines from the log channel.
 // Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.

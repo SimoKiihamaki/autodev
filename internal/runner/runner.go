@@ -82,6 +82,26 @@ type Options struct {
 	LogLevel      string
 }
 
+// Args holds the fully constructed command invocation for the automation runner.
+// Cmd is the executable, Args are the positional/flag arguments (excluding Cmd),
+// and Env contains the complete environment slice to pass to exec.Command.
+type Args struct {
+	Cmd  string
+	Args []string
+	Env  []string
+}
+
+// BuildArgsInput captures the data required to translate a Config into process
+// arguments. Fields that originate from transient UI state (PRD selection,
+// log file destination, runtime log level override) are surfaced explicitly
+// so tests can exercise the full mapping deterministically.
+type BuildArgsInput struct {
+	Config      config.Config
+	PRDPath     string
+	LogFilePath string
+	LogLevel    string
+}
+
 func trySend(logs chan Line, line Line) bool {
 	if logs == nil {
 		return false
@@ -105,74 +125,74 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	}
 	origBytes, err := os.ReadFile(prdPath)
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("reading PRD %s: %w", prdPath, err)
 	}
 	tmpDir := os.TempDir()
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
 	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
 	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o600); err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("writing temporary PRD %s: %w", tmpPath, err)
 	}
 	cleanup := func() { _ = os.Remove(tmpPath) }
 	return tmpPath, cleanup, nil
 }
 
-func buildArgs(c config.Config, prd string, logFile string, logLevel string) []string {
-	script := c.PythonScript
-	if !filepath.IsAbs(script) && strings.TrimSpace(c.RepoPath) != "" {
-		candidate := filepath.Join(c.RepoPath, script)
+func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) []string {
+	script := cfg.PythonScript
+	if !filepath.IsAbs(script) && strings.TrimSpace(cfg.RepoPath) != "" {
+		candidate := filepath.Join(cfg.RepoPath, script)
 		if abs, err := filepath.Abs(candidate); err == nil {
 			if _, statErr := os.Stat(abs); statErr == nil {
 				script = abs
 			}
 		}
 	}
-	args := []string{script, "--prd", prd}
-	if c.RepoPath != "" {
-		args = append(args, "--repo", c.RepoPath)
+	args := []string{script, "--prd", prdPath}
+	if cfg.RepoPath != "" {
+		args = append(args, "--repo", cfg.RepoPath)
 	}
-	if c.BaseBranch != "" {
-		args = append(args, "--base", c.BaseBranch)
+	if cfg.BaseBranch != "" {
+		args = append(args, "--base", cfg.BaseBranch)
 	}
-	if c.Branch != "" {
-		args = append(args, "--branch", c.Branch)
+	if cfg.Branch != "" {
+		args = append(args, "--branch", cfg.Branch)
 	}
-	if c.CodexModel != "" {
-		args = append(args, "--codex-model", c.CodexModel)
+	if cfg.CodexModel != "" {
+		args = append(args, "--codex-model", cfg.CodexModel)
 	}
-	if c.Flags.DryRun {
+	if cfg.Flags.DryRun {
 		args = append(args, "--dry-run")
 	}
-	if c.Flags.SyncGit {
+	if cfg.Flags.SyncGit {
 		args = append(args, "--sync-git")
 	}
-	if c.Flags.InfiniteReviews {
+	if cfg.Flags.InfiniteReviews {
 		args = append(args, "--infinite-reviews")
 	}
 
 	// Timings
-	if c.Timings.WaitMinutes > 0 {
-		args = append(args, "--wait-minutes", fmt.Sprint(c.Timings.WaitMinutes))
+	if cfg.Timings.WaitMinutes > 0 {
+		args = append(args, "--wait-minutes", fmt.Sprint(cfg.Timings.WaitMinutes))
 	}
-	if c.Timings.ReviewPollSeconds > 0 {
-		args = append(args, "--review-poll-seconds", fmt.Sprint(c.Timings.ReviewPollSeconds))
+	if cfg.Timings.ReviewPollSeconds > 0 {
+		args = append(args, "--review-poll-seconds", fmt.Sprint(cfg.Timings.ReviewPollSeconds))
 	}
-	if c.Timings.IdleGraceMinutes > 0 {
-		args = append(args, "--idle-grace-minutes", fmt.Sprint(c.Timings.IdleGraceMinutes))
+	if cfg.Timings.IdleGraceMinutes > 0 {
+		args = append(args, "--idle-grace-minutes", fmt.Sprint(cfg.Timings.IdleGraceMinutes))
 	}
-	if c.Timings.MaxLocalIters > 0 {
-		args = append(args, "--max-local-iters", fmt.Sprint(c.Timings.MaxLocalIters))
+	if cfg.Timings.MaxLocalIters > 0 {
+		args = append(args, "--max-local-iters", fmt.Sprint(cfg.Timings.MaxLocalIters))
 	}
 
 	// Phases selection
 	phases := []string{}
-	if c.RunPhases.Local {
+	if cfg.RunPhases.Local {
 		phases = append(phases, "local")
 	}
-	if c.RunPhases.PR {
+	if cfg.RunPhases.PR {
 		phases = append(phases, "pr")
 	}
-	if c.RunPhases.ReviewFix {
+	if cfg.RunPhases.ReviewFix {
 		phases = append(phases, "review_fix")
 	}
 	if len(phases) > 0 {
@@ -180,22 +200,22 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	}
 
 	// Executor policy
-	if c.ExecutorPolicy != "" {
-		args = append(args, "--executor-policy", c.ExecutorPolicy)
+	if cfg.ExecutorPolicy != "" {
+		args = append(args, "--executor-policy", cfg.ExecutorPolicy)
 	}
 
 	// Unsafe exec flag
-	if c.Flags.AllowUnsafe {
+	if cfg.Flags.AllowUnsafe {
 		args = append(args, "--allow-unsafe-execution")
 	}
 
-	if logFile != "" {
-		args = append(args, "--log-file", logFile)
+	if logFilePath != "" {
+		args = append(args, "--log-file", logFilePath)
 	}
 
 	level := strings.TrimSpace(logLevel)
 	if level == "" {
-		level = strings.TrimSpace(c.LogLevel)
+		level = strings.TrimSpace(cfg.LogLevel)
 	}
 	if level == "" {
 		level = "INFO"
@@ -204,6 +224,95 @@ func buildArgs(c config.Config, prd string, logFile string, logLevel string) []s
 	args = append(args, "--log-level", level)
 
 	return args
+}
+
+// BuildArgs converts the provided configuration into the final command, arguments,
+// and environment required to invoke the automation runner. It centralizes all
+// mappings so TUI and tests can validate behavior via a single entry point.
+func BuildArgs(input BuildArgsInput) (Args, error) {
+	scriptArgs := buildScriptArgs(input.Config, input.PRDPath, input.LogFilePath, input.LogLevel)
+
+	// Build env
+	// Remove CI environment variable to prevent unintended CI behavior in the automation script
+	// CI will only be re-added when AllowUnsafe is explicitly enabled
+	env := sanitizedEnviron(
+		config.EnvExecutorPolicy,
+		config.EnvExecutorImplement,
+		config.EnvExecutorFix,
+		config.EnvExecutorPR,
+		config.EnvExecutorReviewFix,
+		config.EnvAllowUnsafeExecution,
+		"CI",
+	)
+
+	// Consolidated executor environment variable setting
+	executorVars := map[string]string{}
+	if input.Config.ExecutorPolicy != "" {
+		executorVars[config.EnvExecutorPolicy] = input.Config.ExecutorPolicy
+	}
+	// Per-phase executor overrides
+	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
+		executorVars[config.EnvExecutorImplement] = v
+	}
+	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
+		executorVars[config.EnvExecutorFix] = v
+	}
+	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.PR)); v == "codex" || v == "claude" {
+		executorVars[config.EnvExecutorPR] = v
+	}
+	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
+		executorVars[config.EnvExecutorReviewFix] = v
+	}
+
+	if input.Config.Flags.AllowUnsafe {
+		executorVars[config.EnvAllowUnsafeExecution] = "1"
+		// CI=1 is removed during sanitization and re-added here when AllowUnsafe is true
+		env = append(env, "CI=1")
+	}
+
+	env = setExecutorEnv(env, executorVars)
+
+	// Ensure unbuffered Python output - belt-and-suspenders approach:
+	// 1. PYTHONUNBUFFERED=1 environment variable (also set in tools/auto_prd/command.py)
+	// 2. -u command-line flag forces unbuffered binary stdout/stderr
+	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
+	// regardless of how the process is invoked. If you change/remove this, update both places.
+	env = append(env, "PYTHONUNBUFFERED=1")
+
+	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
+	// Validate PythonCommand to prevent command injection
+	if err := validatePythonCommandWithConfig(input.Config.PythonCommand, input.Config); err != nil {
+		return Args{}, err
+	}
+
+	pyParts, err := shlex.Split(input.Config.PythonCommand)
+	if err != nil {
+		return Args{}, fmt.Errorf("failed to parse PythonCommand %q: %w", input.Config.PythonCommand, err)
+	}
+	if len(pyParts) == 0 {
+		return Args{}, fmt.Errorf("PythonCommand %q resulted in no command parts after splitting", input.Config.PythonCommand)
+	}
+	pyBin, pyFlags := pyParts[0], pyParts[1:]
+
+	// Compute capacity dynamically: add 1 only if "-u" will be appended
+	needUnbuffered := !hasUnbufferedFlag(pyFlags)
+	capacity := len(pyFlags) + len(scriptArgs)
+	if needUnbuffered {
+		capacity++
+	}
+	pythonArgs := make([]string, 0, capacity)
+	pythonArgs = append(pythonArgs, pyFlags...)
+	if needUnbuffered {
+		pythonArgs = append(pythonArgs, "-u")
+	}
+
+	pythonArgs = append(pythonArgs, scriptArgs...)
+
+	return Args{
+		Cmd:  pyBin,
+		Args: pythonArgs,
+		Env:  env,
+	}, nil
 }
 
 // isRegexPattern checks if a string contains regex metacharacters that would require
@@ -418,105 +527,40 @@ func (o Options) Run(ctx context.Context) error {
 	prd := o.PRDPath
 	tmpPath, cleanup, err := makeTempPRD(prd, o.InitialPrompt)
 	if err != nil {
-		return err
+		return fmt.Errorf("preparing PRD for run: %w", err)
 	}
 	defer cleanup()
 
-	args := buildArgs(o.Config, tmpPath, o.LogFilePath, o.LogLevel)
-
-	// Build env
-	// Remove CI environment variable to prevent unintended CI behavior in the automation script
-	// CI will only be re-added when AllowUnsafe is explicitly enabled
-	env := sanitizedEnviron(
-		config.EnvExecutorPolicy,
-		config.EnvExecutorImplement,
-		config.EnvExecutorFix,
-		config.EnvExecutorPR,
-		config.EnvExecutorReviewFix,
-		config.EnvAllowUnsafeExecution,
-		"CI",
-	)
-
-	// Consolidated executor environment variable setting
-	executorVars := map[string]string{}
-	if o.Config.ExecutorPolicy != "" {
-		executorVars[config.EnvExecutorPolicy] = o.Config.ExecutorPolicy
-	}
-	// Per-phase executor overrides
-	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
-		executorVars[config.EnvExecutorImplement] = v
-	}
-	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
-		executorVars[config.EnvExecutorFix] = v
-	}
-	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.PR)); v == "codex" || v == "claude" {
-		executorVars[config.EnvExecutorPR] = v
-	}
-	if v := strings.ToLower(strings.TrimSpace(o.Config.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
-		executorVars[config.EnvExecutorReviewFix] = v
+	plan, err := BuildArgs(BuildArgsInput{
+		Config:      o.Config,
+		PRDPath:     tmpPath,
+		LogFilePath: o.LogFilePath,
+		LogLevel:    o.LogLevel,
+	})
+	if err != nil {
+		return fmt.Errorf("building runner arguments: %w", err)
 	}
 
-	if o.Config.Flags.AllowUnsafe {
-		executorVars[config.EnvAllowUnsafeExecution] = "1"
-		// CI=1 is removed during sanitization and re-added here when AllowUnsafe is true
-		env = append(env, "CI=1")
-	}
-
-	env = setExecutorEnv(env, executorVars)
+	env := append([]string(nil), plan.Env...)
 	if len(o.ExtraEnv) > 0 {
 		env = append(env, o.ExtraEnv...)
 	}
 
-	// Ensure unbuffered Python output - belt-and-suspenders approach:
-	// 1. PYTHONUNBUFFERED=1 environment variable (also set in tools/auto_prd/command.py)
-	// 2. -u command-line flag forces unbuffered binary stdout/stderr
-	// This redundancy is intentional defense-in-depth to guarantee unbuffered output
-	// regardless of how the process is invoked. If you change/remove this, update both places.
-	env = append(env, "PYTHONUNBUFFERED=1")
-
-	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
-	// Validate PythonCommand to prevent command injection
-	if err := validatePythonCommandWithConfig(o.Config.PythonCommand, o.Config); err != nil {
-		return err
-	}
-
-	pyParts, err := shlex.Split(o.Config.PythonCommand)
-	if err != nil {
-		return fmt.Errorf("failed to parse PythonCommand %q: %w", o.Config.PythonCommand, err)
-	}
-	if len(pyParts) == 0 {
-		return fmt.Errorf("PythonCommand %q resulted in no command parts after splitting", o.Config.PythonCommand)
-	}
-	pyBin, pyFlags := pyParts[0], pyParts[1:]
-
-	// Compute capacity dynamically: add 1 only if "-u" will be appended
-	needUnbuffered := !hasUnbufferedFlag(pyFlags)
-	capacity := len(pyFlags) + len(args)
-	if needUnbuffered {
-		capacity++
-	}
-	pythonArgs := make([]string, 0, capacity)
-	pythonArgs = append(pythonArgs, pyFlags...)
-	if needUnbuffered {
-		pythonArgs = append(pythonArgs, "-u")
-	}
-
-	pythonArgs = append(pythonArgs, args...)
-	cmd := exec.Command(pyBin, pythonArgs...)
+	cmd := exec.Command(plan.Cmd, plan.Args...)
 	cmd.Env = env
 	setupProcessGroup(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return fmt.Errorf("opening stdout pipe: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err
+		return fmt.Errorf("opening stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("starting runner process: %w", err)
 	}
 
 	var wg sync.WaitGroup
@@ -547,14 +591,17 @@ func (o Options) Run(ctx context.Context) error {
 		if o.Logs != nil {
 			close(o.Logs)
 		}
-		return ctx.Err()
+		return fmt.Errorf("run canceled: %w", ctx.Err())
 	case err := <-waitCh:
 		wg.Wait()
 		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
 		if o.Logs != nil {
 			close(o.Logs)
 		}
-		return err
+		if err != nil {
+			return fmt.Errorf("runner exited with error: %w", err)
+		}
+		return nil
 	}
 }
 

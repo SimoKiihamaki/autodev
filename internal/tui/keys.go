@@ -38,6 +38,7 @@ const (
 	ActScrollTop        Action = "scroll_top"
 	ActScrollBottom     Action = "scroll_bottom"
 	ActToggleFollow     Action = "toggle_follow"
+	ActCopyError        Action = "copy_error"
 	ActFocusTags        Action = "focus_tags"
 	ActRescanPRDs       Action = "rescan_prds"
 	ActSave             Action = "save"
@@ -51,26 +52,26 @@ const (
 	ActToggleFlagDryRun   Action = "toggle_flag_dryrun"
 	ActToggleFlagSyncGit  Action = "toggle_flag_syncgit"
 	ActToggleFlagInfinite Action = "toggle_flag_infinite"
+	ActResetDefaults      Action = "reset_defaults"
 )
 
-const (
-	tabIDRun      = "run"
-	tabIDPRD      = "prd"
-	tabIDSettings = "settings"
-	tabIDEnv      = "env"
-	tabIDPrompt   = "prompt"
-	tabIDLogs     = "logs"
-	tabIDHelp     = "help"
-)
-
-var tabIDOrder = []string{
-	tabIDRun,
-	tabIDPRD,
-	tabIDSettings,
-	tabIDEnv,
-	tabIDPrompt,
-	tabIDLogs,
-	tabIDHelp,
+func gotoTabAction(index int) (Action, bool) {
+	switch index {
+	case 0:
+		return ActGotoTab1, true
+	case 1:
+		return ActGotoTab2, true
+	case 2:
+		return ActGotoTab3, true
+	case 3:
+		return ActGotoTab4, true
+	case 4:
+		return ActGotoTab5, true
+	case 5:
+		return ActGotoTab6, true
+	default:
+		return "", false
+	}
 }
 
 type KeyCombo struct {
@@ -121,8 +122,6 @@ func (kc KeyCombo) Display() string {
 		base = "End"
 	case "tab":
 		base = "Tab"
-	case "shift+tab":
-		base = "Shift+Tab"
 	case " ":
 		base = "Space"
 	case "enter":
@@ -255,15 +254,17 @@ func DefaultKeyMap() KeyMap {
 	}
 
 	global := map[Action][]KeyCombo{
-		ActQuit:      {key("q")},
-		ActInterrupt: {ctrl("c")},
-		ActHelp:      {key("?")},
-		ActGotoTab1:  {key("1")},
-		ActGotoTab2:  {key("2")},
-		ActGotoTab3:  {key("3")},
-		ActGotoTab4:  {key("4")},
-		ActGotoTab5:  {key("5")},
-		ActGotoTab6:  {key("6")},
+		ActQuit:          {key("q")},
+		ActInterrupt:     {ctrl("c")},
+		ActHelp:          {key("?"), key("f1")},
+		ActSave:          {ctrl("s")},
+		ActResetDefaults: {ctrl("backspace")},
+		ActGotoTab1:      {alt("1")},
+		ActGotoTab2:      {alt("2")},
+		ActGotoTab3:      {alt("3")},
+		ActGotoTab4:      {alt("4")},
+		ActGotoTab5:      {alt("5")},
+		ActGotoTab6:      {alt("6")},
 	}
 
 	perTab := map[string]map[Action][]KeyCombo{
@@ -276,6 +277,7 @@ func DefaultKeyMap() KeyMap {
 			ActScrollTop:    {key("home")},
 			ActScrollBottom: {key("end")},
 			ActToggleFollow: {key("f")},
+			ActCopyError:    {key("y")},
 		},
 		tabIDPRD: {
 			ActConfirm:       {key("enter")},
@@ -283,7 +285,6 @@ func DefaultKeyMap() KeyMap {
 			ActNavigateLeft:  {key("left")},
 			ActNavigateRight: {key("right")},
 			ActListBackspace: {key("backspace")},
-			ActSave:          {key("s")},
 			ActRescanPRDs:    {key("r")},
 			ActCancel:        {key("esc")},
 		},
@@ -299,7 +300,6 @@ func DefaultKeyMap() KeyMap {
 			ActAltNavigateRight: {alt("right")},
 			ActAltNavigateUp:    {alt("up")},
 			ActAltNavigateDown:  {alt("down")},
-			ActSave:             {ctrl("s")},
 			ActCycleBackward:    {key("space")},
 		},
 		tabIDEnv: {
@@ -309,10 +309,9 @@ func DefaultKeyMap() KeyMap {
 			ActNavigateLeft:       {key("left")},
 			ActNavigateRight:      {key("right")},
 			ActConfirm:            {key("enter")},
-			ActSave:               {ctrl("s")},
 			ActToggleFlagLocal:    {key("l")},
 			ActToggleFlagPR:       {key("p")},
-			ActToggleFlagReview:   {key("r")},
+			ActToggleFlagReview:   {ctrl("r")},
 			ActToggleFlagUnsafe:   {key("a")},
 			ActToggleFlagDryRun:   {key("d")},
 			ActToggleFlagSyncGit:  {key("g")},
@@ -321,7 +320,6 @@ func DefaultKeyMap() KeyMap {
 		tabIDPrompt: {
 			ActConfirm: {key("enter")},
 			ActCancel:  {key("esc")},
-			ActSave:    {ctrl("s")},
 		},
 		tabIDLogs: {
 			ActNavigateUp:   {key("up")},
@@ -330,6 +328,7 @@ func DefaultKeyMap() KeyMap {
 			ActPageDown:     {key("pgdown")},
 			ActScrollTop:    {key("home")},
 			ActScrollBottom: {key("end")},
+			ActToggleFollow: {key("f")},
 		},
 		tabIDHelp: {},
 	}
@@ -337,7 +336,7 @@ func DefaultKeyMap() KeyMap {
 	labels := map[Action]string{
 		ActQuit:               "Quit",
 		ActInterrupt:          "Cancel / Quit",
-		ActHelp:               "Open help",
+		ActHelp:               "Toggle help overlay",
 		ActGotoTab1:           "Switch to tab 1",
 		ActGotoTab2:           "Switch to tab 2",
 		ActGotoTab3:           "Switch to tab 3",
@@ -361,9 +360,11 @@ func DefaultKeyMap() KeyMap {
 		ActScrollTop:          "Scroll to top",
 		ActScrollBottom:       "Scroll to bottom",
 		ActToggleFollow:       "Toggle follow logs",
+		ActCopyError:          "Copy last error",
 		ActFocusTags:          "Focus tag input",
 		ActRescanPRDs:         "Rescan PRDs",
-		ActSave:               "Save",
+		ActSave:               "Save config",
+		ActResetDefaults:      "Reset to defaults",
 		ActListBackspace:      "Backspace",
 		ActCycleBackward:      "Cycle backward",
 		ActToggleFlagLocal:    "Toggle Local",
@@ -376,14 +377,15 @@ func DefaultKeyMap() KeyMap {
 	}
 
 	typingSensitive := map[Action]bool{
-		ActQuit:     true,
-		ActHelp:     true,
-		ActGotoTab1: true,
-		ActGotoTab2: true,
-		ActGotoTab3: true,
-		ActGotoTab4: true,
-		ActGotoTab5: true,
-		ActGotoTab6: true,
+		ActQuit:          true,
+		ActHelp:          true,
+		ActGotoTab1:      true,
+		ActGotoTab2:      true,
+		ActGotoTab3:      true,
+		ActGotoTab4:      true,
+		ActGotoTab5:      true,
+		ActGotoTab6:      true,
+		ActResetDefaults: true,
 	}
 
 	return KeyMap{
