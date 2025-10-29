@@ -148,7 +148,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 			if err != nil {
 				return fmt.Errorf("PythonScript absolute path cannot be resolved relative to repo: %q", scriptPath)
 			}
-			if strings.HasPrefix(relPath, "..") || relPath == ".." {
+			if strings.HasPrefix(relPath, "..") {
 				return fmt.Errorf("PythonScript absolute path would escape repository directory: %q", scriptPath)
 			}
 		}

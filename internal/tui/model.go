@@ -413,11 +413,7 @@ func (m *model) pendingConfigSnapshot() (config.Config, []string) {
 
 func (m *model) updateDirtyState() {
 	snapshot, invalid := m.pendingConfigSnapshot()
-	dirty := !snapshot.Equal(m.savedConfig)
-	if !dirty && len(invalid) > 0 {
-		dirty = true
-	}
-	m.dirty = dirty
+	m.dirty = !snapshot.Equal(m.savedConfig) || len(invalid) > 0
 }
 
 func (m *model) markSaved() {

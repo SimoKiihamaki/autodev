@@ -72,7 +72,7 @@ func annotateUnsaved(text string, dirty bool) string {
 	if !dirty {
 		return text
 	}
-	if strings.Contains(strings.ToLower(text), "[unsaved]") {
+	if strings.Contains(text, "[unsaved]") || strings.Contains(text, "[Unsaved]") {
 		return text
 	}
 	return text + " [unsaved]"

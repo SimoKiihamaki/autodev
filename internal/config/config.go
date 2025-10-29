@@ -345,7 +345,7 @@ func equalPRDMetaMaps(a, b map[string]PRDMeta) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	if len(a) == 0 {
+	if len(a) == 0 && len(b) == 0 {
 		return true
 	}
 	for key, metaA := range a {

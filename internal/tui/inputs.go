@@ -134,10 +134,10 @@ func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][
 		return
 	}
 
-	for offset := 1; offset <= rows; offset++ {
+	for offset := 1; offset < rows; offset++ {
 		nextRow, ok := wrapIndex(row+step*offset, rows)
 		if !ok || nextRow == row {
-			continue
+			break
 		}
 
 		if col < len(reverseGrid[nextRow]) && reverseGrid[nextRow][col] != "" {

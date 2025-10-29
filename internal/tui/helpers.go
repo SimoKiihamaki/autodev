@@ -31,9 +31,11 @@ func atoiSafe(s string) (int, error) {
 // rather than silently returning a valid-looking but potentially unsafe index.
 // The returned bool indicates whether the index is valid for use in slice/array access.
 func wrapIndex(idx, n int) (int, bool) {
+	// n must be > 0 for modulo operation to be safe
 	if n <= 0 {
 		return 0, false
 	}
+	// n is guaranteed > 0 here, so modulo operation is safe
 	idx %= n
 	if idx < 0 {
 		idx += n
