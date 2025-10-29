@@ -339,10 +339,10 @@ func (m *model) initSettingsInputs() {
 	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
-	m.inWaitMin = mkInput("Wait minutes", fmt.Sprint(intPtrValue(cfg.Timings.WaitMinutes)), 6)
-	m.inPollSec = mkInput("Review poll seconds", fmt.Sprint(intPtrValue(cfg.Timings.ReviewPollSeconds)), 6)
-	m.inIdleMin = mkInput("Idle grace minutes", fmt.Sprint(intPtrValue(cfg.Timings.IdleGraceMinutes)), 6)
-	m.inMaxIters = mkInput("Max local iters", fmt.Sprint(intPtrValue(cfg.Timings.MaxLocalIters)), 6)
+	m.inWaitMin = mkInput("Wait minutes", formatIntPtr(cfg.Timings.WaitMinutes), 6)
+	m.inPollSec = mkInput("Review poll seconds", formatIntPtr(cfg.Timings.ReviewPollSeconds), 6)
+	m.inIdleMin = mkInput("Idle grace minutes", formatIntPtr(cfg.Timings.IdleGraceMinutes), 6)
+	m.inMaxIters = mkInput("Max local iters", formatIntPtr(cfg.Timings.MaxLocalIters), 6)
 
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring

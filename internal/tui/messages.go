@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/runner"
@@ -13,6 +14,11 @@ func intPtrValue(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// formatIntPtr converts an int pointer to a string, treating nil as "0"
+func formatIntPtr(p *int) string {
+	return fmt.Sprint(intPtrValue(p))
 }
 
 const (
