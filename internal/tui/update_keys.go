@@ -389,6 +389,10 @@ func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool
 				handled = true
 			}
 		case ActConfirm:
+			// ActConfirm in settings tab has three contextual behaviors:
+			// 1. If no field is focused: focus first field ("repo")
+			// 2. If executor toggle is focused: cycle choice forward
+			// 3. If regular field is focused: navigate to next field
 			if m.focusedInput == "" {
 				m.focusInput("repo")
 			} else if isExecutorToggle(m.focusedInput) {

@@ -168,15 +168,16 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 
 	// When repoPath is not configured, restrict to safe directories only
 	tmpDir := os.TempDir()
-	// Resolve temp dir symlinks as well
-	resolvedTmpDir, err := filepath.EvalSymlinks(tmpDir)
+	// Restrict to a specific subdirectory within the temp directory for safety
+	autodevTmpDir := filepath.Join(tmpDir, "autodev")
+	resolvedAutodevTmpDir, err := filepath.EvalSymlinks(autodevTmpDir)
 	if err != nil {
 		// Fall back to original path if symlink resolution fails (consistent with other directory checks)
-		resolvedTmpDir = tmpDir
+		resolvedAutodevTmpDir = autodevTmpDir
 	}
-	// Use consistent path separator handling for temp directory check
-	if isPrefixOf(resolvedTmpDir, scriptPath) {
-		// Allow paths within system temp directory (important for testing)
+	// Only allow scripts within $TMPDIR/autodev, not the whole temp directory
+	if isPrefixOf(resolvedAutodevTmpDir, scriptPath) {
+		// Allow paths within autodev subdirectory of temp directory (important for testing)
 		return nil
 	}
 

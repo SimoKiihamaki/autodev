@@ -194,22 +194,22 @@ func Load() (Config, error) {
 
 	// Apply defaults for int pointer fields only when nil (preserves explicit zeros)
 	if c.Timings.WaitMinutes == nil {
-		c.Timings.WaitMinutes = defaults.Timings.WaitMinutes
+		c.Timings.WaitMinutes = intPtr(*defaults.Timings.WaitMinutes)
 	}
 	if c.Timings.ReviewPollSeconds == nil {
-		c.Timings.ReviewPollSeconds = defaults.Timings.ReviewPollSeconds
+		c.Timings.ReviewPollSeconds = intPtr(*defaults.Timings.ReviewPollSeconds)
 	}
 	if c.Timings.IdleGraceMinutes == nil {
-		c.Timings.IdleGraceMinutes = defaults.Timings.IdleGraceMinutes
+		c.Timings.IdleGraceMinutes = intPtr(*defaults.Timings.IdleGraceMinutes)
 	}
 	if c.Timings.MaxLocalIters == nil {
-		c.Timings.MaxLocalIters = defaults.Timings.MaxLocalIters
+		c.Timings.MaxLocalIters = intPtr(*defaults.Timings.MaxLocalIters)
 	}
 	if c.BatchProcessing.MaxBatchSize == nil {
-		c.BatchProcessing.MaxBatchSize = defaults.BatchProcessing.MaxBatchSize
+		c.BatchProcessing.MaxBatchSize = intPtr(*defaults.BatchProcessing.MaxBatchSize)
 	}
 	if c.BatchProcessing.BatchTimeoutMs == nil {
-		c.BatchProcessing.BatchTimeoutMs = defaults.BatchProcessing.BatchTimeoutMs
+		c.BatchProcessing.BatchTimeoutMs = intPtr(*defaults.BatchProcessing.BatchTimeoutMs)
 	}
 
 	// Initialize slices/maps if nil
