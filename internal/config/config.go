@@ -326,6 +326,10 @@ func (c Config) Equal(other Config) bool {
 }
 
 func equalStringSlices(a, b []string) bool {
+	// Treat nil and empty slices as equivalent
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
 	if len(a) != len(b) {
 		return false
 	}

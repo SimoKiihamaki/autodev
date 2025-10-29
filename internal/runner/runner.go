@@ -141,10 +141,16 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// If script path is absolute, validate it directly
 	if filepath.IsAbs(scriptPath) {
-		// Use filepath.Clean to normalize the path and check for parent directory references
+		// Use filepath.Clean to normalize the path
 		cleaned := filepath.Clean(scriptPath)
-		if strings.Contains(cleaned, "..") {
-			return fmt.Errorf("PythonScript absolute path contains parent directory references: %q", scriptPath)
+		if repoPath != "" {
+			relPath, err := filepath.Rel(repoPath, cleaned)
+			if err != nil {
+				return fmt.Errorf("PythonScript absolute path cannot be resolved relative to repo: %q", scriptPath)
+			}
+			if strings.HasPrefix(relPath, "..") || relPath == ".." {
+				return fmt.Errorf("PythonScript absolute path would escape repository directory: %q", scriptPath)
+			}
 		}
 		return nil
 	}
@@ -159,14 +165,6 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		// If the relative path starts with "..", it would escape the repo directory
 		if strings.HasPrefix(relPath, "..") {
 			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
-		}
-	}
-
-	// Check for suspicious path components after normalization
-	parts := strings.Split(filepath.Clean(scriptPath), string(filepath.Separator))
-	for _, part := range parts {
-		if part == ".." {
-			return fmt.Errorf("PythonScript path contains parent directory references: %q", scriptPath)
 		}
 	}
 
