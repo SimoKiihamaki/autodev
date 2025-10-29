@@ -183,7 +183,8 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	// Resolve temp dir symlinks as well
 	resolvedTmpDir, err := filepath.EvalSymlinks(tmpDir)
 	if err != nil {
-		return fmt.Errorf("failed to resolve temp directory symlinks: %w", err)
+		// Fall back to original path if symlink resolution fails (consistent with other directory checks)
+		resolvedTmpDir = tmpDir
 	}
 	// Use consistent path separator handling for temp directory check
 	if isPrefixOf(resolvedTmpDir, scriptPath) {
@@ -463,7 +464,8 @@ func isRegexPattern(pattern string) bool {
 
 // validatePythonFlags enforces a safe allowlist and rejects flags like -c/-m that change execution target.
 func validatePythonFlags(flags []string) error {
-	for i, f := range flags {
+	for i := 0; i < len(flags); i++ {
+		f := flags[i]
 		switch f {
 		case "-c", "--command", "-m", "--module":
 			return fmt.Errorf("disallowed Python flag in PythonCommand: %q (would bypass the runner script)", f)
@@ -483,10 +485,15 @@ func validatePythonFlags(flags []string) error {
 			if i+1 >= len(flags) {
 				return fmt.Errorf("Python flag -X requires an option argument")
 			}
+			i++ // Skip the argument to -X
 			continue
 		}
 		// Allow -W flag (may have argument, will be validated below)
 		if f == "-W" {
+			// -W may have an argument; if next element doesn't start with -, skip it
+			if i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-") {
+				i++ // Skip the argument to -W
+			}
 			continue
 		}
 		// Reject anything else by default; extend if needed.

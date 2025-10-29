@@ -356,7 +356,8 @@ func renderSettingsView(b *strings.Builder, m model) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · Ctrl+S save · 1-%d,? switch tabs\n", toggleHint, m.tabCount()))
+		b.WriteString(fmt.Sprintf("\nKeys: ↑/↓/←/→ move focus · Enter focus first field · %s when on a switch · %s save · Alt+1–Alt+%d,? switch tabs\n",
+			toggleHint, actionKeyLabel(m.keys, m.currentTabID(), ActSave), m.tabCount()))
 	}
 }
 
@@ -413,7 +414,7 @@ func renderEnvView(b *strings.Builder, m model) {
 		b.WriteString("\n" + okStyle.Render("Flag focused: "+m.focusedFlag+" (↑/↓ navigate, ←/→/Enter toggle, Esc blur)") + "\n")
 		return
 	}
-	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · s save") + "\n")
+	b.WriteString("\n" + helpStyle.Render("Arrow keys to navigate · Enter/←/→ toggle · "+actionKeyLabel(m.keys, tabIDEnv, ActSave)+" save") + "\n")
 }
 
 func renderPromptView(b *strings.Builder, m model) {

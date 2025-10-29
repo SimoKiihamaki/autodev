@@ -203,8 +203,15 @@ func New() model {
 	m.runLocal = cfg.RunPhases.Local
 	m.runPR = cfg.RunPhases.PR
 	m.runReview = cfg.RunPhases.ReviewFix
-	m.followLogs = *cfg.FollowLogs
-	m.runFeedAutoFollow = *cfg.FollowLogs
+	// FollowLogs may be nil if not set; default to true for safety and persist.
+	follow := true
+	if cfg.FollowLogs != nil {
+		follow = *cfg.FollowLogs
+	} else {
+		cfg.FollowLogs = boolPtr(follow)
+	}
+	m.followLogs = follow
+	m.runFeedAutoFollow = follow
 
 	m.flagAllowUnsafe = cfg.Flags.AllowUnsafe
 	m.flagDryRun = cfg.Flags.DryRun

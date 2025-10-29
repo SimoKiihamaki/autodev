@@ -323,12 +323,16 @@ func (m *model) cycleExecutorChoice(name string, direction int) {
 
 	// Find current index in executorChoices
 	current := *target
-	idx := 0
+	idx := -1
 	for i, choice := range executorChoices {
 		if choice == current {
 			idx = i
 			break
 		}
+	}
+	if idx == -1 {
+		// Unexpected: current not in executorChoices; keep as-is.
+		return
 	}
 
 	newIdx, ok := wrapIndex(idx, direction, n)
