@@ -32,7 +32,7 @@ var uFlagPattern = regexp.MustCompile(`^-[a-zA-Z]*u[a-zA-Z]*$`)
 
 // isPrefixOf checks if a prefix path is a prefix of another path, handling path separators correctly
 func isPrefixOf(prefix, path string) bool {
-	// Clean both paths to handle trailing separators consistently
+	// Clean both paths to handle trailing separators consistently and normalize path separators
 	cleanPrefix := filepath.Clean(prefix)
 	cleanPath := filepath.Clean(path)
 
@@ -40,9 +40,9 @@ func isPrefixOf(prefix, path string) bool {
 	if cleanPath == cleanPrefix {
 		return true
 	}
-	// Ensure prefix ends with a path separator
-	if !strings.HasSuffix(cleanPrefix, string(os.PathSeparator)) {
-		cleanPrefix = cleanPrefix + string(os.PathSeparator)
+	// Ensure prefix ends with a path separator using filepath.Separator for cross-platform consistency
+	if !strings.HasSuffix(cleanPrefix, string(filepath.Separator)) {
+		cleanPrefix = cleanPrefix + string(filepath.Separator)
 	}
 	return strings.HasPrefix(cleanPath, cleanPrefix)
 }
@@ -171,7 +171,8 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve temp directory symlinks: %w", err)
 	}
-	if strings.HasPrefix(scriptPath, resolvedTmpDir+string(filepath.Separator)) {
+	// Use consistent path separator handling for temp directory check
+	if isPrefixOf(resolvedTmpDir, scriptPath) {
 		// Allow paths within system temp directory (important for testing)
 		return nil
 	}
@@ -181,7 +182,7 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		// Restrict to a specific safe subdirectory within the home directory
 		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
 		resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
-		if err == nil && strings.HasPrefix(scriptPath, resolvedAutodevDir+string(filepath.Separator)) {
+		if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
 			// Allow paths only within ~/.local/share/autodev
 			return nil
 		}
@@ -191,8 +192,13 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 	wd, err := os.Getwd()
 	if err == nil {
 		resolvedWD, err := filepath.EvalSymlinks(wd)
-		if err == nil && strings.HasPrefix(scriptPath, resolvedWD+string(filepath.Separator)) {
-			return nil
+		if err == nil {
+			// Use consistent path separator handling and ensure proper containment
+			cleanWD := filepath.Clean(resolvedWD)
+			cleanScriptPath := filepath.Clean(scriptPath)
+			if isPrefixOf(cleanWD, cleanScriptPath) {
+				return nil
+			}
 		}
 	}
 
