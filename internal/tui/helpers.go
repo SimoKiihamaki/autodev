@@ -46,8 +46,8 @@ func wrapIndex(current, delta, n int) (int, bool) {
 	if delta > 0 && current > 0 && delta > int(^uint(0)>>1)-current {
 		return 0, false // Would overflow on addition
 	}
-	if delta < 0 && current > 0 && -delta > int(^uint(0)>>1)+current {
-		return 0, false // Would overflow on addition
+	if delta < 0 && current > 0 && current < -delta {
+		return 0, false // Would overflow on subtraction
 	}
 
 	idx := (current + delta) % n

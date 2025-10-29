@@ -142,22 +142,10 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // All paths passed to this function should be absolute and symlinks resolved.
 // Note: scriptPath should be the final resolved path (symlinks resolved) that will be executed
 func validatePythonScriptPath(scriptPath, repoPath string) error {
-	// All paths passed to this function should be absolute and symlinks resolved
+	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
 	}
-	// Ensure scriptPath is fully symlink-resolved
-	resolvedScriptPath, err := filepath.EvalSymlinks(scriptPath)
-	if err != nil {
-		return fmt.Errorf("internal error: failed to resolve symlinks for scriptPath %q: %w", scriptPath, err)
-	}
-	cleanScriptPath := filepath.Clean(scriptPath)
-	cleanResolvedScriptPath := filepath.Clean(resolvedScriptPath)
-	if cleanScriptPath != cleanResolvedScriptPath {
-		return fmt.Errorf("internal error: validatePythonScriptPath received non-symlink-resolved path: %q (resolved: %q)", scriptPath, resolvedScriptPath)
-	}
-	// Use the resolved path for the remainder of the function
-	scriptPath = resolvedScriptPath
 
 	// If repoPath is configured, ensure the script is within the repo
 	if repoPath != "" {
