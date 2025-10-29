@@ -143,8 +143,6 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // All paths passed to this function should be absolute.
 // Note: repoPath should be resolved from symlinks before calling this function to prevent TOCTOU issues
 func validatePythonScriptPath(scriptPath, repoPath string) error {
-	sep := string(filepath.Separator)
-
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
@@ -166,10 +164,9 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		if filepath.IsAbs(relPath) {
 			return fmt.Errorf("PythonScript path cannot be made relative to repository root (possible different drives/volumes on Windows): %q (repo: %q)", scriptPath, repoPath)
 		}
-		for _, part := range strings.Split(relPath, sep) {
-			if part == ".." {
-				return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
-			}
+		// Check that relPath does not start with ".." (prevents escaping repoPath)
+		if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
 		}
 		return nil
 	}
