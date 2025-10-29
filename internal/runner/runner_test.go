@@ -214,18 +214,6 @@ with open(target, 'w', encoding='utf-8') as fh:
 	}
 }
 
-func containsSequence(haystack []string, needle ...string) bool {
-	if len(needle) == 0 {
-		return true
-	}
-	for i := 0; i <= len(haystack)-len(needle); i++ {
-		if slices.Equal(haystack[i:i+len(needle)], needle) {
-			return true
-		}
-	}
-	return false
-}
-
 func TestTrySendChannelBackpressure(t *testing.T) {
 	t.Parallel()
 

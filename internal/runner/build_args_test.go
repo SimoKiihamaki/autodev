@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,6 +54,22 @@ func countOccurrences(items []string, target string) int {
 		}
 	}
 	return count
+}
+
+func containsSequence(haystack []string, needle ...string) bool {
+	if len(needle) == 0 {
+		return true
+	}
+outer:
+	for i := 0; i <= len(haystack)-len(needle); i++ {
+		for j := range needle {
+			if haystack[i+j] != needle[j] {
+				continue outer
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func TestBuildArgsArgumentMapping(t *testing.T) {
@@ -334,5 +351,114 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
+	exePath, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+	toolsDir := filepath.Join(exeDir, "tools")
+	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+		t.Fatalf("mkdir tools next to executable: %v", err)
+	}
+
+	script := filepath.Join(toolsDir, "auto_prd_to_pr_v3.py")
+	created := false
+	if _, err := os.Stat(script); errors.Is(err, os.ErrNotExist) {
+		if writeErr := os.WriteFile(script, []byte("print('ok')\n"), 0o755); writeErr != nil {
+			t.Fatalf("write script: %v", writeErr)
+		}
+		created = true
+	}
+	if created {
+		t.Cleanup(func() {
+			_ = os.Remove(script)
+		})
+	}
+
+	prdDir := t.TempDir()
+	prd := filepath.Join(prdDir, "spec.md")
+	if err := os.WriteFile(prd, []byte("# spec"), 0o600); err != nil {
+		t.Fatalf("write prd: %v", err)
+	}
+
+	cfg := config.Defaults()
+	cfg.RepoPath = ""
+	cfg.PythonScript = script
+	cfg.RunPhases = config.Phases{Local: true, PR: false, ReviewFix: false}
+
+	input := BuildArgsInput{
+		Config:      cfg,
+		PRDPath:     prd,
+		LogFilePath: filepath.Join(prdDir, "run.log"),
+	}
+
+	if _, err := BuildArgs(input); err != nil {
+		t.Fatalf("BuildArgs rejected installed script without repo path: %v", err)
+	}
+}
+
+func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	toolsDir := filepath.Join(repo, "tools")
+	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+		t.Fatalf("mkdir tools: %v", err)
+	}
+	script := filepath.Join(toolsDir, "auto_prd_to_pr_v3.py")
+	if err := os.WriteFile(script, []byte("print('ok')\n"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	prd := filepath.Join(repo, "docs", "spec.md")
+	if err := os.MkdirAll(filepath.Dir(prd), 0o755); err != nil {
+		t.Fatalf("mkdir docs: %v", err)
+	}
+	if err := os.WriteFile(prd, []byte("# spec"), 0o600); err != nil {
+		t.Fatalf("write prd: %v", err)
+	}
+
+	cfg := config.Defaults()
+	cfg.RepoPath = ""
+	cfg.PythonScript = script
+	cfg.RunPhases = config.Phases{Local: true, PR: false, ReviewFix: false}
+
+	input := BuildArgsInput{
+		Config:      cfg,
+		PRDPath:     prd,
+		LogFilePath: filepath.Join(repo, "run.log"),
+	}
+
+	plan, err := BuildArgs(input)
+	if err != nil {
+		t.Fatalf("BuildArgs failed: %v", err)
+	}
+
+	repoArg := ""
+	for i := 0; i < len(plan.Args)-1; i++ {
+		if plan.Args[i] == "--repo" {
+			repoArg = plan.Args[i+1]
+			break
+		}
+	}
+	if repoArg == "" {
+		t.Fatalf("expected --repo argument in args %v", plan.Args)
+	}
+	gotResolved, err := filepath.EvalSymlinks(repoArg)
+	if err != nil {
+		t.Fatalf("eval symlinks for repo arg: %v", err)
+	}
+	wantResolved, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatalf("eval symlinks for repo: %v", err)
+	}
+	if gotResolved != wantResolved {
+		t.Fatalf("expected inferred repo %q (resolved %q), got %q (resolved %q)", repo, wantResolved, repoArg, gotResolved)
 	}
 }

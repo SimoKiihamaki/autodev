@@ -148,6 +148,8 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
 	}
 
+	safeDirs := resolvedSafeScriptDirs()
+
 	// If repoPath is configured, ensure the script is within the repo
 	if repoPath != "" {
 		// Validate that repoPath is absolute as per function contract
@@ -166,38 +168,127 @@ func validatePythonScriptPath(scriptPath, repoPath string) error {
 		}
 		// Check that relPath does not start with ".." (prevents escaping repoPath)
 		if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+			for _, dir := range safeDirs {
+				if isPrefixOf(dir, scriptPath) {
+					return nil
+				}
+			}
 			return fmt.Errorf("PythonScript path would escape repository directory: %q", scriptPath)
 		}
 		return nil
 	}
 
-	// When repoPath is not configured, restrict to safe directories only
-	tmpDir := os.TempDir()
-	// Restrict to a specific subdirectory within the temp directory for safety
-	autodevTmpDir := filepath.Join(tmpDir, "autodev")
-	if stat, err := os.Stat(autodevTmpDir); err == nil && stat.IsDir() {
-		resolvedAutodevTmpDir, err := filepath.EvalSymlinks(autodevTmpDir)
-		if err == nil && isPrefixOf(resolvedAutodevTmpDir, scriptPath) {
-			// Allow paths within autodev subdirectory of temp directory (important for testing)
+	for _, dir := range safeDirs {
+		if isPrefixOf(dir, scriptPath) {
 			return nil
 		}
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		// Restrict to a specific safe subdirectory within the home directory
-		autodevDir := filepath.Join(homeDir, ".local", "share", "autodev")
-		if info, statErr := os.Stat(autodevDir); statErr == nil && info.IsDir() {
-			resolvedAutodevDir, err := filepath.EvalSymlinks(autodevDir)
-			if err == nil && isPrefixOf(resolvedAutodevDir, scriptPath) {
-				// Allow paths only within ~/.local/share/autodev
-				return nil
+	// Reject absolute paths in other locations when repoPath is not configured
+	return fmt.Errorf("PythonScript path requires repoPath configuration or must be within an approved installation directory: %q", scriptPath)
+}
+
+const safeScriptDirsEnv = "AUTO_PRD_SAFE_SCRIPT_DIRS"
+
+func resolvedSafeScriptDirs() []string {
+	addIfDir := func(path string, set map[string]struct{}) {
+		if path == "" {
+			return
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			return
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return
+		}
+		set[resolved] = struct{}{}
+	}
+
+	dirs := make(map[string]struct{})
+
+	// Temporary autodev working directory (used by tests)
+	addIfDir(filepath.Join(os.TempDir(), "autodev"), dirs)
+
+	// User-level autodev installation directory
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		addIfDir(filepath.Join(homeDir, ".local", "share", "autodev"), dirs)
+	}
+
+	// Directories relative to the aprd executable
+	if exePath, err := os.Executable(); err == nil {
+		if resolvedExe, err := filepath.EvalSymlinks(exePath); err == nil {
+			exeDir := filepath.Dir(resolvedExe)
+			candidate := []string{exeDir}
+			parent := exeDir
+			for depth := 0; depth < 3; depth++ {
+				candidate = append(candidate, filepath.Join(parent, "tools"))
+				parent = filepath.Dir(parent)
+			}
+			for _, dir := range candidate {
+				addIfDir(dir, dirs)
 			}
 		}
 	}
 
-	// Reject absolute paths in other locations when repoPath is not configured
-	return fmt.Errorf("PythonScript path requires repoPath configuration or must be within safe directories: %q", scriptPath)
+	// Additional safe directories provided via environment variable (path list)
+	if extra := os.Getenv(safeScriptDirsEnv); extra != "" {
+		sep := string(os.PathListSeparator)
+		for _, part := range strings.Split(extra, sep) {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			addIfDir(part, dirs)
+		}
+	}
+
+	result := make([]string, 0, len(dirs))
+	for dir := range dirs {
+		result = append(result, dir)
+	}
+	return result
+}
+
+func detectRepoPath(candidates ...string) string {
+	for _, cand := range candidates {
+		cand = strings.TrimSpace(cand)
+		if cand == "" {
+			continue
+		}
+		info, err := os.Stat(cand)
+		if err != nil {
+			continue
+		}
+		dir := cand
+		if !info.IsDir() {
+			dir = filepath.Dir(cand)
+		}
+		if root := findGitRoot(dir); root != "" {
+			return root
+		}
+	}
+	return ""
+}
+
+func findGitRoot(start string) string {
+	current := filepath.Clean(start)
+	for {
+		gitPath := filepath.Join(current, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			if resolved, err := filepath.EvalSymlinks(current); err == nil {
+				return resolved
+			}
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ""
 }
 
 // resolveScriptPath resolves the script path to the absolute path that will be executed
@@ -357,12 +448,30 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 // and environment required to invoke the automation runner. It centralizes all
 // mappings so TUI and tests can validate behavior via a single entry point.
 func BuildArgs(input BuildArgsInput) (Args, error) {
+	cfg := input.Config
+
 	// Validate PythonCommand early for security - reject invalid/malicious commands before any processing
-	if err := validatePythonCommandWithConfig(input.Config.PythonCommand, input.Config); err != nil {
+	if err := validatePythonCommandWithConfig(cfg.PythonCommand, cfg); err != nil {
 		return Args{}, err
 	}
 
-	scriptArgs, err := buildScriptArgs(input.Config, input.PRDPath, input.LogFilePath, input.LogLevel)
+	if strings.TrimSpace(cfg.RepoPath) == "" {
+		candidates := []string{}
+		if input.PRDPath != "" {
+			candidates = append(candidates, input.PRDPath)
+		}
+		if input.LogFilePath != "" {
+			candidates = append(candidates, input.LogFilePath)
+		}
+		if wd, err := os.Getwd(); err == nil {
+			candidates = append(candidates, wd)
+		}
+		if inferred := detectRepoPath(candidates...); inferred != "" {
+			cfg.RepoPath = inferred
+		}
+	}
+
+	scriptArgs, err := buildScriptArgs(cfg, input.PRDPath, input.LogFilePath, input.LogLevel)
 	if err != nil {
 		return Args{}, err
 	}
@@ -382,24 +491,24 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 
 	// Consolidated executor environment variable setting
 	executorVars := map[string]string{}
-	if input.Config.ExecutorPolicy != "" {
-		executorVars[config.EnvExecutorPolicy] = input.Config.ExecutorPolicy
+	if cfg.ExecutorPolicy != "" {
+		executorVars[config.EnvExecutorPolicy] = cfg.ExecutorPolicy
 	}
 	// Per-phase executor overrides
-	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
+	if v := strings.ToLower(strings.TrimSpace(cfg.PhaseExecutors.Implement)); v == "codex" || v == "claude" {
 		executorVars[config.EnvExecutorImplement] = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
+	if v := strings.ToLower(strings.TrimSpace(cfg.PhaseExecutors.Fix)); v == "codex" || v == "claude" {
 		executorVars[config.EnvExecutorFix] = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.PR)); v == "codex" || v == "claude" {
+	if v := strings.ToLower(strings.TrimSpace(cfg.PhaseExecutors.PR)); v == "codex" || v == "claude" {
 		executorVars[config.EnvExecutorPR] = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(input.Config.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
+	if v := strings.ToLower(strings.TrimSpace(cfg.PhaseExecutors.ReviewFix)); v == "codex" || v == "claude" {
 		executorVars[config.EnvExecutorReviewFix] = v
 	}
 
-	if input.Config.Flags.AllowUnsafe {
+	if cfg.Flags.AllowUnsafe {
 		executorVars[config.EnvAllowUnsafeExecution] = "1"
 		// CI=1 is removed during sanitization and re-added here when AllowUnsafe is true
 		env = append(env, "CI=1")
@@ -414,14 +523,12 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	// regardless of how the process is invoked. If you change/remove this, update both places.
 	env = append(env, "PYTHONUNBUFFERED=1")
 
-	// Support PythonCommand with interpreter flags, e.g. "python3 -X dev"
-
-	pyParts, err := shlex.Split(input.Config.PythonCommand)
+	pyParts, err := shlex.Split(cfg.PythonCommand)
 	if err != nil {
-		return Args{}, fmt.Errorf("failed to parse PythonCommand %q: %w", input.Config.PythonCommand, err)
+		return Args{}, fmt.Errorf("failed to parse PythonCommand %q: %w", cfg.PythonCommand, err)
 	}
 	if len(pyParts) == 0 {
-		return Args{}, fmt.Errorf("PythonCommand %q resulted in no command parts after splitting", input.Config.PythonCommand)
+		return Args{}, fmt.Errorf("PythonCommand %q resulted in no command parts after splitting", cfg.PythonCommand)
 	}
 	pyBin, pyFlags := pyParts[0], pyParts[1:]
 
