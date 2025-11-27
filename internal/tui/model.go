@@ -18,7 +18,6 @@ import (
 )
 
 const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
-const defaultToastTTL = 4 * time.Second
 
 // Flag name constants to maintain single source of truth
 const (
@@ -169,6 +168,11 @@ type model struct {
 
 	toast    *toastState
 	toastSeq uint64
+
+	// Tracker state for Progress tab (loaded asynchronously)
+	tracker       *Tracker
+	trackerErr    error
+	trackerLoaded bool
 }
 
 // settingsInputNames defines the navigation order for Settings inputs; keep the
@@ -271,7 +275,12 @@ func (m *model) flash(msg string, ttl time.Duration) tea.Cmd {
 		return nil
 	}
 	if ttl <= 0 {
-		ttl = defaultToastTTL
+		// Use configurable toast TTL from config, with fallback to default
+		if m.cfg.UI.ToastTTLMs != nil && *m.cfg.UI.ToastTTLMs > 0 {
+			ttl = time.Duration(*m.cfg.UI.ToastTTLMs) * time.Millisecond
+		} else {
+			ttl = time.Duration(config.DefaultToastTTLMs) * time.Millisecond
+		}
 	}
 	m.toastSeq++
 	id := m.toastSeq
@@ -314,7 +323,7 @@ func (m *model) resetToDefaults() tea.Cmd {
 
 	note := "Configuration reset to defaults"
 	m.status = note
-	if flash := m.flash(note, defaultToastTTL); flash != nil {
+	if flash := m.flash(note, 0); flash != nil {
 		return flash
 	}
 	return nil
@@ -438,7 +447,7 @@ func (m *model) handleSaveShortcut() tea.Cmd {
 		note := "Select a PRD before saving metadata"
 		m.status = note
 		m.lastSaveErr = fmt.Errorf("save aborted: no PRD selected")
-		if flash := m.flash(note, defaultToastTTL); flash != nil {
+		if flash := m.flash(note, 0); flash != nil {
 			return flash
 		}
 		return nil
@@ -536,4 +545,28 @@ func getLastErrorText(m *model) string {
 		return strings.TrimSpace(m.errMsg)
 	}
 	return ""
+}
+
+// Cleanup performs graceful shutdown of the model's resources.
+// It should be called before exiting the application to ensure:
+// - Any running process is cancelled
+// - Log channels are properly closed
+// - File handles are released
+func (m *model) Cleanup() {
+	// Cancel any running process
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+	}
+
+	// Close the log channel if still open
+	// Note: only the sender should close channels, and we're not the sender
+	// The logCh is closed by the runner goroutine when it completes
+
+	// Clear large buffers to help GC
+	m.logBuf = nil
+	m.runFeedBuf = nil
+
+	// Close any open log file (though this is now handled by Python)
+	m.closeLogFile("cleanup")
 }

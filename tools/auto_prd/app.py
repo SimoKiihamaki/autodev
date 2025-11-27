@@ -20,6 +20,7 @@ from .gh_ops import get_pr_number_for_head, post_final_comment
 from .git_ops import (
     StashConflictError,
     ensure_gh_alias,
+    git_add,
     git_branch_exists,
     git_commit,
     git_current_branch,
@@ -367,10 +368,10 @@ def run(args) -> None:
                         "Tracker generated with %d features",
                         tracker["validation_summary"]["total_features"],
                     )
-                    # Commit tracker to git using helper functions
+                    # Commit tracker to git - only stage the tracker file
                     if not args.dry_run:
                         try:
-                            git_stage_all(repo_root)
+                            git_add(repo_root, tracker_path)
                             if git_has_staged_changes(repo_root):
                                 git_commit(
                                     repo_root,
@@ -379,9 +380,11 @@ def run(args) -> None:
                                 logger.info("Committed tracker to git")
                             else:
                                 logger.debug("No tracker changes to commit")
-                        except subprocess.CalledProcessError:
-                            # May fail if nothing to commit; that's ok
-                            logger.debug("No tracker changes to commit")
+                        except subprocess.CalledProcessError as exc:
+                            details = extract_called_process_error_details(exc)
+                            logger.warning(
+                                "Failed to stage/commit tracker: %s", details
+                            )
                 except (IOError, ValueError, RuntimeError, OSError) as exc:
                     logger.warning("Tracker generation failed: %s", exc, exc_info=True)
                     print(f"Warning: Tracker generation failed: {exc}", flush=True)

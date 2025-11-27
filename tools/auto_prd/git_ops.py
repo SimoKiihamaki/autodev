@@ -249,6 +249,16 @@ def git_stage_all(repo_root: Path) -> None:
     run_cmd(["git", "add", "-A"], cwd=repo_root)
 
 
+def git_add(repo_root: Path, file_path: Path) -> None:
+    """Stage a specific file for commit.
+
+    Args:
+        repo_root: Repository root directory.
+        file_path: Path to the file to stage (can be relative or absolute).
+    """
+    run_cmd(["git", "add", "--", str(file_path)], cwd=repo_root)
+
+
 def git_has_staged_changes(repo_root: Path) -> bool:
     _, _, rc = run_cmd(
         ["git", "diff", "--cached", "--quiet"], cwd=repo_root, check=False

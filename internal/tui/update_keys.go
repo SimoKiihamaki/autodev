@@ -3,12 +3,10 @@ package tui
 import (
 	"strings"
 
-	"github.com/SimoKiihamaki/autodev/internal/utils"
-	clipboard "github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// batchCmd combines multiple tea.Cmd into a single batched command.
 func batchCmd(cmds []tea.Cmd) tea.Cmd {
 	switch len(cmds) {
 	case 0:
@@ -20,9 +18,11 @@ func batchCmd(cmds []tea.Cmd) tea.Cmd {
 	}
 }
 
+// handleKeyMsg is the main entry point for key event handling.
 func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
 	mPtr := &m
 
+	// Handle quit confirmation dialog first
 	if mPtr.quitConfirmActive {
 		if handled, cmd := mPtr.handleQuitConfirmation(msg); handled {
 			return *mPtr, cmd
@@ -30,6 +30,7 @@ func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
 		return *mPtr, nil
 	}
 
+	// Get tab-specific actions and handle them
 	tabID := mPtr.currentTabID()
 	perTabActions := mPtr.keys.TabActions(tabID, msg)
 
@@ -40,6 +41,7 @@ func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
 
 	mPtr.refreshTypingState()
 
+	// Handle global actions
 	globalActions := mPtr.keys.GlobalActions(msg)
 	for _, act := range globalActions {
 		if mPtr.IsTyping() && mPtr.keys.IsTypingSensitive(act) {
@@ -54,6 +56,7 @@ func (m model) handleKeyMsg(msg tea.KeyMsg) (model, tea.Cmd) {
 	return *mPtr, nil
 }
 
+// handleTabActions dispatches to tab-specific action handlers.
 func (m *model) handleTabActions(tabID string, actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 	switch tabID {
 	case tabIDRun:
@@ -68,12 +71,17 @@ func (m *model) handleTabActions(tabID string, actions []Action, msg tea.KeyMsg)
 		return m.handlePromptTabActions(actions, msg)
 	case tabIDLogs:
 		return m.handleLogsTabActions(actions, msg)
+	case tabIDProgress:
+		return m.handleProgressTabActions(actions, msg)
 	default:
 		return false, nil
 	}
 }
 
+// handleGlobalAction handles actions that work across all tabs.
 func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
+	_ = msg // unused, but kept for potential future use
+
 	switch act {
 	case ActInterrupt:
 		if m.running && m.cancel != nil {
@@ -86,7 +94,7 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.closeLogFile("quit")
+		m.Cleanup()
 		return true, tea.Quit
 	case ActQuit:
 		if m.running {
@@ -96,7 +104,7 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.closeLogFile("quit")
+		m.Cleanup()
 		return true, tea.Quit
 	case ActHelp:
 		m.showHelp = !m.showHelp
@@ -108,479 +116,20 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 		return true, m.handleSaveShortcut()
 	case ActResetDefaults:
 		return true, m.resetToDefaults()
-	case ActGotoTab1, ActGotoTab2, ActGotoTab3, ActGotoTab4, ActGotoTab5, ActGotoTab6:
+	case ActGotoTab1, ActGotoTab2, ActGotoTab3, ActGotoTab4, ActGotoTab5, ActGotoTab6, ActGotoTab7, ActGotoTab8:
 		if idx, ok := tabIndexFromAction(act); ok && m.setActiveTabIndex(idx) {
 			m.blurAllInputs()
+			// Trigger async tracker load when switching to Progress tab
+			if m.currentTabID() == tabIDProgress && !m.trackerLoaded {
+				return true, loadTrackerCmd(m.cfg.RepoPath)
+			}
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	if len(actions) == 0 {
-		return false, nil
-	}
-
-	var cmds []tea.Cmd
-	handled := false
-
-	hasFeed := len(m.runFeedBuf) > 0 || m.running
-
-	for _, act := range actions {
-		switch act {
-		case ActConfirm:
-			if m.isActiveOrCancelling() {
-				note := "Cannot start new run while current run is active"
-				m.status = note
-				if flash := m.flash(note, defaultToastTTL); flash != nil {
-					cmds = append(cmds, flash)
-				}
-				handled = true
-				break
-			}
-			if cmd := m.startRunCmd(); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			handled = true
-		case ActCopyError:
-			text := getLastErrorText(m)
-			note := ""
-			if text == "" {
-				note = "No error available to copy"
-			} else {
-				if err := clipboard.WriteAll(text); err != nil {
-					note = "Failed to copy error: " + err.Error()
-				} else {
-					note = "Error copied to clipboard"
-				}
-			}
-			m.status = note
-			if note != "" {
-				if flash := m.flash(note, defaultToastTTL); flash != nil {
-					cmds = append(cmds, flash)
-				}
-			}
-			handled = true
-		case ActNavigateUp, ActNavigateDown:
-			if !hasFeed {
-				continue
-			}
-			var cmd tea.Cmd
-			m.runFeed, cmd = m.runFeed.Update(msg)
-			cmds = append(cmds, cmd)
-			m.updateRunFeedFollowFromViewport()
-			handled = true
-		case ActPageUp:
-			if !hasFeed {
-				continue
-			}
-			m.runFeed.LineUp(10)
-			m.updateRunFeedFollowFromViewport()
-			handled = true
-		case ActPageDown:
-			if !hasFeed {
-				continue
-			}
-			m.runFeed.LineDown(10)
-			m.updateRunFeedFollowFromViewport()
-			handled = true
-		case ActScrollTop:
-			if !hasFeed {
-				continue
-			}
-			m.runFeed.GotoTop()
-			m.updateRunFeedFollowFromViewport()
-			handled = true
-		case ActScrollBottom:
-			if !hasFeed {
-				continue
-			}
-			m.runFeed.GotoBottom()
-			m.updateRunFeedFollowFromViewport()
-			handled = true
-		case ActToggleFollow:
-			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
-			m.runFeedAutoFollow = m.followLogs
-			if m.runFeedAutoFollow && len(m.runFeedBuf) > 0 {
-				m.runFeed.GotoBottom()
-			}
-			m.updateDirtyState()
-			handled = true
-		}
-	}
-
-	if handled {
-		return true, batchCmd(cmds)
-	}
-	return false, nil
-}
-
-func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	if m.tagInput.Focused() {
-		handled := false
-		for _, act := range actions {
-			switch act {
-			case ActConfirm:
-				if tag := strings.TrimSpace(m.tagInput.Value()); tag != "" {
-					m.tags = append(m.tags, tag)
-					m.tagInput.SetValue("")
-					m.tagInput.Blur()
-					m.updateDirtyState()
-				}
-				handled = true
-			case ActCancel:
-				m.tagInput.Blur()
-				handled = true
-			}
-		}
-		if handled {
-			return true, nil
-		}
-		if msg.Type == tea.KeyCtrlS {
-			return false, nil
-		}
-		var cmd tea.Cmd
-		m.tagInput, cmd = m.tagInput.Update(msg)
-		return true, cmd
-	}
-
-	if len(actions) == 0 {
-		var cmd tea.Cmd
-		prevFilter := m.prdList.FilterState()
-		m.prdList, cmd = m.prdList.Update(msg)
-		if prevFilter == list.Filtering {
-			return true, cmd
-		}
-		if isDigitKey(msg) {
-			if m.prdList.FilterState() == list.Filtering {
-				m.prdList.ResetFilter()
-			}
-			return false, cmd
-		}
-		if m.prdList.FilterState() == list.Filtering {
-			return true, cmd
-		}
-		if isRuneKey(msg) {
-			return true, cmd
-		}
-		return false, cmd
-	}
-
-	handled := false
-
-	for _, act := range actions {
-		switch act {
-		case ActConfirm:
-			if sel, ok := m.prdList.SelectedItem().(item); ok {
-				m.selectedPRD = sel.path
-				if meta, ok := m.cfg.PRDs[sel.path]; ok {
-					m.tags = append([]string{}, meta.Tags...)
-				} else {
-					m.tags = []string{}
-				}
-				m.updateDirtyState()
-				// Load preview for newly selected PRD
-				cmds = append(cmds, m.loadPRDPreviewCmd())
-			}
-			handled = true
-		case ActFocusTags:
-			m.tagInput.Focus()
-			handled = true
-		case ActNavigateLeft, ActNavigateRight:
-			var cmd tea.Cmd
-			m.prdList, cmd = m.prdList.Update(msg)
-			cmds = append(cmds, cmd)
-			handled = true
-		case ActListBackspace:
-			if m.prdList.FilterState() == list.Filtering {
-				var cmd tea.Cmd
-				m.prdList, cmd = m.prdList.Update(msg)
-				cmds = append(cmds, cmd)
-			} else if len(m.tags) > 0 {
-				m.tags = m.tags[:len(m.tags)-1]
-				m.updateDirtyState()
-			}
-			handled = true
-		case ActRescanPRDs:
-			m.rescanPRDs()
-			cmds = append(cmds, m.scanPRDsCmd())
-			handled = true
-		}
-	}
-
-	if handled {
-		return true, batchCmd(cmds)
-	}
-	if msg.Type == tea.KeyCtrlS {
-		return false, nil
-	}
-	return false, batchCmd(cmds)
-}
-
-func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	var cmds []tea.Cmd
-	handled := false
-
-	if len(actions) == 0 {
-		if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
-			if field := m.getInputField(m.focusedInput); field != nil {
-				if msg.Type == tea.KeyCtrlS {
-					return false, nil
-				}
-				prev := field.Value()
-				var cmd tea.Cmd
-				*field, cmd = field.Update(msg)
-				if field.Value() != prev {
-					m.updateDirtyState()
-				}
-				return true, cmd
-			}
-		}
-		return false, nil
-	}
-
-	for _, act := range actions {
-		switch act {
-		case ActCancel:
-			m.blurAllInputs()
-			handled = true
-		case ActTabForward:
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else {
-				m.navigateSettings("down")
-			}
-			handled = true
-		case ActTabBackward:
-			m.navigateSettings("up")
-			handled = true
-		case ActNavigateUp:
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else {
-				m.navigateSettings("up")
-			}
-			handled = true
-		case ActNavigateDown:
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else {
-				m.navigateSettings("down")
-			}
-			handled = true
-		case ActNavigateLeft:
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else if isExecutorToggle(m.focusedInput) {
-				m.tryNavigateOrCycle("left", -1)
-			} else {
-				m.navigateSettings("left")
-			}
-			handled = true
-		case ActNavigateRight:
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else if isExecutorToggle(m.focusedInput) {
-				m.tryNavigateOrCycle("right", 1)
-			} else {
-				m.navigateSettings("right")
-			}
-			handled = true
-		case ActAltNavigateLeft:
-			if m.focusedInput != "" {
-				m.navigateSettings("left")
-				handled = true
-			}
-		case ActAltNavigateRight:
-			if m.focusedInput != "" {
-				m.navigateSettings("right")
-				handled = true
-			}
-		case ActAltNavigateUp:
-			if m.focusedInput != "" {
-				m.navigateSettings("up")
-				handled = true
-			}
-		case ActAltNavigateDown:
-			if m.focusedInput != "" {
-				m.navigateSettings("down")
-				handled = true
-			}
-		case ActConfirm:
-			// ActConfirm in settings tab has three contextual behaviors:
-			// 1. If no field is focused: focus first field ("repo")
-			// 2. If executor toggle is focused: cycle choice forward
-			// 3. If regular field is focused: navigate to next field
-			if m.focusedInput == "" {
-				m.focusInput("repo")
-			} else if isExecutorToggle(m.focusedInput) {
-				m.cycleExecutorChoice(m.focusedInput, 1)
-			} else {
-				m.navigateSettings("down")
-			}
-			handled = true
-		case ActCycleBackward:
-			if isExecutorToggle(m.focusedInput) {
-				m.cycleExecutorChoice(m.focusedInput, -1)
-				handled = true
-			}
-		}
-	}
-
-	if handled {
-		return true, batchCmd(cmds)
-	}
-
-	if m.focusedInput != "" && !isExecutorToggle(m.focusedInput) {
-		if field := m.getInputField(m.focusedInput); field != nil {
-			if msg.Type == tea.KeyCtrlS {
-				return false, nil
-			}
-			prev := field.Value()
-			var cmd tea.Cmd
-			*field, cmd = field.Update(msg)
-			if field.Value() != prev {
-				m.updateDirtyState()
-			}
-			return true, cmd
-		}
-	}
-
-	return false, batchCmd(cmds)
-}
-
-func (m *model) handleEnvTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	if len(actions) == 0 {
-		return false, nil
-	}
-
-	handled := false
-
-	for _, act := range actions {
-		switch act {
-		case ActCancel:
-			m.focusedFlag = ""
-			handled = true
-		case ActNavigateUp:
-			m.navigateFlags("up")
-			handled = true
-		case ActNavigateDown:
-			m.navigateFlags("down")
-			handled = true
-		case ActNavigateLeft:
-			if m.focusedFlag != "" {
-				m.navigateFlags("left")
-			}
-			handled = true
-		case ActNavigateRight:
-			if m.focusedFlag != "" {
-				m.navigateFlags("right")
-			}
-			handled = true
-		case ActConfirm:
-			if m.focusedFlag == "" {
-				if len(envFlagNames) == 0 {
-					break
-				}
-				m.focusFlag(envFlagNames[0])
-			} else {
-				m.toggleFocusedFlag()
-			}
-			handled = true
-		case ActToggleFlagLocal, ActToggleFlagPR, ActToggleFlagReview, ActToggleFlagUnsafe, ActToggleFlagDryRun, ActToggleFlagSyncGit, ActToggleFlagInfinite:
-			if flag := flagNameForAction(act); flag != "" {
-				m.focusFlag(flag)
-				m.toggleFocusedFlag()
-				handled = true
-			}
-		}
-	}
-
-	return handled, nil
-}
-
-func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	handled := false
-	var cmds []tea.Cmd
-
-	for _, act := range actions {
-		switch act {
-		case ActConfirm:
-			if !m.prompt.Focused() {
-				m.prompt.Focus()
-				handled = true
-			}
-		case ActCancel:
-			if m.prompt.Focused() {
-				m.prompt.Blur()
-				handled = true
-			}
-		}
-	}
-
-	if handled {
-		return true, batchCmd(cmds)
-	}
-
-	if !m.prompt.Focused() {
-		return false, nil
-	}
-
-	if msg.Type == tea.KeyCtrlS {
-		return false, nil
-	}
-
-	var cmd tea.Cmd
-	m.prompt, cmd = m.prompt.Update(msg)
-	return true, cmd
-}
-
-func (m *model) handleLogsTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
-	if len(actions) == 0 {
-		return false, nil
-	}
-
-	var cmds []tea.Cmd
-	handled := false
-
-	for _, act := range actions {
-		switch act {
-		case ActNavigateUp, ActNavigateDown:
-			var cmd tea.Cmd
-			m.logs, cmd = m.logs.Update(msg)
-			cmds = append(cmds, cmd)
-			handled = true
-		case ActPageUp:
-			m.logs.LineUp(10)
-			handled = true
-		case ActPageDown:
-			m.logs.LineDown(10)
-			handled = true
-		case ActScrollTop:
-			m.logs.GotoTop()
-			handled = true
-		case ActScrollBottom:
-			m.logs.GotoBottom()
-			handled = true
-		case ActToggleFollow:
-			m.followLogs = !m.followLogs
-			m.cfg.FollowLogs = utils.BoolPtr(m.followLogs)
-			if m.followLogs {
-				m.logs.GotoBottom()
-			}
-			m.runFeedAutoFollow = m.followLogs && m.runFeed.AtBottom()
-			m.updateDirtyState()
-			handled = true
-		}
-	}
-
-	return handled, batchCmd(cmds)
-}
-
+// handleQuitConfirmation handles key events in the quit confirmation dialog.
 func (m *model) handleQuitConfirmation(msg tea.KeyMsg) (bool, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyLeft:
@@ -617,6 +166,7 @@ func (m *model) handleQuitConfirmation(msg tea.KeyMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 
+// executeQuitSelection executes the selected quit action.
 func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 	if !m.quitConfirmActive {
 		return false, nil
@@ -629,7 +179,7 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 		return true, m.saveConfig()
 	case 1: // Discard
 		m.cancelQuitConfirm()
-		m.closeLogFile("quit")
+		m.Cleanup()
 		return true, tea.Quit
 	default: // Cancel
 		m.cancelQuitConfirm()
@@ -638,6 +188,7 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 	}
 }
 
+// tabIndexFromAction maps a goto tab action to its index.
 func tabIndexFromAction(act Action) (int, bool) {
 	for i, tabAction := range tabActions {
 		if tabAction == act {
@@ -647,49 +198,16 @@ func tabIndexFromAction(act Action) (int, bool) {
 	return 0, false
 }
 
-// Flag name constants are now defined in model.go for single source of truth.
-
-func flagNameForAction(act Action) string {
-	switch act {
-	case ActToggleFlagLocal:
-		return FlagNameLocal
-	case ActToggleFlagPR:
-		return FlagNamePR
-	case ActToggleFlagReview:
-		return FlagNameReview
-	case ActToggleFlagUnsafe:
-		return FlagNameUnsafe
-	case ActToggleFlagDryRun:
-		return FlagNameDryRun
-	case ActToggleFlagSyncGit:
-		return FlagNameSyncGit
-	case ActToggleFlagInfinite:
-		return FlagNameInfinite
-	default:
-		return ""
-	}
-}
-
+// isRuneKey returns true if the key event represents a rune input.
 func isRuneKey(msg tea.KeyMsg) bool {
 	return msg.Type == tea.KeyRunes && len(msg.Runes) > 0
 }
 
+// isDigitKey returns true if the key event is a single digit (0-9).
 func isDigitKey(msg tea.KeyMsg) bool {
 	if msg.Type != tea.KeyRunes || len(msg.Runes) != 1 {
 		return false
 	}
 	r := msg.Runes[0]
 	return r >= '0' && r <= '9'
-}
-
-// tryNavigateOrCycle navigates the settings input list, or cycles the current toggle if navigation is blocked.
-func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
-	prev := m.focusedInput
-	m.navigateSettings(direction)
-	if m.focusedInput == prev && isExecutorToggle(m.focusedInput) {
-		m.cycleExecutorChoice(m.focusedInput, cycleDir)
-	}
-	// If navigation is blocked and the current input is NOT an executor toggle,
-	// no action is taken. This is intentional: only toggles are cycled as a fallback,
-	// while other input types remain unchanged when navigation is blocked.
 }
