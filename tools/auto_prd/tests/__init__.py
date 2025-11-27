@@ -1,6 +1,5 @@
 """Test package for tools.auto_prd."""
 
-import os
 import sys
 from pathlib import Path
 

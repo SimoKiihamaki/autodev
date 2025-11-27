@@ -114,9 +114,14 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.markSaved()
 	m.prepareRunLogFile()
 
-	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
-	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
-	m.logCh = make(chan runner.Line, 2048)
+	// Channel buffer size is configurable; defaults to 2048 to bound memory usage while allowing bursts.
+	// Drops occur only when the producer outpaces the consumer beyond this buffer,
+	// but every line remains in the file log written by the runner.
+	bufferSize := config.DefaultLogChannelBuffer
+	if m.cfg.BatchProcessing.LogChannelBuffer != nil && *m.cfg.BatchProcessing.LogChannelBuffer > 0 {
+		bufferSize = *m.cfg.BatchProcessing.LogChannelBuffer
+	}
+	m.logCh = make(chan runner.Line, bufferSize)
 
 	ch := m.logCh
 	m.resetLogState()
@@ -172,33 +177,33 @@ func (m *model) preflightChecks() error {
 		return fmt.Errorf("failed to parse Python command %q (after trimming): %w", cmd, err)
 	}
 	if len(exeParts) == 0 || strings.TrimSpace(exeParts[0]) == "" {
-		return errors.New("Python command is required (configure in Settings)")
+		return errors.New("python command is required (configure in Settings)")
 	}
 	if _, err := exec.LookPath(exeParts[0]); err != nil {
 		return fmt.Errorf("python executable %q not found on PATH: %w", exeParts[0], err)
 	}
 	if strings.TrimSpace(m.cfg.PythonScript) == "" {
-		return errors.New("Set Python script path in Settings")
+		return errors.New("set python script path in settings")
 	}
 	scriptPath := m.cfg.PythonScript
 	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
 		if err != nil {
 			return fmt.Errorf(
-				"Python script not found: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+				"python script not found: %s (set the correct path in Settings or via AUTO_PRD_SCRIPT)",
 				abbreviatePath(scriptPath),
 			)
 		}
 		return fmt.Errorf(
-			"Python script path points to directory: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+			"python script path points to directory: %s (set the correct path in Settings or via AUTO_PRD_SCRIPT)",
 			abbreviatePath(scriptPath),
 		)
 	}
 	info, err := os.Stat(m.selectedPRD)
 	if err != nil {
-		return fmt.Errorf("Selected PRD missing: %w", err)
+		return fmt.Errorf("selected PRD missing: %w", err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("Selected PRD points to a directory: %s", abbreviatePath(m.selectedPRD))
+		return fmt.Errorf("selected PRD points to a directory: %s", abbreviatePath(m.selectedPRD))
 	}
 	if !strings.HasSuffix(strings.ToLower(m.selectedPRD), ".md") {
 		log.Printf("tui: selected PRD without .md extension: %s", abbreviatePath(m.selectedPRD))

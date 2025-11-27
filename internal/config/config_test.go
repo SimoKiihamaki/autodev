@@ -69,3 +69,98 @@ func TestConfigEqual(t *testing.T) {
 		t.Fatalf("nil vs empty slices should be considered equal")
 	}
 }
+
+func TestIsValidGitBranchName(t *testing.T) {
+	validBranches := []string{
+		"main",
+		"master",
+		"feature/new-feature",
+		"bugfix/123-fix-issue",
+		"release-1.0.0",
+		"codex/plan-20251127",
+		"user/john/experiment",
+		"v1.2.3",
+		"some_branch",
+		"UPPERCASE",
+		"MixedCase123",
+		"hyphen-end-", // dashes at end are allowed
+	}
+
+	for _, branch := range validBranches {
+		if !isValidGitBranchName(branch) {
+			t.Errorf("expected %q to be valid, but was rejected", branch)
+		}
+	}
+
+	invalidBranches := []string{
+		"",                // empty
+		".hidden",         // starts with dot
+		"/leading-slash",  // starts with slash
+		"trailing.",       // ends with dot
+		"trailing/",       // ends with slash
+		"branch.lock",     // ends with .lock
+		"has..dots",       // consecutive dots
+		"has//slashes",    // consecutive slashes
+		"has space",       // contains space
+		"has~tilde",       // contains tilde
+		"has^caret",       // contains caret
+		"has:colon",       // contains colon
+		"has?question",    // contains question mark
+		"has*star",        // contains asterisk
+		"has[bracket",     // contains open bracket
+		"has@{seq",        // contains @{ sequence (security measure)
+		"has\\backslash",  // contains backslash
+		"-hyphen-start",   // starts with hyphen (git interprets as option)
+		"-both-ends-",     // starts with hyphen (git interprets as option)
+		"--double-hyphen", // starts with double hyphen (git interprets as option)
+	}
+
+	for _, branch := range invalidBranches {
+		if isValidGitBranchName(branch) {
+			t.Errorf("expected %q to be invalid, but was accepted", branch)
+		}
+	}
+}
+
+func TestValidateInterFieldBranchNames(t *testing.T) {
+	// Valid branch name should not produce error
+	cfg := Defaults()
+	cfg.Branch = "feature/valid-branch"
+	cfg.BaseBranch = "main"
+	result := cfg.ValidateInterField()
+	for _, issue := range result.Issues {
+		if issue.Field == "branch" || issue.Field == "base_branch" {
+			t.Errorf("unexpected validation issue for valid branch: %s - %s", issue.Field, issue.Message)
+		}
+	}
+
+	// Invalid branch name should produce error
+	cfg = Defaults()
+	cfg.Branch = "invalid..branch"
+	result = cfg.ValidateInterField()
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Field == "branch" && issue.Severity == "error" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected validation error for invalid branch name")
+	}
+
+	// Invalid base branch name should produce error
+	cfg = Defaults()
+	cfg.BaseBranch = "has space"
+	result = cfg.ValidateInterField()
+	found = false
+	for _, issue := range result.Issues {
+		if issue.Field == "base_branch" && issue.Severity == "error" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected validation error for invalid base_branch name")
+	}
+}

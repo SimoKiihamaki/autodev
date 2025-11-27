@@ -52,6 +52,12 @@ type prdPreviewMsg struct {
 	err     error
 }
 
+// trackerLoadedMsg delivers the loaded tracker (or error) to the Update loop.
+type trackerLoadedMsg struct {
+	tracker *Tracker
+	err     error
+}
+
 // readLogsBatch attempts to read a batch of log lines from the log channel.
 // Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.
 func (m *model) readLogsBatch() tea.Cmd {

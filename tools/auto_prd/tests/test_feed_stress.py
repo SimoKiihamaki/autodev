@@ -7,7 +7,6 @@ to stress-test the TUI's log ingestion and display system.
 
 import sys
 import time
-import logging
 import argparse
 from pathlib import Path
 

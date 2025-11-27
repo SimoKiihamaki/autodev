@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// DefaultAPIAddr is the default address the API server binds to.
+const DefaultAPIAddr = ":8080"
+
 // Config controls the HTTP server behaviour.
 type Config struct {
 	Addr         string
@@ -27,7 +30,7 @@ type Server struct {
 // NewServer constructs a server using the supplied configuration and dependencies.
 func NewServer(cfg Config, deps Dependencies) *Server {
 	if cfg.Addr == "" {
-		cfg.Addr = ":8080"
+		cfg.Addr = DefaultAPIAddr
 	}
 
 	handler := newRouter(deps)

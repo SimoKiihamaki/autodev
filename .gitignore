@@ -13,3 +13,7 @@ latest
 __pycache__/
 *.pyc
 servers/
+
+# Claude Code generated context files
+.claude/context/
+**/.claude/context/

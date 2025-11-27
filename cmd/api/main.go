@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -11,8 +12,15 @@ import (
 	"github.com/SimoKiihamaki/autodev/internal/api"
 )
 
+// Environment variable for configuring the API server bind address (e.g., ":8080" or "localhost:8080")
+const EnvAPIAddr = "APRD_API_ADDR"
+
 func main() {
-	cfg := api.Config{Addr: ":8080"}
+	addr := os.Getenv(EnvAPIAddr)
+	if addr == "" {
+		addr = api.DefaultAPIAddr
+	}
+	cfg := api.Config{Addr: addr}
 	server := api.NewServer(cfg, api.Dependencies{})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

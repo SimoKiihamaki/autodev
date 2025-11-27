@@ -4,7 +4,6 @@ Tests for stdout/stderr flushing behavior to ensure incremental output appears i
 This validates that the Python automation pipeline doesn't buffer output unexpectedly.
 """
 
-import subprocess
 import sys
 import time
 import tempfile
@@ -13,7 +12,6 @@ import queue
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from textwrap import dedent
 
 # Constants for assertion messages to ensure consistency
 ASSERTION_MSG_TEMPLATES = {
@@ -27,11 +25,6 @@ try:
         register_safe_cwd,
     )
     from tools.auto_prd.tests import safe_cleanup
-    from tools.auto_prd.tests.test_helpers import (
-        safe_import,
-        try_send_with_timeout,
-        assert_threads_cleanly_terminated,
-    )
 except ImportError:
     from ..command import (
         run_cmd,
@@ -39,11 +32,6 @@ except ImportError:
         register_safe_cwd,
     )
     from . import safe_cleanup
-    from .test_helpers import (
-        safe_import,
-        try_send_with_timeout,
-        assert_threads_cleanly_terminated,
-    )
 
 
 @dataclass
@@ -238,14 +226,14 @@ def test_real_time_output_capture():
                     )
 
         if timing_issues:
-            print(f"⚠️  Timing issues detected:")
+            print("⚠️  Timing issues detected:")
             for issue in timing_issues:
                 print(f"   {issue}")
 
         # Wait for process to complete
         process.wait(timeout=10)
 
-        print(f"✅ Real-time output test passed")
+        print("✅ Real-time output test passed")
         print(f"   Captured {len(lines)} lines")
         print(
             f"   Test duration: {lines[-1]['elapsed']:.2f}s"

@@ -17,10 +17,12 @@ import (
 	"github.com/google/shlex"
 )
 
-// bufferPool reuses byte buffers to reduce allocations
+// bufferPool reuses byte buffers to reduce allocations.
+// Returns *[]byte to avoid allocation on Put (SA6002).
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 0, 64*1024) // 64KB initial capacity
+		b := make([]byte, 0, 64*1024) // 64KB initial capacity
+		return &b
 	},
 }
 
@@ -647,7 +649,7 @@ func validatePythonFlags(flags []string) error {
 		if f == "-X" {
 			// -X must be followed by an option and is only allowed for a safe allowlist (e.g., only "dev")
 			if i+1 >= len(flags) {
-				return fmt.Errorf("Python flag -X requires an option argument")
+				return fmt.Errorf("flag -X requires an option argument")
 			}
 			xArg := flags[i+1]
 			allowedX := map[string]bool{"dev": true}
@@ -793,16 +795,11 @@ func validatePythonCommandWithConfig(pythonCommand string, cfg config.Config) er
 			}
 		}
 		if !allowed {
-			const errMsg = `interpreter path %q is not in allowed directories.
-To permit this interpreter, add its directory as a prefix or a regex pattern to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml):
-
-  # Prefix match example (for simple cases):
-  allowed_python_dirs:
-    - %s
-  # Or as a regex pattern (for complex version-specific paths or multiple installation patterns):
-  # - '^%s([/\\]|$)'
-`
-			return fmt.Errorf(errMsg, absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
+			return fmt.Errorf("interpreter path %q is not in allowed directories; "+
+				"to permit this interpreter, add its directory as a prefix or a regex pattern "+
+				"to allowed_python_dirs in your config file (e.g., ~/.config/aprd/config.yaml): "+
+				"allowed_python_dirs: [%s] or as regex: ['^%s([/\\\\]|$)']",
+				absPath, filepath.Dir(absPath), regexp.QuoteMeta(filepath.Dir(absPath)))
 		}
 	} else {
 		// No path separator: must be a bare allowed name
@@ -1063,11 +1060,12 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 	}
 	sc := bufio.NewScanner(r)
 	// Get buffer from pool and allow large log lines (up to 1MB)
-	buf := bufferPool.Get().([]byte)
-	sc.Buffer(buf, 1<<20)
+	bufPtr := bufferPool.Get().(*[]byte)
+	sc.Buffer(*bufPtr, 1<<20)
 	defer func() {
 		// Return buffer to pool for reuse; scanner is out of scope when this runs
-		bufferPool.Put(buf[:0])
+		*bufPtr = (*bufPtr)[:0]
+		bufferPool.Put(bufPtr)
 	}()
 
 	var dropping bool

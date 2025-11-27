@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.local/tracker.schema.json",
+  "title": "Implementation Tracker",
+  "description": "JSON schema for PRD-to-implementation tracking in the AutoDev system",
+  "type": "object",
+  "required": ["version", "metadata", "features", "validation_summary"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0.0",
+      "description": "Schema version for migration support"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["prd_source", "prd_hash", "created_at", "created_by", "project_context"],
+      "properties": {
+        "prd_source": {
+          "type": "string",
+          "description": "Path to source PRD file"
+        },
+        "prd_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{16,64}$",
+          "description": "SHA-256 hash for change detection"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of tracker creation"
+        },
+        "created_by": {
+          "type": "string",
+          "enum": ["claude", "codex"],
+          "description": "Which agent generated the tracker"
+        },
+        "project_context": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string",
+              "description": "Primary programming language"
+            },
+            "framework": {
+              "type": "string",
+              "description": "Primary framework (e.g., Next.js 14, Django 5.x)"
+            },
+            "test_framework": {
+              "type": "string",
+              "description": "Testing framework(s) used"
+            },
+            "build_system": {
+              "type": "string",
+              "description": "Build/package system (e.g., pnpm, uv, cargo)"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feature"
+      },
+      "minItems": 1,
+      "description": "List of features to implement"
+    },
+    "validation_summary": {
+      "type": "object",
+      "required": ["total_features", "total_tasks", "estimated_complexity"],
+      "properties": {
+        "total_features": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of features in tracker"
+        },
+        "total_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of tasks across all features"
+        },
+        "estimated_complexity": {
+          "type": "string",
+          "enum": ["small", "medium", "large", "xlarge"],
+          "description": "Overall project complexity estimate"
+        },
+        "critical_path": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^F[0-9]{3}$"
+          },
+          "description": "Feature IDs that form the critical dependency path"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "priority",
+        "status",
+        "goals",
+        "tasks",
+        "acceptance_criteria",
+        "testing",
+        "validation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^F[0-9]{3}$",
+          "description": "Unique feature identifier (e.g., F001)"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1,
+          "description": "Short descriptive name"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detailed description of the feature"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"],
+          "description": "Implementation priority"
+        },
+        "complexity": {
+          "type": "string",
+          "enum": ["S", "M", "L", "XL"],
+          "description": "Estimated complexity (S=1-2h, M=2-4h, L=4-8h, XL=8+h)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "blocked", "completed", "verified", "failed"],
+          "description": "Current implementation status"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^F[0-9]{3}$"
+          },
+          "default": [],
+          "description": "Feature IDs this feature depends on"
+        },
+        "goals": {
+          "type": "object",
+          "required": ["primary", "measurable_outcomes"],
+          "properties": {
+            "primary": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Single sentence primary goal"
+            },
+            "secondary": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "Secondary goals"
+            },
+            "measurable_outcomes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Specific, measurable outcomes that prove success"
+            }
+          },
+          "additionalProperties": false
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/task"
+          },
+          "minItems": 1,
+          "description": "Implementation tasks for this feature"
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/acceptance_criterion"
+          },
+          "minItems": 1,
+          "description": "Criteria that must pass for feature completion"
+        },
+        "testing": {
+          "type": "object",
+          "required": ["unit_tests", "integration_tests"],
+          "properties": {
+            "unit_tests": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/unit_test"
+              },
+              "description": "Unit tests for this feature"
+            },
+            "integration_tests": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/integration_test"
+              },
+              "description": "Integration tests for this feature"
+            },
+            "e2e_tests": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/e2e_test"
+              },
+              "description": "End-to-end tests for this feature"
+            }
+          },
+          "additionalProperties": false
+        },
+        "validation": {
+          "type": "object",
+          "required": ["benchmarks", "quality_gates"],
+          "properties": {
+            "benchmarks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/benchmark"
+              },
+              "description": "Performance benchmarks"
+            },
+            "quality_gates": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/quality_gate"
+              },
+              "description": "Quality gates that must pass"
+            }
+          },
+          "additionalProperties": false
+        },
+        "files": {
+          "type": "object",
+          "properties": {
+            "to_create": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "Files to be created"
+            },
+            "to_modify": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "Files to be modified"
+            }
+          },
+          "additionalProperties": false
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commit_record"
+          },
+          "default": [],
+          "description": "Git commits associated with this feature for rollback"
+        },
+        "verification_evidence": {
+          "type": "object",
+          "properties": {
+            "screenshots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Paths to screenshot evidence"
+            },
+            "test_output_logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Paths to test output logs"
+            },
+            "verified_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When verification was completed"
+            },
+            "verified_by": {
+              "type": "string",
+              "description": "Who/what verified the feature"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "description", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^T[0-9]{3}$",
+          "description": "Unique task identifier (e.g., T001)"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What needs to be done"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed", "blocked"],
+          "description": "Current task status"
+        },
+        "implementation_notes": {
+          "type": "string",
+          "description": "Notes about implementation approach"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What is blocking this task"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When task was completed"
+        }
+      },
+      "additionalProperties": false
+    },
+    "acceptance_criterion": {
+      "type": "object",
+      "required": ["id", "criterion", "verification_method"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AC[0-9]{3}$",
+          "description": "Unique criterion identifier (e.g., AC001)"
+        },
+        "criterion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The acceptance criterion"
+        },
+        "verification_method": {
+          "type": "string",
+          "enum": [
+            "manual_test",
+            "unit_test",
+            "integration_test",
+            "e2e_test",
+            "code_review",
+            "type_check",
+            "lint_check"
+          ],
+          "description": "How to verify this criterion"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "passed", "failed"],
+          "default": "pending",
+          "description": "Verification status"
+        }
+      },
+      "additionalProperties": false
+    },
+    "unit_test": {
+      "type": "object",
+      "required": ["description", "file_path"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the test verifies"
+        },
+        "file_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the test should be/is located"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "written", "passing", "failing"],
+          "default": "pending",
+          "description": "Test status"
+        }
+      },
+      "additionalProperties": false
+    },
+    "integration_test": {
+      "type": "object",
+      "required": ["description", "components_tested"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the test verifies"
+        },
+        "components_tested": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Components being tested together"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Where the test should be/is located"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "written", "passing", "failing"],
+          "default": "pending",
+          "description": "Test status"
+        }
+      },
+      "additionalProperties": false
+    },
+    "e2e_test": {
+      "type": "object",
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Test scenario name"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Steps to execute"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Where the test should be/is located"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "written", "passing", "failing"],
+          "default": "pending",
+          "description": "Test status"
+        }
+      },
+      "additionalProperties": false
+    },
+    "benchmark": {
+      "type": "object",
+      "required": ["metric", "target", "measurement_method"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What is being measured"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target value (e.g., '< 100ms')"
+        },
+        "measurement_method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How to measure"
+        },
+        "actual": {
+          "type": "string",
+          "description": "Actual measured value"
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether target was met"
+        }
+      },
+      "additionalProperties": false
+    },
+    "quality_gate": {
+      "type": "object",
+      "required": ["gate", "requirement"],
+      "properties": {
+        "gate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Quality gate name"
+        },
+        "requirement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What must pass"
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether gate passed"
+        }
+      },
+      "additionalProperties": false
+    },
+    "commit_record": {
+      "type": "object",
+      "properties": {
+        "sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,40}$",
+          "description": "Git commit SHA"
+        },
+        "message": {
+          "type": "string",
+          "description": "Commit message"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When commit was made"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

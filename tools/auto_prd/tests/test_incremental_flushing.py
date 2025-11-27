@@ -5,9 +5,7 @@ Tests for incremental log flushing behavior in the auto_prd logging system.
 
 import io
 import sys
-import time
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 try:
@@ -16,7 +14,6 @@ try:
         uninstall_print_logger,
         print_flush,
         PRINT_HOOK_INSTALLED,
-        ORIGINAL_PRINT,
     )
 except ImportError:
     from ..logging_utils import (
@@ -24,7 +21,6 @@ except ImportError:
         uninstall_print_logger,
         print_flush,
         PRINT_HOOK_INSTALLED,
-        ORIGINAL_PRINT,
     )
 
 

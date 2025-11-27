@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
-	"github.com/SimoKiihamaki/autodev/internal/runner"
 )
 
 func (m *model) prepareRunLogFile() {
@@ -47,30 +45,6 @@ func (m *model) prepareRunLogFile() {
 	// File writing is handled by the Python process (via --log-file argument) to avoid concurrent file handle issues.
 }
 
-// writeLogHeader is kept as a stub for interface compatibility.
-// Header writing is now handled by the Python runner via --log-file argument
-// to avoid concurrent file handle issues between Go TUI and Python process.
-func (m *model) writeLogHeader() {
-	// No-op: Header writing delegated to Python runner
-}
-
-// buildLogHeader constructs the log header content for persistence
-func buildLogHeader(ts time.Time, selectedPRD, cfgRepoPath, cfgExecutorPolicy, cfgBranch string) []string {
-	headers := []string{
-		fmt.Sprintf("// autodev run started %s", ts.Format(time.RFC3339)),
-		fmt.Sprintf("PRD: %s", selectedPRD),
-		fmt.Sprintf("Repo: %s", cfgRepoPath),
-		fmt.Sprintf("Executor policy: %s", cfgExecutorPolicy),
-	}
-	if cfgBranch != "" {
-		headers = append(headers, fmt.Sprintf("Branch: %s", cfgBranch))
-	}
-	headers = append(headers, "")
-	return headers
-}
-
-// persistLogLine is no longer needed - log persistence is handled by the Python runner via --log-file
-
 func (m *model) closeLogFile(reason string) {
 	// Note: Log file persistence is handled exclusively by the Python process via --log-file argument.
 	// The Go runner and TUI do not write log lines to disk; they only manage the UI state and file path.
@@ -82,27 +56,4 @@ func (m *model) closeLogFile(reason string) {
 		}
 		m.logStatus = summary
 	}
-}
-
-func classifyLevel(line runner.Line) string {
-	switch {
-	case line.Err:
-		return "ERROR"
-	case strings.HasPrefix(line.Text, "⚠️"):
-		return "WARN"
-	case strings.HasPrefix(line.Text, "✓"):
-		return "SUCCESS"
-	default:
-		return "INFO"
-	}
-}
-
-// formatLogEntry formats a log line into a consistent string format for persistence
-func formatLogEntry(line runner.Line) string {
-	ts := line.Time
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	text := strings.TrimRight(line.Text, "\r\n")
-	return fmt.Sprintf("[%s] %s: %s\n", ts.Format(time.RFC3339), classifyLevel(line), text)
 }

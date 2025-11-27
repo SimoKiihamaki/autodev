@@ -5,12 +5,12 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/SimoKiihamaki/autodev/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const (
-	maxLogLines = 2000
-)
+// Note: maxLogLines is configurable via config.UI.MaxLogLines
+// This default is used as a fallback when config is not available.
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
@@ -51,7 +51,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Only clear the flag when save succeeds
 				m.quitAfterSave = false
 				m.cancelQuitConfirm()
-				m.closeLogFile("quit")
+				m.Cleanup()
 				return m, tea.Quit
 			}
 			// On error, preserve quitAfterSave so user can retry saving without re-confirming quit
@@ -69,7 +69,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.runFeedAutoFollow = m.followLogs
 		// Clear log buffer and logs display for new run.
 		m.resetLogState()
-		cmd := m.flash("Run started", defaultToastTTL)
+		cmd := m.flash("Run started", 0)
 		return m, cmd
 
 	case runFinishMsg:
@@ -95,7 +95,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				note = "Run failed: " + trimmed
 			}
 		}
-		return m, m.flash(note, defaultToastTTL)
+		return m, m.flash(note, 0)
+
+	case trackerLoadedMsg:
+		m.tracker = typed.tracker
+		m.trackerErr = typed.err
+		m.trackerLoaded = true
+		return m, nil
 	}
 
 	return m, nil
@@ -160,13 +166,19 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 	// Process any lines first, even if the channel is closed
 	if len(msg.lines) > 0 {
+		// Get max log lines from config (with fallback to default)
+		maxLines := config.DefaultMaxLogLines
+		if m.cfg.UI.MaxLogLines != nil && *m.cfg.UI.MaxLogLines > 0 {
+			maxLines = *m.cfg.UI.MaxLogLines
+		}
+
 		// Prepare batch arrays for run feed processing
 		for _, line := range msg.lines {
 			display, plain := m.formatLogLine(line)
 
 			m.logBuf = append(m.logBuf, display)
-			if len(m.logBuf) > maxLogLines {
-				m.logBuf = m.logBuf[len(m.logBuf)-maxLogLines:]
+			if len(m.logBuf) > maxLines {
+				m.logBuf = m.logBuf[len(m.logBuf)-maxLines:]
 			}
 			m.handleRunFeedLine(display, plain)
 		}
@@ -241,6 +253,6 @@ func (m *model) handleRunFinish(msg runFinishMsg) (model, tea.Cmd) {
 			note = "Run finished."
 		}
 	}
-	cmd := m.flash(note, defaultToastTTL)
+	cmd := m.flash(note, 0)
 	return *m, cmd
 }

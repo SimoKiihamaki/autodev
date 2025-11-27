@@ -10,7 +10,13 @@ import (
 func main() {
 	m := tui.New()
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	if err := p.Start(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		log.Fatal(err)
 	}
+	// Perform cleanup on the final model to release resources (cancel context,
+	// close channels, etc.). Per Bubble Tea docs, the final model can contain
+	// useful state for cleanup after exit. We use CleanupableModel interface
+	// to access this functionality without coupling to concrete type.
+	tui.CleanupFinalModel(finalModel)
 }

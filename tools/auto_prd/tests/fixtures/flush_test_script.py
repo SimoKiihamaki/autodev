@@ -126,7 +126,6 @@ def test_subprocess_output():
 
 
 if __name__ == "__main__":
-    import subprocess
 
     print("=== COMPREHENSIVE FLUSH TESTING STARTED ===", flush=True)
 

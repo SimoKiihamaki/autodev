@@ -18,7 +18,26 @@ import (
 )
 
 const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
-const defaultToastTTL = 4 * time.Second
+
+// CleanupFinalModel performs cleanup on the final model returned by p.Run().
+// It handles the type assertion and calls the model's cleanup logic.
+// This is the recommended way to clean up resources after the TUI exits.
+func CleanupFinalModel(finalModel interface{}) {
+	if m, ok := finalModel.(model); ok {
+		m.cleanup()
+	}
+}
+
+// cleanup performs graceful shutdown without modifying the receiver.
+// Called via CleanupFinalModel after the program exits.
+func (m model) cleanup() {
+	// Cancel any running process
+	if m.cancel != nil {
+		m.cancel()
+	}
+	// Close any open log file
+	m.closeLogFile("cleanup")
+}
 
 // Flag name constants to maintain single source of truth
 const (
@@ -60,15 +79,6 @@ func (c executorChoice) configValue() string {
 		return string(executorClaude)
 	default:
 		return string(executorCodex)
-	}
-}
-
-func (c executorChoice) displayLabel() string {
-	switch c {
-	case executorClaude:
-		return "Claude"
-	default:
-		return "Codex"
 	}
 }
 
@@ -178,6 +188,11 @@ type model struct {
 
 	toast    *toastState
 	toastSeq uint64
+
+	// Tracker state for Progress tab (loaded asynchronously)
+	tracker       *Tracker
+	trackerErr    error
+	trackerLoaded bool
 }
 
 // settingsInputNames defines the navigation order for Settings inputs; keep the
@@ -198,12 +213,9 @@ var envFlagNames = []string{
 }
 
 func New() model {
-	cfg, err := config.Load()
-	var loadStatus string
-	if err != nil {
-		cfg = config.Defaults()
-		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
-	}
+	// Load config; warnings are logged internally by config.Load().
+	// The function always returns a valid config, falling back to defaults.
+	cfg := config.Load()
 
 	m := model{tabIndex: 0, cfg: cfg}
 	m.defaultConfig = config.Defaults()
@@ -263,10 +275,6 @@ func New() model {
 	m.blurAllInputs()
 	m.rescanPRDs()
 
-	if loadStatus != "" {
-		m.status = loadStatus
-	}
-
 	m.resetRunDashboard()
 	m.resolvePythonScript(true)
 	m.updateDirtyState()
@@ -280,7 +288,12 @@ func (m *model) flash(msg string, ttl time.Duration) tea.Cmd {
 		return nil
 	}
 	if ttl <= 0 {
-		ttl = defaultToastTTL
+		// Use configurable toast TTL from config, with fallback to default
+		if m.cfg.UI.ToastTTLMs != nil && *m.cfg.UI.ToastTTLMs > 0 {
+			ttl = time.Duration(*m.cfg.UI.ToastTTLMs) * time.Millisecond
+		} else {
+			ttl = time.Duration(config.DefaultToastTTLMs) * time.Millisecond
+		}
 	}
 	m.toastSeq++
 	id := m.toastSeq
@@ -323,7 +336,7 @@ func (m *model) resetToDefaults() tea.Cmd {
 
 	note := "Configuration reset to defaults"
 	m.status = note
-	if flash := m.flash(note, defaultToastTTL); flash != nil {
+	if flash := m.flash(note, 0); flash != nil {
 		return flash
 	}
 	return nil
@@ -395,18 +408,6 @@ func (m model) Init() tea.Cmd {
 	return m.scanPRDsCmd()
 }
 
-// settingsInputMap returns a shallow copy of the settings input map.
-// The map keys are copied, but the values remain pointers into the model so
-// callers share the same text inputs. Adding or removing entries on the returned
-// map won't affect the model, but mutating the pointed inputs will.
-func (m *model) settingsInputMap() map[string]*textinput.Model {
-	out := make(map[string]*textinput.Model, len(m.settingsInputs))
-	for k, v := range m.settingsInputs {
-		out[k] = v
-	}
-	return out
-}
-
 // resetLogState resets the log buffer and viewport content to initial state
 func (m *model) resetLogState() {
 	m.logBuf = nil
@@ -426,10 +427,7 @@ func (m *model) hasTypingFocus() bool {
 			return true
 		}
 	}
-	if m.prdList.FilterState() == list.Filtering {
-		return true
-	}
-	return false
+	return m.prdList.FilterState() == list.Filtering
 }
 
 func (m *model) SetTyping(on bool) {
@@ -462,7 +460,7 @@ func (m *model) handleSaveShortcut() tea.Cmd {
 		note := "Select a PRD before saving metadata"
 		m.status = note
 		m.lastSaveErr = fmt.Errorf("save aborted: no PRD selected")
-		if flash := m.flash(note, defaultToastTTL); flash != nil {
+		if flash := m.flash(note, 0); flash != nil {
 			return flash
 		}
 		return nil
@@ -509,13 +507,6 @@ func (m *model) moveQuitSelection(delta int) {
 	}
 }
 
-func (m model) quitSelectionLabel() string {
-	if m.quitConfirmIndex < 0 || m.quitConfirmIndex >= len(quitOptions) {
-		return ""
-	}
-	return quitOptions[m.quitConfirmIndex]
-}
-
 func (m model) currentTabID() string {
 	if len(m.tabs) == 0 || m.tabIndex < 0 || m.tabIndex >= len(m.tabs) {
 		return tabIDRun
@@ -523,19 +514,11 @@ func (m model) currentTabID() string {
 	return m.tabs[m.tabIndex]
 }
 
-func (m model) tabCount() int {
-	return len(m.tabs)
-}
-
 func (m model) tabTitleAt(index int) string {
 	if index < 0 || index >= len(m.tabs) {
 		return ""
 	}
 	return tabTitle(m.tabs[index])
-}
-
-func (m model) tabTitleForID(id string) string {
-	return tabTitle(id)
 }
 
 func (m *model) setActiveTabByID(id string) {
@@ -575,4 +558,31 @@ func getLastErrorText(m *model) string {
 		return strings.TrimSpace(m.errMsg)
 	}
 	return ""
+}
+
+// Cleanup performs graceful shutdown of the model's resources.
+// It should be called before exiting the application to ensure:
+// - Any running process is cancelled
+// - Log channels are properly closed
+// - File handles are released
+//
+// Deprecated: Use CleanupFinalModel() instead for post-Run() cleanup.
+// This method is retained for internal use and backwards compatibility.
+func (m *model) Cleanup() {
+	// Cancel any running process
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+	}
+
+	// Close the log channel if still open
+	// Note: only the sender should close channels, and we're not the sender
+	// The logCh is closed by the runner goroutine when it completes
+
+	// Clear large buffers to help GC
+	m.logBuf = nil
+	m.runFeedBuf = nil
+
+	// Close any open log file (though this is now handled by Python)
+	m.closeLogFile("cleanup")
 }
