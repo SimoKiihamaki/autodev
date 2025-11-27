@@ -758,12 +758,14 @@ def generate_tracker(
                     prompt=prompt,
                     repo_root=repo_root,
                     allow_unsafe_execution=allow_unsafe_execution,
+                    dry_run=False,  # Explicit: this path only reached during non-dry-run
                 )
             else:
                 result, stderr = claude_exec(
                     prompt=prompt,
                     repo_root=repo_root,
                     allow_unsafe_execution=allow_unsafe_execution,
+                    dry_run=False,  # Explicit: this path only reached during non-dry-run
                 )
 
             # Validate response before proceeding
@@ -796,6 +798,14 @@ def generate_tracker(
                     e,
                 )
                 raise
+
+    # Guard against empty result if unexpected exception bypassed the retry logic
+    # (e.g., an exception type not listed in the except clause)
+    if not result or not result.strip():
+        raise ValueError(
+            f"No valid response from {executor} after retry loop - "
+            "result is empty (possible uncaught exception)"
+        )
 
     # Extract and parse JSON from response
     try:
