@@ -453,7 +453,7 @@ def cleanup_old_sessions(max_age_days: int = 30, keep_completed: int = 10) -> in
                     completed_sessions.append((checkpoint_file, age_days))
                 except ValueError:
                     logger.warning(
-                        "Skipping checkpoint file %s due to invalid updated_at timestamp: %r",
+                        "Skipping checkpoint file %s: cannot parse updated_at=%r as ISO timestamp",
                         checkpoint_file,
                         updated_at,
                     )

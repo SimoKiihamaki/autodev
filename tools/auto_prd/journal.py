@@ -372,11 +372,14 @@ def load_journal(
     return entries
 
 
-def summarize_journal(entries: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_journal(
+    entries: list[dict[str, Any]], journal_path: Optional[Path] = None
+) -> dict[str, Any]:
     """Generate a summary of journal entries.
 
     Args:
         entries: List of journal entry dictionaries.
+        journal_path: Optional path to the journal file (for error context).
 
     Returns:
         Summary dictionary with statistics and key events.
@@ -453,7 +456,8 @@ def summarize_journal(entries: list[dict[str, Any]]) -> dict[str, Any]:
             summary["duration_ms"] = int((end - start).total_seconds() * 1000)
         except ValueError as e:
             logger.warning(
-                "Failed to parse journal entry timestamps: start_time=%r, end_time=%r. Error: %s",
+                "Failed to parse journal entry timestamps in %s: start_time=%r, end_time=%r. Error: %s",
+                journal_path or "unknown journal",
                 start_time,
                 end_time,
                 e,

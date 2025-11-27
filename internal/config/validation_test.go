@@ -159,15 +159,15 @@ func TestValidateInterFieldMaxLocalItersNegative(t *testing.T) {
 	}
 }
 
-func TestValidateInterFieldMaxLocalItersVeryHigh(t *testing.T) {
+func TestValidateInterFieldMaxLocalItersExtremelyHigh(t *testing.T) {
 	cfg := Defaults()
 	cfg.Timings.MaxLocalIters = intPtr(500)
 
 	result := cfg.ValidateInterField()
 
-	// Should still be valid but with warning
+	// Should still be valid but with warning (threshold is >200)
 	if !result.Valid {
-		t.Error("very high max_local_iters should still be valid")
+		t.Error("extremely high max_local_iters should still be valid")
 	}
 
 	warnings := result.Warnings()
@@ -179,7 +179,7 @@ func TestValidateInterFieldMaxLocalItersVeryHigh(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected warning for very high iteration limit")
+		t.Error("expected warning for extremely high iteration limit")
 	}
 }
 

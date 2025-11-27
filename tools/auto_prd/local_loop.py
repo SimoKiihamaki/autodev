@@ -125,9 +125,15 @@ def orchestrate_local_loop(
             f"Resuming from iteration {start_iteration} (streaks: empty={empty_change_streak}, no_findings={no_findings_streak})"
         )
 
-    # Initialize i before the loop to ensure it's always defined, even if the loop
-    # never runs (when start_iteration > max_iters).
-    i = start_iteration
+    # Handle edge case where start_iteration exceeds max_iters explicitly.
+    if start_iteration > max_iters:
+        logger.warning(
+            "Start iteration (%d) exceeds max_iters (%d); no iterations will be performed.",
+            start_iteration,
+            max_iters,
+        )
+        return tasks_left if tasks_left is not None else -1, appears_complete
+
     for i in range(start_iteration, max_iters + 1):
         print(
             f"\n=== Iteration {i}/{max_iters}: Codex implements next chunk ===",
@@ -315,7 +321,9 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         print("Reached local iteration cap, proceeding to PR step.")
 
     # Mark checkpoint as completed when local loop finishes successfully.
-    # 'i' is initialized before the loop, so it's always defined here.
+    # 'i' is always defined here because:
+    # - The edge case (start_iteration > max_iters) returns early before reaching this code.
+    # - Otherwise, the loop runs at least once, defining 'i'.
     if checkpoint:
         update_phase_state(
             checkpoint,

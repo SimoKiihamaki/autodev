@@ -178,8 +178,8 @@ func (m *model) loadPRDPreviewCmd() tea.Cmd {
 		// Render markdown with glamour
 		rendered, err := glamour.Render(text, "dark")
 		if err != nil {
-			// Fallback to raw text if glamour fails
-			rendered = text
+			// Fallback to raw text if glamour fails, and show error inline
+			rendered = text + "\n\n// (markdown rendering failed: " + err.Error() + ")"
 		}
 
 		return prdPreviewMsg{path: path, content: rendered}
