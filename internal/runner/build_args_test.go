@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 )
 
 // envSliceToMap flattens the env slice returned by BuildArgs for assertions.
@@ -605,14 +606,14 @@ func TestBuildArgsTimeoutEnvVars(t *testing.T) {
 		},
 		{
 			name:          "zero timeouts (no timeout)",
-			codexTimeout:  ptrToInt(0),
-			claudeTimeout: ptrToInt(0),
+			codexTimeout:  utils.IntPtr(0),
+			claudeTimeout: utils.IntPtr(0),
 			wantCodexEnv:  "",
 			wantClaudeEnv: "",
 		},
 		{
 			name:          "codex timeout only",
-			codexTimeout:  ptrToInt(300),
+			codexTimeout:  utils.IntPtr(300),
 			claudeTimeout: nil,
 			wantCodexEnv:  "300",
 			wantClaudeEnv: "",
@@ -620,14 +621,14 @@ func TestBuildArgsTimeoutEnvVars(t *testing.T) {
 		{
 			name:          "claude timeout only",
 			codexTimeout:  nil,
-			claudeTimeout: ptrToInt(600),
+			claudeTimeout: utils.IntPtr(600),
 			wantCodexEnv:  "",
 			wantClaudeEnv: "600",
 		},
 		{
 			name:          "both timeouts set",
-			codexTimeout:  ptrToInt(300),
-			claudeTimeout: ptrToInt(600),
+			codexTimeout:  utils.IntPtr(300),
+			claudeTimeout: utils.IntPtr(600),
 			wantCodexEnv:  "300",
 			wantClaudeEnv: "600",
 		},
@@ -665,8 +666,4 @@ func TestBuildArgsTimeoutEnvVars(t *testing.T) {
 			}
 		})
 	}
-}
-
-func ptrToInt(i int) *int {
-	return &i
 }
