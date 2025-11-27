@@ -820,8 +820,8 @@ func isValidGitBranchName(name string) bool {
 		return false
 	}
 
-	// Cannot start with dot or slash (git spec)
-	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "/") {
+	// Cannot start with dot, slash, or hyphen (git interprets leading hyphen as option)
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "-") {
 		return false
 	}
 	// Cannot end with dot, slash, or .lock (git spec)

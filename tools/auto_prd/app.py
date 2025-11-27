@@ -385,7 +385,13 @@ def run(args) -> None:
                             logger.warning(
                                 "Failed to stage/commit tracker: %s", details
                             )
-                except (IOError, ValueError, RuntimeError, OSError) as exc:
+                except (IOError, OSError) as exc:
+                    logger.warning(
+                        "Tracker generation I/O error: %s", exc, exc_info=True
+                    )
+                    print(f"Warning: Tracker generation I/O error: {exc}", flush=True)
+                    print("Continuing without tracker...", flush=True)
+                except (ValueError, RuntimeError) as exc:
                     logger.warning("Tracker generation failed: %s", exc, exc_info=True)
                     print(f"Warning: Tracker generation failed: {exc}", flush=True)
                     print("Continuing without tracker...", flush=True)

@@ -83,10 +83,7 @@ func TestIsValidGitBranchName(t *testing.T) {
 		"some_branch",
 		"UPPERCASE",
 		"MixedCase123",
-		"-hyphen-start",   // dashes at start/end are allowed per git spec
-		"hyphen-end-",     // dashes at end are allowed
-		"-both-ends-",     // dashes at both ends are allowed
-		"--double-hyphen", // even multiple dashes are allowed
+		"hyphen-end-", // dashes at end are allowed
 	}
 
 	for _, branch := range validBranches {
@@ -96,23 +93,26 @@ func TestIsValidGitBranchName(t *testing.T) {
 	}
 
 	invalidBranches := []string{
-		"",               // empty
-		".hidden",        // starts with dot
-		"/leading-slash", // starts with slash
-		"trailing.",      // ends with dot
-		"trailing/",      // ends with slash
-		"branch.lock",    // ends with .lock
-		"has..dots",      // consecutive dots
-		"has//slashes",   // consecutive slashes
-		"has space",      // contains space
-		"has~tilde",      // contains tilde
-		"has^caret",      // contains caret
-		"has:colon",      // contains colon
-		"has?question",   // contains question mark
-		"has*star",       // contains asterisk
-		"has[bracket",    // contains open bracket
-		"has@{seq",       // contains @{ sequence (security measure)
-		"has\\backslash", // contains backslash
+		"",                // empty
+		".hidden",         // starts with dot
+		"/leading-slash",  // starts with slash
+		"trailing.",       // ends with dot
+		"trailing/",       // ends with slash
+		"branch.lock",     // ends with .lock
+		"has..dots",       // consecutive dots
+		"has//slashes",    // consecutive slashes
+		"has space",       // contains space
+		"has~tilde",       // contains tilde
+		"has^caret",       // contains caret
+		"has:colon",       // contains colon
+		"has?question",    // contains question mark
+		"has*star",        // contains asterisk
+		"has[bracket",     // contains open bracket
+		"has@{seq",        // contains @{ sequence (security measure)
+		"has\\backslash",  // contains backslash
+		"-hyphen-start",   // starts with hyphen (git interprets as option)
+		"-both-ends-",     // starts with hyphen (git interprets as option)
+		"--double-hyphen", // starts with double hyphen (git interprets as option)
 	}
 
 	for _, branch := range invalidBranches {

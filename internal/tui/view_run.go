@@ -248,13 +248,13 @@ func stepStatusForPhase(m model, phase string) StepStatus {
 		return StepSkipped
 	}
 
-	// Find current phase index
+	// Normalize the current phase to a canonical name
+	normalizedCurrent := normalizePhaseToCanonical(currentPhase)
+
+	// Find current phase index using normalized comparison
 	currentIdx := -1
 	for i, p := range phaseOrder {
-		// Match phase names loosely
-		if strings.Contains(currentPhase, p) ||
-			(p == "local" && (strings.Contains(currentPhase, "iteration") || strings.Contains(currentPhase, "implement"))) ||
-			(p == "review" && strings.Contains(currentPhase, "review")) {
+		if p == normalizedCurrent {
 			currentIdx = i
 			break
 		}
@@ -276,4 +276,39 @@ func stepStatusForPhase(m model, phase string) StepStatus {
 		return StepActive
 	}
 	return StepPending
+}
+
+// normalizePhaseToCanonical maps a raw phase string (from log output) to one
+// of the canonical phase names: "local", "pr", or "review". Returns empty
+// string if the phase cannot be mapped to a known canonical name.
+func normalizePhaseToCanonical(phase string) string {
+	phase = strings.ToLower(strings.TrimSpace(phase))
+
+	// Map known patterns to canonical names
+	switch {
+	// Local phase patterns: iterations, implementation, codex tasks
+	case strings.HasPrefix(phase, "iteration"),
+		strings.Contains(phase, "implement"),
+		strings.Contains(phase, "codex applies"),
+		strings.Contains(phase, "coderabbit cli review"),
+		phase == "local":
+		return "local"
+
+	// PR phase patterns: push, branch, open PR
+	case strings.HasPrefix(phase, "pr"),
+		strings.Contains(phase, "pushes branch"),
+		strings.Contains(phase, "opens pr"),
+		strings.Contains(phase, "bot pushes"):
+		return "pr"
+
+	// Review phase patterns: review/fix loop, feedback
+	case strings.Contains(phase, "review/fix"),
+		strings.Contains(phase, "review_fix"),
+		strings.Contains(phase, "entering review"),
+		(strings.Contains(phase, "review") && !strings.Contains(phase, "coderabbit")):
+		return "review"
+
+	default:
+		return ""
+	}
 }
