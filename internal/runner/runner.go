@@ -649,7 +649,7 @@ func validatePythonFlags(flags []string) error {
 		if f == "-X" {
 			// -X must be followed by an option and is only allowed for a safe allowlist (e.g., only "dev")
 			if i+1 >= len(flags) {
-				return fmt.Errorf("python flag -X requires an option argument")
+				return fmt.Errorf("flag -X requires an option argument")
 			}
 			xArg := flags[i+1]
 			allowedX := map[string]bool{"dev": true}

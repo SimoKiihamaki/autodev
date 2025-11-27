@@ -14,6 +14,7 @@ Verification includes:
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -22,6 +23,30 @@ from typing import Any
 
 from .command import run_cmd
 from .logging_utils import logger
+
+
+def _sanitize_filename(name: str, max_length: int = 50) -> str:
+    """Sanitize a string for use as a filename component.
+
+    Strips directories, replaces unsafe characters with underscores,
+    and truncates to a reasonable length.
+
+    Args:
+        name: The string to sanitize
+        max_length: Maximum length of the result
+
+    Returns:
+        A safe filename string, or "unknown" if result would be empty
+    """
+    # Take only the basename (strip any path separators)
+    base = Path(name).name if name else ""
+    # Replace unsafe characters with underscores
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", base)
+    # Remove leading/trailing underscores and collapse multiple underscores
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    # Truncate and ensure non-empty
+    safe = safe[:max_length] if safe else "unknown"
+    return safe
 
 
 @dataclass
@@ -236,8 +261,9 @@ class VerificationProtocol:
                 logger.warning("Unit test entry missing file_path, skipping")
                 test["status"] = "skipped"
                 continue
-            if not Path(file_path).exists():
-                logger.warning(f"Unit test file not found: {file_path}, skipping")
+            full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
+            if not full_path.exists():
+                logger.warning("Unit test file not found: %s, skipping", full_path)
                 test["status"] = "skipped"
                 continue
             cmd = self._build_test_command_for_file(file_path)
@@ -275,9 +301,10 @@ class VerificationProtocol:
                 logger.warning("Integration test entry missing file_path, skipping")
                 test["status"] = "skipped"
                 continue
-            if not Path(file_path).exists():
+            full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
+            if not full_path.exists():
                 logger.warning(
-                    f"Integration test file not found: {file_path}, skipping"
+                    "Integration test file not found: %s, skipping", full_path
                 )
                 test["status"] = "skipped"
                 continue
@@ -315,8 +342,9 @@ class VerificationProtocol:
                 logger.warning("E2E test entry missing file_path, skipping")
                 test["status"] = "skipped"
                 continue
-            if not Path(file_path).exists():
-                logger.warning(f"E2E test file not found: {file_path}, skipping")
+            full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
+            if not full_path.exists():
+                logger.warning("E2E test file not found: %s, skipping", full_path)
                 test["status"] = "skipped"
                 continue
             cmd = self._build_test_command_for_file(file_path, e2e=True)
@@ -592,7 +620,8 @@ class VerificationProtocol:
         # Save test outputs
         all_results = unit_results + integration_results + e2e_results
         for i, result in enumerate(all_results):
-            log_file = feature_evidence_dir / f"test_{i}_{result.name}.log"
+            sanitized_name = _sanitize_filename(result.name) or f"test_{i}"
+            log_file = feature_evidence_dir / f"test_{i}_{sanitized_name}.log"
             log_file.write_text(result.output)
             test_logs.append(str(log_file))
 
