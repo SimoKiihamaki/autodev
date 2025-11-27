@@ -66,7 +66,9 @@ def get_executor_policy() -> str:
         return EXECUTOR_POLICY
 
 
-def policy_runner(policy: str | None, i: int | None = None, phase: str = "implement") -> Tuple[Callable[..., str], str]:
+def policy_runner(
+    policy: str | None, i: int | None = None, phase: str = "implement"
+) -> Tuple[Callable[..., tuple[str, str]], str]:
     """Select an executor/label pair for the requested phase and iteration.
 
     The ``i`` parameter tracks the iteration number emitted by the orchestrator;
@@ -85,12 +87,20 @@ def policy_runner(policy: str | None, i: int | None = None, phase: str = "implem
     if override_key:
         override = (os.getenv(override_key) or "").strip().lower()
         if override in ("codex", "claude"):
-            return (codex_exec, "Codex") if override == "codex" else (claude_exec, "Claude")
+            return (
+                (codex_exec, "Codex")
+                if override == "codex"
+                else (claude_exec, "Claude")
+            )
 
     base_policy = policy or get_executor_policy()
     selected = (base_policy or "").strip().lower()
     if selected not in EXECUTOR_CHOICES:
-        logger.warning("Unknown executor policy %s; defaulting to %s", selected, EXECUTOR_POLICY_DEFAULT)
+        logger.warning(
+            "Unknown executor policy %s; defaulting to %s",
+            selected,
+            EXECUTOR_POLICY_DEFAULT,
+        )
         selected = EXECUTOR_POLICY_DEFAULT
 
     if selected == "codex-only":
@@ -131,12 +141,19 @@ def policy_fallback_runner(
         ) as exc:  # pragma: no cover - fallback best effort
             msg = f"{type(exc).__name__}: {exc}"
             errors.append(f"{current_policy} -> {msg}")
-            logger.warning("Executor %s failed under policy %s: %s", command_name, current_policy, msg)
+            logger.warning(
+                "Executor %s failed under policy %s: %s",
+                command_name,
+                current_policy,
+                msg,
+            )
 
         fallback = get_fallback_policy(current_policy)
         if not fallback:
             break
-        logger.info("Falling back from %s to %s for %s", current_policy, fallback, command_name)
+        logger.info(
+            "Falling back from %s to %s for %s", current_policy, fallback, command_name
+        )
         current_policy = fallback
 
     detail = f"All fallbacks exhausted for {command_name} (policy {policy})"

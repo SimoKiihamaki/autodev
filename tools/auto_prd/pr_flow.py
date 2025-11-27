@@ -27,14 +27,21 @@ def _format_troubleshooting(location: str, manual_step: str) -> str:
     )
 
 
-def _raise_push_error(exc: subprocess.CalledProcessError, branch: str, manual_location: str = "above") -> None:
+def _raise_push_error(
+    exc: subprocess.CalledProcessError, branch: str, manual_location: str = "above"
+) -> None:
     details = extract_called_process_error_details(exc)
     manual = f"Manually push the branch if necessary: `git push -u origin {branch}`"
-    message = f"Failed to push branch '{branch}': {details}\n" + _format_troubleshooting(manual_location, manual)
+    message = (
+        f"Failed to push branch '{branch}': {details}\n"
+        + _format_troubleshooting(manual_location, manual)
+    )
     raise SystemExit(message) from exc
 
 
-def _raise_pr_create_error(exc: subprocess.CalledProcessError, base_branch: str, new_branch: str) -> None:
+def _raise_pr_create_error(
+    exc: subprocess.CalledProcessError, base_branch: str, new_branch: str
+) -> None:
     details = extract_called_process_error_details(exc)
     manual = f"Manually create the PR if necessary: `gh pr create --base {base_branch} --head {new_branch}`"
     message = (
@@ -58,9 +65,7 @@ def open_or_get_pr(
     already_pushed: bool = False,
 ) -> Optional[int]:
     pr_title_raw = f"Implement: {prd_path.name}"
-    pr_body_raw = (
-        f"Implements tasks from {prd_path} via automated executor (Codex/Claude) + CodeRabbit iterative loop."
-    )
+    pr_body_raw = f"Implements tasks from {prd_path} via automated executor (Codex/Claude) + CodeRabbit iterative loop."
     pr_title = scrub_cli_text(pr_title_raw)
     pr_body = scrub_cli_text(pr_body_raw)
 
@@ -74,7 +79,10 @@ Prepare and push a PR for this branch:
 - After success, print: PR_OPENED=YES
 """
     if dry_run:
-        logger.info("Dry run enabled; skipping Codex PR creation routine for branch %s.", new_branch)
+        logger.info(
+            "Dry run enabled; skipping Codex PR creation routine for branch %s.",
+            new_branch,
+        )
         return None
 
     push_performed = already_pushed
@@ -91,7 +99,7 @@ Prepare and push a PR for this branch:
         if pr_runner is codex_exec:
             runner_kwargs["model"] = codex_model
 
-        result = pr_runner(push_prompt, **runner_kwargs)
+        result, _ = pr_runner(push_prompt, **runner_kwargs)
         if "PR_OPENED=YES" in (result or ""):
             push_performed = True
     else:
@@ -120,7 +128,12 @@ Prepare and push a PR for this branch:
         try:
             has_commits = int(out_stripped or "0") > 0
         except ValueError:
-            logger.warning("Could not parse commit count for %s..%s: %r", base_branch, new_branch, out_stripped)
+            logger.warning(
+                "Could not parse commit count for %s..%s: %r",
+                base_branch,
+                new_branch,
+                out_stripped,
+            )
         if not has_commits:
             print("Branch has no commits relative to base; skipping PR creation.")
             return None
@@ -162,7 +175,9 @@ Prepare and push a PR for this branch:
         except subprocess.CalledProcessError as exc:
             details = extract_called_process_error_details(exc)
             if "No commits between" in details:
-                print("GitHub refused to create a PR because the branch matches the base branch.")
+                print(
+                    "GitHub refused to create a PR because the branch matches the base branch."
+                )
                 return None
             _raise_pr_create_error(exc, base_branch, new_branch)
         if pr_number is None:

@@ -332,7 +332,7 @@ class IncrementalWorker:
             runner_kwargs["model"] = self.codex_model
 
         try:
-            output = runner(prompt, **runner_kwargs)
+            output, _ = runner(prompt, **runner_kwargs)
         except (KeyboardInterrupt, SystemExit):
             # Re-raise critical signals without catching them
             raise

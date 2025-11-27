@@ -69,7 +69,7 @@ def codex_exec(
     allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
-) -> str:
+) -> tuple[str, str]:
     os.environ.setdefault("CI", "1")
     allow_flag = allow_unsafe_execution
     if yolo is not None:
@@ -98,15 +98,23 @@ def codex_exec(
     args.extend(["exec", "--model", model, "-"])
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
-        return "DRY_RUN"
-    out, _, _ = run_cmd(
+        return "DRY_RUN", ""
+    out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
         check=True,
         stdin=prompt,
         timeout=get_codex_exec_timeout(),
     )
-    return out
+
+    # Log warning if stdout is empty but stderr has content (may indicate rate limiting)
+    if not out.strip() and stderr.strip():
+        logger.warning(
+            "Codex returned empty stdout. Stderr content: %s",
+            stderr[:500] if len(stderr) > 500 else stderr,
+        )
+
+    return out, stderr
 
 
 def parse_rate_limit_sleep(message: str) -> Optional[int]:
@@ -246,7 +254,7 @@ def claude_exec(
     allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
-) -> str:
+) -> tuple[str, str]:
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
     allow_flag = allow_unsafe_execution
     if yolo is not None:
@@ -279,12 +287,20 @@ def claude_exec(
     args.extend(["-p", "-"])
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
-        return "DRY_RUN"
-    out, _, _ = run_cmd(
+        return "DRY_RUN", ""
+    out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
         check=True,
         stdin=prompt,
         timeout=get_claude_exec_timeout(),
     )
-    return out
+
+    # Log warning if stdout is empty but stderr has content (may indicate rate limiting)
+    if not out.strip() and stderr.strip():
+        logger.warning(
+            "Claude returned empty stdout. Stderr content: %s",
+            stderr[:500] if len(stderr) > 500 else stderr,
+        )
+
+    return out, stderr
