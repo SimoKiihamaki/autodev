@@ -747,6 +747,10 @@ def generate_tracker(
     # Call agent with retry logic
     logger.info("Sending PRD to %s for analysis...", executor)
 
+    # Initialize result variables before retry loop to avoid UnboundLocalError
+    # if an unexpected exception type bypasses the normal assignment path
+    result = ""
+    stderr = ""
     for attempt in range(MAX_TRACKER_GEN_ATTEMPTS):
         try:
             if executor == "codex":
