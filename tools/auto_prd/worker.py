@@ -90,7 +90,7 @@ class IncrementalWorker:
         tracker: dict[str, Any],
         repo_root: Path,
         executor: str = "claude",
-        codex_model: str = "gpt-5-codex",
+        codex_model: str = "gpt-5.1-codex",  # Default to balanced speed/capability variant
         allow_unsafe_execution: bool = True,
         dry_run: bool = False,
     ):

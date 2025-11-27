@@ -232,16 +232,24 @@ class VerificationProtocol:
         # Run specific test files if defined
         for test in unit_tests:
             file_path = test.get("file_path")
-            if file_path and Path(file_path).exists():
-                cmd = self._build_test_command_for_file(file_path)
-                if cmd:
-                    result = self._run_test_command(
-                        test.get("description", file_path), cmd
-                    )
-                    if result:
-                        results.append(result)
-                        # Update test status in tracker
-                        test["status"] = "passing" if result.passed else "failing"
+            if not file_path:
+                logger.warning("Unit test entry missing file_path, skipping")
+                test["status"] = "skipped"
+                continue
+            if not Path(file_path).exists():
+                logger.warning(f"Unit test file not found: {file_path}, skipping")
+                test["status"] = "skipped"
+                continue
+            cmd = self._build_test_command_for_file(file_path)
+            if not cmd:
+                logger.warning(f"Could not build test command for: {file_path}")
+                test["status"] = "skipped"
+                continue
+            result = self._run_test_command(test.get("description", file_path), cmd)
+            if result:
+                results.append(result)
+                # Update test status in tracker
+                test["status"] = "passing" if result.passed else "failing"
 
         return results
 
@@ -263,15 +271,25 @@ class VerificationProtocol:
 
         for test in integration_tests:
             file_path = test.get("file_path")
-            if file_path and Path(file_path).exists():
-                cmd = self._build_test_command_for_file(file_path)
-                if cmd:
-                    result = self._run_test_command(
-                        test.get("description", file_path), cmd
-                    )
-                    if result:
-                        results.append(result)
-                        test["status"] = "passing" if result.passed else "failing"
+            if not file_path:
+                logger.warning("Integration test entry missing file_path, skipping")
+                test["status"] = "skipped"
+                continue
+            if not Path(file_path).exists():
+                logger.warning(
+                    f"Integration test file not found: {file_path}, skipping"
+                )
+                test["status"] = "skipped"
+                continue
+            cmd = self._build_test_command_for_file(file_path)
+            if not cmd:
+                logger.warning(f"Could not build test command for: {file_path}")
+                test["status"] = "skipped"
+                continue
+            result = self._run_test_command(test.get("description", file_path), cmd)
+            if result:
+                results.append(result)
+                test["status"] = "passing" if result.passed else "failing"
 
         return results
 
@@ -293,15 +311,23 @@ class VerificationProtocol:
 
         for test in e2e_tests:
             file_path = test.get("file_path")
-            if file_path and Path(file_path).exists():
-                cmd = self._build_test_command_for_file(file_path, e2e=True)
-                if cmd:
-                    result = self._run_test_command(
-                        test.get("scenario", file_path), cmd
-                    )
-                    if result:
-                        results.append(result)
-                        test["status"] = "passing" if result.passed else "failing"
+            if not file_path:
+                logger.warning("E2E test entry missing file_path, skipping")
+                test["status"] = "skipped"
+                continue
+            if not Path(file_path).exists():
+                logger.warning(f"E2E test file not found: {file_path}, skipping")
+                test["status"] = "skipped"
+                continue
+            cmd = self._build_test_command_for_file(file_path, e2e=True)
+            if not cmd:
+                logger.warning(f"Could not build test command for: {file_path}")
+                test["status"] = "skipped"
+                continue
+            result = self._run_test_command(test.get("scenario", file_path), cmd)
+            if result:
+                results.append(result)
+                test["status"] = "passing" if result.passed else "failing"
 
         return results
 
