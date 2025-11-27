@@ -14,6 +14,7 @@ Verification includes:
 
 from __future__ import annotations
 
+import copy
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -152,7 +153,7 @@ class VerificationProtocol:
         self,
         feature: dict[str, Any],
         tracker: dict[str, Any] | None = None,
-    ) -> VerificationResult:
+    ) -> tuple[VerificationResult, dict[str, Any] | None]:
         """Verify a feature meets all acceptance criteria.
 
         Args:
@@ -160,7 +161,7 @@ class VerificationProtocol:
             tracker: Optional tracker to update with results
 
         Returns:
-            VerificationResult with all test and gate results
+            Tuple of (VerificationResult, updated tracker or None if no tracker provided)
         """
         import time
 
@@ -171,26 +172,31 @@ class VerificationProtocol:
 
         if self.dry_run:
             logger.info("Dry run: skipping actual verification")
-            return VerificationResult(
-                feature_id=feature_id,
-                passed=True,
-                evidence=VerificationEvidence(
-                    verified_at=datetime.now(timezone.utc).isoformat(),
-                    verified_by="dry_run",
+            return (
+                VerificationResult(
+                    feature_id=feature_id,
+                    passed=True,
+                    evidence=VerificationEvidence(
+                        verified_at=datetime.now(timezone.utc).isoformat(),
+                        verified_by="dry_run",
+                    ),
                 ),
+                tracker,
             )
 
-        # Run unit tests
-        unit_results = self._run_unit_tests(feature)
+        # Run unit tests (returns results and status updates separately)
+        unit_results, _unit_statuses = self._run_unit_tests(feature)
 
         # Run integration tests
-        integration_results = self._run_integration_tests(feature)
+        integration_results, _integration_statuses = self._run_integration_tests(
+            feature
+        )
 
         # Run e2e tests (if defined)
-        e2e_results = self._run_e2e_tests(feature)
+        e2e_results, _e2e_statuses = self._run_e2e_tests(feature)
 
         # Run quality gates
-        gate_results = self._run_quality_gates(feature)
+        gate_results, _gate_statuses = self._run_quality_gates(feature)
 
         # Collect evidence
         duration = time.time() - start_time
@@ -218,9 +224,11 @@ class VerificationProtocol:
             evidence=evidence,
         )
 
-        # Update tracker if provided
+        # Compute and apply tracker updates if provided (pure functional approach)
+        updated_tracker = tracker
         if tracker and passed:
-            self._update_tracker_with_results(tracker, feature_id, result)
+            updates = self._compute_tracker_updates(feature_id, result)
+            updated_tracker = self._apply_tracker_updates(tracker, updates)
 
         logger.info(
             "Verification %s for feature %s (%.1fs)",
@@ -229,18 +237,21 @@ class VerificationProtocol:
             duration,
         )
 
-        return result
+        return result, updated_tracker
 
-    def _run_unit_tests(self, feature: dict[str, Any]) -> list[TestResult]:
+    def _run_unit_tests(
+        self, feature: dict[str, Any]
+    ) -> tuple[list[TestResult], dict[str, str]]:
         """Run unit tests for a feature.
 
         Args:
             feature: Feature dictionary
 
         Returns:
-            List of TestResult objects
+            Tuple of (list of TestResult objects, dict mapping file_path to status)
         """
         results: list[TestResult] = []
+        status_updates: dict[str, str] = {}
         testing = feature.get("testing", {})
         unit_tests = testing.get("unit_tests", [])
 
@@ -252,123 +263,134 @@ class VerificationProtocol:
             )
             if result:
                 results.append(result)
-            return results
+            return results, status_updates
 
         # Run specific test files if defined
         for test in unit_tests:
             file_path = test.get("file_path")
             if not file_path:
                 logger.warning("Unit test entry missing file_path, skipping")
-                test["status"] = "skipped"
+                status_updates[test.get("id", "unknown")] = "skipped"
                 continue
             full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
             if not full_path.exists():
                 logger.warning("Unit test file not found: %s, skipping", full_path)
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             cmd = self._build_test_command_for_file(file_path)
             if not cmd:
                 logger.warning(f"Could not build test command for: {file_path}")
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("description", file_path), cmd)
             if result:
                 results.append(result)
-                # Update test status in tracker
-                test["status"] = "passing" if result.passed else "failing"
+                # Return status update separately instead of mutating
+                status_updates[file_path] = "passing" if result.passed else "failing"
 
-        return results
+        return results, status_updates
 
-    def _run_integration_tests(self, feature: dict[str, Any]) -> list[TestResult]:
+    def _run_integration_tests(
+        self, feature: dict[str, Any]
+    ) -> tuple[list[TestResult], dict[str, str]]:
         """Run integration tests for a feature.
 
         Args:
             feature: Feature dictionary
 
         Returns:
-            List of TestResult objects
+            Tuple of (list of TestResult objects, dict mapping file_path to status)
         """
         results: list[TestResult] = []
+        status_updates: dict[str, str] = {}
         testing = feature.get("testing", {})
         integration_tests = testing.get("integration_tests", [])
 
         if not integration_tests:
-            return results
+            return results, status_updates
 
         for test in integration_tests:
             file_path = test.get("file_path")
             if not file_path:
                 logger.warning("Integration test entry missing file_path, skipping")
-                test["status"] = "skipped"
+                status_updates[test.get("id", "unknown")] = "skipped"
                 continue
             full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
             if not full_path.exists():
                 logger.warning(
                     "Integration test file not found: %s, skipping", full_path
                 )
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             cmd = self._build_test_command_for_file(file_path)
             if not cmd:
                 logger.warning(f"Could not build test command for: {file_path}")
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("description", file_path), cmd)
             if result:
                 results.append(result)
-                test["status"] = "passing" if result.passed else "failing"
+                # Return status update separately instead of mutating
+                status_updates[file_path] = "passing" if result.passed else "failing"
 
-        return results
+        return results, status_updates
 
-    def _run_e2e_tests(self, feature: dict[str, Any]) -> list[TestResult]:
+    def _run_e2e_tests(
+        self, feature: dict[str, Any]
+    ) -> tuple[list[TestResult], dict[str, str]]:
         """Run e2e tests for a feature.
 
         Args:
             feature: Feature dictionary
 
         Returns:
-            List of TestResult objects
+            Tuple of (list of TestResult objects, dict mapping file_path to status)
         """
         results: list[TestResult] = []
+        status_updates: dict[str, str] = {}
         testing = feature.get("testing", {})
         e2e_tests = testing.get("e2e_tests", [])
 
         if not e2e_tests:
-            return results
+            return results, status_updates
 
         for test in e2e_tests:
             file_path = test.get("file_path")
             if not file_path:
                 logger.warning("E2E test entry missing file_path, skipping")
-                test["status"] = "skipped"
+                status_updates[test.get("id", "unknown")] = "skipped"
                 continue
             full_path = (Path(self.repo_root) / file_path).expanduser().resolve()
             if not full_path.exists():
                 logger.warning("E2E test file not found: %s, skipping", full_path)
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             cmd = self._build_test_command_for_file(file_path, e2e=True)
             if not cmd:
                 logger.warning(f"Could not build test command for: {file_path}")
-                test["status"] = "skipped"
+                status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("scenario", file_path), cmd)
             if result:
                 results.append(result)
-                test["status"] = "passing" if result.passed else "failing"
+                # Return status update separately instead of mutating
+                status_updates[file_path] = "passing" if result.passed else "failing"
 
-        return results
+        return results, status_updates
 
-    def _run_quality_gates(self, feature: dict[str, Any]) -> list[QualityGateResult]:
+    def _run_quality_gates(
+        self, feature: dict[str, Any]
+    ) -> tuple[list[QualityGateResult], dict[str, bool]]:
         """Run quality gates for a feature.
 
         Args:
             feature: Feature dictionary
 
         Returns:
-            List of QualityGateResult objects
+            Tuple of (list of QualityGateResult objects, dict mapping gate name to passed status)
         """
         results: list[QualityGateResult] = []
+        gate_statuses: dict[str, bool] = {}
         validation = feature.get("validation", {})
         quality_gates = validation.get("quality_gates", [])
 
@@ -387,10 +409,10 @@ class VerificationProtocol:
             result = self._run_quality_gate(gate_name, requirement)
             results.append(result)
 
-            # Update gate status in tracker
-            gate["passed"] = result.passed
+            # Return gate status separately instead of mutating
+            gate_statuses[gate_name] = result.passed
 
-        return results
+        return results, gate_statuses
 
     def _run_quality_gate(self, gate_name: str, requirement: str) -> QualityGateResult:
         """Run a specific quality gate.
@@ -633,58 +655,100 @@ class VerificationProtocol:
             duration_seconds=duration,
         )
 
-    def _update_tracker_with_results(
+    def _compute_tracker_updates(
         self,
-        tracker: dict[str, Any],
         feature_id: str,
         result: VerificationResult,
-    ) -> None:
-        """Update tracker with verification results.
+    ) -> dict[str, Any]:
+        """Compute updates for tracker based on verification results.
+
+        This method returns a pure updates dict without mutating any input.
 
         Args:
-            tracker: Tracker dictionary
             feature_id: Feature ID
             result: Verification result
-        """
-        for feature in tracker.get("features", []):
-            if feature.get("id") == feature_id:
-                feature["verification_evidence"] = {
-                    "verified_at": result.evidence.verified_at,
-                    "verified_by": result.evidence.verified_by,
-                    "test_output_logs": result.evidence.test_output_logs,
-                    "screenshots": result.evidence.screenshots,
-                }
 
-                # Update acceptance criteria status
+        Returns:
+            Dict with updates to apply:
+            - "verification_evidence": dict with verification evidence
+            - "acceptance_criteria_updates": list of dicts with criterion updates
+        """
+        updates: dict[str, Any] = {
+            "feature_id": feature_id,
+            "verification_evidence": {
+                "verified_at": result.evidence.verified_at,
+                "verified_by": result.evidence.verified_by,
+                "test_output_logs": result.evidence.test_output_logs,
+                "screenshots": result.evidence.screenshots,
+            },
+            "acceptance_criteria_updates": [],
+        }
+
+        # Compute acceptance criteria status updates based on verification results
+        criteria_updates: list[dict[str, Any]] = []
+
+        # For unit_test verification method
+        if result.all_tests_passing:
+            criteria_updates.append(
+                {"verification_method": "unit_test", "status": "passed"}
+            )
+
+        # For type_check verification method
+        type_gate = next(
+            (g for g in result.quality_gates if "type" in g.gate.lower()),
+            None,
+        )
+        if type_gate and type_gate.passed:
+            criteria_updates.append(
+                {"verification_method": "type_check", "status": "passed"}
+            )
+
+        # For lint_check verification method
+        lint_gate = next(
+            (g for g in result.quality_gates if "lint" in g.gate.lower()),
+            None,
+        )
+        if lint_gate and lint_gate.passed:
+            criteria_updates.append(
+                {"verification_method": "lint_check", "status": "passed"}
+            )
+
+        updates["acceptance_criteria_updates"] = criteria_updates
+        return updates
+
+    def _apply_tracker_updates(
+        self,
+        tracker: dict[str, Any],
+        updates: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply computed updates to tracker, returning a new tracker.
+
+        Args:
+            tracker: Original tracker dictionary (not mutated)
+            updates: Updates computed by _compute_tracker_updates
+
+        Returns:
+            New tracker dict with updates applied
+        """
+        # Create a deep copy to avoid mutating the original
+        new_tracker = copy.deepcopy(tracker)
+        feature_id = updates["feature_id"]
+
+        for feature in new_tracker.get("features", []):
+            if feature.get("id") == feature_id:
+                feature["verification_evidence"] = updates["verification_evidence"]
+
+                # Apply acceptance criteria updates
                 for criterion in feature.get("acceptance_criteria", []):
-                    # Mark as passed if all relevant tests pass
                     method = criterion.get("verification_method", "")
-                    if method == "unit_test" and result.all_tests_passing:
-                        criterion["status"] = "passed"
-                    elif method == "type_check":
-                        type_gate = next(
-                            (
-                                g
-                                for g in result.quality_gates
-                                if "type" in g.gate.lower()
-                            ),
-                            None,
-                        )
-                        if type_gate and type_gate.passed:
-                            criterion["status"] = "passed"
-                    elif method == "lint_check":
-                        lint_gate = next(
-                            (
-                                g
-                                for g in result.quality_gates
-                                if "lint" in g.gate.lower()
-                            ),
-                            None,
-                        )
-                        if lint_gate and lint_gate.passed:
-                            criterion["status"] = "passed"
+                    for update in updates["acceptance_criteria_updates"]:
+                        if update["verification_method"] == method:
+                            criterion["status"] = update["status"]
+                            break
 
                 break
+
+        return new_tracker
 
 
 def verify_feature(
@@ -693,7 +757,7 @@ def verify_feature(
     tracker: dict[str, Any] | None = None,
     timeout_seconds: int = 300,
     dry_run: bool = False,
-) -> VerificationResult:
+) -> tuple[VerificationResult, dict[str, Any] | None]:
     """Convenience function to verify a feature.
 
     Args:
@@ -704,7 +768,7 @@ def verify_feature(
         dry_run: If True, skip actual verification
 
     Returns:
-        VerificationResult with all test and gate results
+        Tuple of (VerificationResult, updated tracker or None if no tracker provided)
     """
     protocol = VerificationProtocol(
         repo_root=repo_root,

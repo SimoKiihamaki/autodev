@@ -37,6 +37,7 @@ from .git_ops import (
 from .local_loop import orchestrate_local_loop
 from .logging_utils import logger, setup_file_logging
 from .executor import resolve_executor_policy
+from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop
 from .utils import extract_called_process_error_details, now_stamp, slugify
@@ -335,6 +336,59 @@ def run(args) -> None:
             mark_phase_started(checkpoint, "local")
             update_phase_state(checkpoint, "local", {"max_iters": args.max_local_iters})
             save_checkpoint(checkpoint)
+
+            # Generate implementation tracker from PRD (Phase 3.0)
+            # The tracker is the contract between all agent invocations
+            tracker_path = get_tracker_path(repo_root)
+            existing_tracker = load_tracker(repo_root)
+            if existing_tracker is None:
+                print("Generating implementation tracker from PRD...", flush=True)
+                logger.info("Generating tracker for PRD: %s", prd_path)
+
+                # Resolve executor using the validated policy function
+                resolved_local, _, _ = resolve_executor_policy(args.executor_policy)
+                tracker_executor = resolved_local if resolved_local else "claude"
+
+                try:
+                    tracker = generate_tracker(
+                        prd_path=prd_path,
+                        repo_root=repo_root,
+                        executor=tracker_executor,
+                        force=False,
+                        dry_run=args.dry_run,
+                        allow_unsafe_execution=args.allow_unsafe_execution,
+                    )
+                    print(
+                        f"Tracker generated: {tracker['validation_summary']['total_features']} features, "
+                        f"{tracker['validation_summary']['total_tasks']} tasks",
+                        flush=True,
+                    )
+                    logger.info(
+                        "Tracker generated with %d features",
+                        tracker["validation_summary"]["total_features"],
+                    )
+                    # Commit tracker to git using helper functions
+                    if not args.dry_run:
+                        try:
+                            git_stage_all(repo_root)
+                            if git_has_staged_changes(repo_root):
+                                git_commit(
+                                    repo_root,
+                                    "chore(aprd): initialize implementation tracker",
+                                )
+                                logger.info("Committed tracker to git")
+                            else:
+                                logger.debug("No tracker changes to commit")
+                        except subprocess.CalledProcessError:
+                            # May fail if nothing to commit; that's ok
+                            logger.debug("No tracker changes to commit")
+                except (IOError, ValueError, RuntimeError, OSError) as exc:
+                    logger.warning("Tracker generation failed: %s", exc, exc_info=True)
+                    print(f"Warning: Tracker generation failed: {exc}", flush=True)
+                    print("Continuing without tracker...", flush=True)
+            else:
+                print(f"Using existing tracker: {tracker_path}", flush=True)
+                logger.info("Loaded existing tracker from %s", tracker_path)
 
             tasks_left, appears_complete = orchestrate_local_loop(
                 prd_path=prd_path,

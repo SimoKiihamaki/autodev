@@ -27,6 +27,10 @@ from .constants import (
 from .logging_utils import decode_output, logger, truncate_for_log
 from .utils import scrub_cli_text
 
+# Re-export subprocess exceptions for consistent imports across the codebase
+CalledProcessError = subprocess.CalledProcessError
+TimeoutExpired = subprocess.TimeoutExpired
+
 
 REDACT_EQ_PATTERN = re.compile(
     r"(?i)^(?P<prefix>[-]{1,2})?(?P<key>[a-z0-9_]+)=(?P<value>.+)$"

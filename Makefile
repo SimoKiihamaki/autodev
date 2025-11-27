@@ -2,7 +2,7 @@ APP := aprd
 PYTHON := python3
 TOOLS_DIR := tools
 
-.PHONY: build install run clean tidy ci lint lint-go lint-py test test-go test-py fmt fmt-go fmt-py typecheck
+.PHONY: build install run clean tidy ci lint lint-go lint-py test test-go test-go-race test-py fmt fmt-go fmt-py typecheck typecheck-lenient
 
 # Build targets
 build:
@@ -23,7 +23,7 @@ tidy:
 	go mod tidy
 
 # CI target - runs all checks
-ci: lint test
+ci: lint test test-go-race typecheck-lenient
 	@echo "✅ All CI checks passed"
 
 # Linting

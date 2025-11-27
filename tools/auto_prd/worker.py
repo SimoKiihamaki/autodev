@@ -193,9 +193,12 @@ class IncrementalWorker:
                     task["status"] = "blocked"
                     task["blockers"] = result.errors
                     errors.extend(result.errors)
-            except Exception as e:
+            except (KeyboardInterrupt, SystemExit):
+                # Re-raise critical signals without catching them
+                raise
+            except (RuntimeError, ValueError, OSError) as e:
                 error_msg = f"Task {task_id} failed: {e}"
-                logger.error(error_msg)
+                logger.error(error_msg, exc_info=True)
                 task["status"] = "blocked"
                 task["blockers"] = [str(e)]
                 errors.append(error_msg)
@@ -323,34 +326,48 @@ class IncrementalWorker:
 
         try:
             output = runner(prompt, **runner_kwargs)
-
-            # Check for readonly block
-            readonly_indicator = detect_readonly_block(output)
-            if readonly_indicator:
-                return TaskResult(
-                    task_id=task_id,
-                    success=False,
-                    output=output,
-                    errors=[f"Agent entered readonly mode: {readonly_indicator}"],
-                )
-
-            # Try to commit changes
-            commit_sha = self._commit_task_changes(feature, task)
-
-            return TaskResult(
-                task_id=task_id,
-                success=True,
-                output=output,
-                commit_sha=commit_sha,
-            )
-        except Exception as e:
-            logger.error("Task implementation failed: %s", e)
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise critical signals without catching them
+            raise
+        except (RuntimeError, subprocess.CalledProcessError, ValueError, OSError) as e:
+            logger.error("Task runner execution failed: %s", e, exc_info=True)
             return TaskResult(
                 task_id=task_id,
                 success=False,
                 output="",
-                errors=[str(e)],
+                errors=[f"Runner execution failed: {e}"],
             )
+
+        # Check for readonly block
+        readonly_indicator = detect_readonly_block(output)
+        if readonly_indicator:
+            return TaskResult(
+                task_id=task_id,
+                success=False,
+                output=output,
+                errors=[f"Agent entered readonly mode: {readonly_indicator}"],
+            )
+
+        # Try to commit changes (separate try block for commit failures)
+        try:
+            commit_sha = self._commit_task_changes(feature, task)
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise critical signals
+            raise
+        except subprocess.CalledProcessError as e:
+            logger.error("Failed to commit task changes: %s", e, exc_info=True)
+            # Commit failure is not a task failure - log but continue
+            commit_sha = None
+        except (RuntimeError, ValueError, OSError) as e:
+            logger.error("Failed to commit task changes: %s", e, exc_info=True)
+            commit_sha = None
+
+        return TaskResult(
+            task_id=task_id,
+            success=True,
+            output=output,
+            commit_sha=commit_sha,
+        )
 
     def _build_task_prompt(self, feature: dict[str, Any], task: dict[str, Any]) -> str:
         """Build the implementation prompt with tracker context.
