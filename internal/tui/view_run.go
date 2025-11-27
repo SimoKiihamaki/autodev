@@ -85,9 +85,15 @@ func renderLastError(b *strings.Builder, m model) {
 	banner := fmt.Sprintf("Last error: %s", firstLine)
 	b.WriteString(errorBanner.Render(banner) + "\n")
 
-	hints := make([]string, 0, 2)
+	hints := make([]string, 0, 4)
 	if retryKeys := actionKeyLabel(m.keys, tabIDRun, ActConfirm); retryKeys != "" {
-		hints = append(hints, fmt.Sprintf("%s retry", retryKeys))
+		hints = append(hints, fmt.Sprintf("%s retry all", retryKeys))
+	}
+	if skipPRKeys := actionKeyLabel(m.keys, tabIDRun, ActResumeFromPR); skipPRKeys != "" {
+		hints = append(hints, fmt.Sprintf("%s retry from PR", skipPRKeys))
+	}
+	if skipReviewKeys := actionKeyLabel(m.keys, tabIDRun, ActResumeFromReview); skipReviewKeys != "" {
+		hints = append(hints, fmt.Sprintf("%s retry from Review", skipReviewKeys))
 	}
 	if copyKeys := actionKeyLabel(m.keys, tabIDRun, ActCopyError); copyKeys != "" {
 		hints = append(hints, fmt.Sprintf("%s copy error", copyKeys))
