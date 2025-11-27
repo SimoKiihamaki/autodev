@@ -230,7 +230,7 @@ if not out.strip() and stderr.strip():
         stderr[:500] if len(stderr) > 500 else stderr
     )
 
-return out
+return out, stderr
 ```
 
 **For `claude_exec()` (around line 283):** Apply same pattern.
