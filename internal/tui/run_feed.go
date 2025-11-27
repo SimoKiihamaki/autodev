@@ -122,8 +122,7 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 	// Warning patterns - check before success (higher severity)
 	case strings.Contains(lower, "warning"):
 		style = logWarnStyle
-	case strings.Contains(lower, "warn") && !strings.Contains(lower, "warning"):
-		// Only match "warn" if "warning" wasn't already matched (avoid double-check)
+	case strings.Contains(lower, "warn"):
 		style = logWarnStyle
 
 	// System messages - check before generic success patterns
