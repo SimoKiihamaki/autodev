@@ -102,7 +102,13 @@ def get_commit_info(repo_root: Path, sha: str) -> CommitInfo | None:
             timestamp=parts[2],
             author=parts[3],
         )
-    except Exception as e:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        FileNotFoundError,
+        ValueError,
+    ) as e:
         logger.warning("Failed to get commit info for %s: %s", sha, e)
         return None
 
@@ -124,7 +130,14 @@ def verify_commit_exists(repo_root: Path, sha: str) -> bool:
             check=False,
         )
         return exit_code == 0
-    except Exception:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        FileNotFoundError,
+        ValueError,
+    ) as e:
+        logger.debug("Failed to verify commit %s exists: %s", sha, e)
         return False
 
 
@@ -157,7 +170,14 @@ def verify_commits_in_history(
             )
             if exit_code == 0:
                 valid.append(sha)
-        except Exception:
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+            FileNotFoundError,
+            ValueError,
+        ) as e:
+            logger.debug("Failed to verify commit %s in history: %s", sha, e)
             continue
 
     return valid
@@ -189,7 +209,13 @@ def revert_commit(
             error_msg = err or out or "Unknown error"
             return False, f"Failed to revert {sha[:7]}: {error_msg}"
         return True, ""
-    except Exception as e:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        FileNotFoundError,
+        ValueError,
+    ) as e:
         return False, f"Exception reverting {sha[:7]}: {e}"
 
 
@@ -209,7 +235,14 @@ def abort_revert(repo_root: Path) -> bool:
             check=False,
         )
         return exit_code == 0
-    except Exception:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        FileNotFoundError,
+        ValueError,
+    ) as e:
+        logger.debug("Failed to abort revert: %s", e)
         return False
 
 
@@ -230,7 +263,14 @@ def reset_hard(repo_root: Path, ref: str = "HEAD") -> bool:
             check=False,
         )
         return exit_code == 0
-    except Exception:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+        FileNotFoundError,
+        ValueError,
+    ) as e:
+        logger.debug("Failed to reset to %s: %s", ref, e)
         return False
 
 
