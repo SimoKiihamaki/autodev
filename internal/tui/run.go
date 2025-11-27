@@ -255,7 +255,7 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.PythonScript = strings.TrimSpace(m.inPyScript.Value())
 	dst.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
 
-	const numNumericFields = 4 // Update if more numeric fields are added
+	const numNumericFields = 6 // Update if more numeric fields are added
 	invalid := make([]string, 0, numNumericFields)
 	parseErrs := make([]numericParseError, 0, numNumericFields)
 
@@ -295,6 +295,20 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 		}
 		val := v
 		dst.Timings.MaxLocalIters = &val
+	})
+	setNumeric(m.inCodexTimeout.Value(), "Codex timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Timings.CodexTimeoutSeconds = &val
+	})
+	setNumeric(m.inClaudeTimeout.Value(), "Claude timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Timings.ClaudeTimeoutSeconds = &val
 	})
 
 	dst.Flags.AllowUnsafe = m.flagAllowUnsafe

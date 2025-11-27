@@ -63,14 +63,19 @@ func renderExecutorsGroup(b *strings.Builder, m model) {
 
 // renderTimingsGroup renders the timings settings group.
 func renderTimingsGroup(b *strings.Builder, m model) {
-	timingsContent := lipgloss.JoinHorizontal(lipgloss.Top,
+	timingsRow1 := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.inWaitMin.View()+"  ",
 		m.inPollSec.View()+"  ",
 		m.inIdleMin.View()+"  ",
 		m.inMaxIters.View(),
 	)
+	timingsRow2 := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inCodexTimeout.View()+"  ",
+		m.inClaudeTimeout.View(),
+	)
+	timingsContent := lipgloss.JoinVertical(lipgloss.Left, timingsRow1, timingsRow2)
 	timingsBox := NewBorderedBox("Timings", timingsContent)
-	timingsBox.Focused = isInSettingsGroup(m.focusedInput, []string{"waitmin", "pollsec", "idlemin", "maxiters"})
+	timingsBox.Focused = isInSettingsGroup(m.focusedInput, []string{"waitmin", "pollsec", "idlemin", "maxiters", "codextimeout", "claudetimeout"})
 	b.WriteString(timingsBox.Render() + "\n")
 }
 

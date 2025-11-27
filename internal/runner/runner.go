@@ -535,6 +535,8 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		config.EnvExecutorPR,
 		config.EnvExecutorReviewFix,
 		config.EnvAllowUnsafeExecution,
+		config.EnvCodexTimeoutSeconds,
+		config.EnvClaudeTimeoutSeconds,
 		"CI",
 	)
 
@@ -561,6 +563,14 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		executorVars[config.EnvAllowUnsafeExecution] = "1"
 		// CI=1 is removed during sanitization and re-added here when AllowUnsafe is true
 		env = append(env, "CI=1")
+	}
+
+	// Set timeout environment variables if configured (> 0 means enabled)
+	if cfg.Timings.CodexTimeoutSeconds != nil && *cfg.Timings.CodexTimeoutSeconds > 0 {
+		executorVars[config.EnvCodexTimeoutSeconds] = fmt.Sprint(*cfg.Timings.CodexTimeoutSeconds)
+	}
+	if cfg.Timings.ClaudeTimeoutSeconds != nil && *cfg.Timings.ClaudeTimeoutSeconds > 0 {
+		executorVars[config.EnvClaudeTimeoutSeconds] = fmt.Sprint(*cfg.Timings.ClaudeTimeoutSeconds)
 	}
 
 	env = setExecutorEnv(env, executorVars)

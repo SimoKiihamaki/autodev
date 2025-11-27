@@ -8,20 +8,22 @@ import (
 )
 
 var settingsGrid = map[string][2]int{
-	"repo":         {0, 0},
-	"base":         {1, 0},
-	"branch":       {2, 0},
-	"codex":        {3, 0},
-	"pycmd":        {4, 0},
-	"pyscript":     {5, 0},
-	"policy":       {6, 0},
-	"toggleLocal":  {7, 0},
-	"togglePR":     {7, 1},
-	"toggleReview": {7, 2},
-	"waitmin":      {8, 0},
-	"pollsec":      {8, 1},
-	"idlemin":      {8, 2},
-	"maxiters":     {8, 3},
+	"repo":          {0, 0},
+	"base":          {1, 0},
+	"branch":        {2, 0},
+	"codex":         {3, 0},
+	"pycmd":         {4, 0},
+	"pyscript":      {5, 0},
+	"policy":        {6, 0},
+	"toggleLocal":   {7, 0},
+	"togglePR":      {7, 1},
+	"toggleReview":  {7, 2},
+	"waitmin":       {8, 0},
+	"pollsec":       {8, 1},
+	"idlemin":       {8, 2},
+	"maxiters":      {8, 3},
+	"codextimeout":  {9, 0},
+	"claudetimeout": {9, 1},
 }
 
 func (m *model) blurAllInputs() {
@@ -36,6 +38,8 @@ func (m *model) blurAllInputs() {
 	m.inPollSec.Blur()
 	m.inIdleMin.Blur()
 	m.inMaxIters.Blur()
+	m.inCodexTimeout.Blur()
+	m.inClaudeTimeout.Blur()
 	m.prompt.Blur()
 	m.tagInput.Blur()
 	m.focusedInput = ""
@@ -72,6 +76,10 @@ func (m *model) focusInput(inputName string) {
 		m.inIdleMin.Focus()
 	case "maxiters":
 		m.inMaxIters.Focus()
+	case "codextimeout":
+		m.inCodexTimeout.Focus()
+	case "claudetimeout":
+		m.inClaudeTimeout.Focus()
 	case "prompt":
 		m.prompt.Focus()
 	default:
