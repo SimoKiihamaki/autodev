@@ -964,6 +964,8 @@ func ensureScriptDirWhitelisted(env []string, scriptDir string) []string {
 		newEnv[idx] = entry
 		return newEnv
 	}
+	// Defensive copy: env[:len(env):len(env)] creates a new slice with zero extra capacity,
+	// forcing append to allocate a new backing array and preventing mutation of the original env.
 	return append(env[:len(env):len(env)], entry)
 }
 

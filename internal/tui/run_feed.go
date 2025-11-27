@@ -11,6 +11,10 @@ import (
 	"github.com/SimoKiihamaki/autodev/internal/runner"
 )
 
+// reWordError matches "error" as a whole word, avoiding false positives like
+// "error-free" or "without errors". Uses word boundary matching.
+var reWordError = regexp.MustCompile(`(?i)\berror\b`)
+
 const (
 	feedBufCap           = 800
 	iterIndexUnknown     = -1 // iteration index provided but failed to parse
@@ -116,7 +120,7 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 		style = logErrorStyle
 	case strings.Contains(lower, "exception"):
 		style = logErrorStyle
-	case strings.Contains(lower, "error") && !strings.Contains(lower, "no error"):
+	case reWordError.MatchString(lower):
 		style = logErrorStyle
 
 	// Warning patterns - check before success (higher severity)
