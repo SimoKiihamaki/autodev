@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 )
 
 type prdScanMsg struct{ items []list.Item }
@@ -153,4 +154,34 @@ func formatPRDDisplay(path string) string {
 		return base
 	}
 	return fmt.Sprintf("%s · %s", base, prettyDir)
+}
+
+// loadPRDPreviewCmd loads and renders a markdown preview for the selected PRD
+func (m *model) loadPRDPreviewCmd() tea.Cmd {
+	if m.selectedPRD == "" {
+		return nil
+	}
+	path := m.selectedPRD
+	return func() tea.Msg {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return prdPreviewMsg{path: path, err: err}
+		}
+
+		// Truncate if too large
+		text := string(content)
+		const maxPreviewSize = 10000
+		if len(text) > maxPreviewSize {
+			text = text[:maxPreviewSize] + "\n\n... (truncated, file too large for preview)"
+		}
+
+		// Render markdown with glamour
+		rendered, err := glamour.Render(text, "dark")
+		if err != nil {
+			// Fallback to raw text if glamour fails, and show error inline
+			rendered = text + "\n\n// (markdown rendering failed: " + err.Error() + ")"
+		}
+
+		return prdPreviewMsg{path: path, content: rendered}
+	}
 }

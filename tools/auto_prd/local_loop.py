@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from .agents import codex_exec, coderabbit_has_findings, coderabbit_prompt_only
+from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
+from .logging_utils import logger
 from .policy import policy_runner
 from .utils import checkbox_stats, detect_readonly_block, parse_tasks_left
 
@@ -55,19 +57,84 @@ def orchestrate_local_loop(
     codex_model: str,
     allow_unsafe_execution: bool,
     dry_run: bool,
+    checkpoint: Optional[dict[str, Any]] = None,
 ) -> Tuple[int, bool]:
+    """Orchestrate the local Codex/CodeRabbit iteration loop.
+
+    Args:
+        prd_path: Path to the PRD file.
+        repo_root: Repository root directory.
+        base_branch: Base branch for CodeRabbit comparison.
+        max_iters: Maximum number of iterations.
+        codex_model: Codex model to use.
+        allow_unsafe_execution: Allow unsafe execution mode.
+        dry_run: If True, skip actual execution.
+        checkpoint: Optional checkpoint dict for resume support.
+
+    Returns:
+        Tuple of (tasks_left, appears_complete).
+    """
     unchecked, total_checkboxes = checkbox_stats(prd_path)
     print(f"Unchecked checkboxes in PRD (heuristic): {unchecked}/{total_checkboxes}")
-    tasks_left: Optional[int] = None
+
+    # Initialize state - restore from checkpoint if resuming
+    # Defensive checks for potentially corrupted or missing checkpoint data
+    local_state: dict = {}
+    if (
+        checkpoint
+        and isinstance(checkpoint, dict)
+        and "phases" in checkpoint
+        and isinstance(checkpoint.get("phases"), dict)
+        and "local" in checkpoint["phases"]
+        and isinstance(checkpoint["phases"].get("local"), dict)
+    ):
+        local_state = checkpoint["phases"]["local"]
+
+    start_iteration = (
+        local_state.get("iteration", 0) + 1
+        if local_state.get("status") == "in_progress"
+        else 1
+    )
+
+    # Restore tasks_left from checkpoint if present.
+    # Use explicit key check to distinguish between:
+    # - Key missing: no checkpoint data (tasks_left = None)
+    # - Key present with value >= 0: valid task count
+    # - Key present with value -1: sentinel for "no tasks_left reported"
+    if "tasks_left" in local_state:
+        stored_tasks_left = local_state["tasks_left"]
+        tasks_left: Optional[int] = (
+            stored_tasks_left if stored_tasks_left >= 0 else None
+        )
+    else:
+        tasks_left: Optional[int] = None
     appears_complete = False
-    no_findings_streak = 0
-    skipped_review_streak = 0
-    qa_context_shared = False
+    no_findings_streak = local_state.get("no_findings_streak", 0)
+    skipped_review_streak = local_state.get("skipped_review_streak", 0)
+    qa_context_shared = local_state.get("qa_context_shared", False)
+    empty_change_streak = local_state.get("empty_change_streak", 0)
+
+    # Get current git state
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
-    empty_change_streak = 0
 
-    for i in range(1, max_iters + 1):
+    # If resuming, restore from checkpoint state if available
+    if start_iteration > 1:
+        logger.info("Resuming local loop from iteration %d", start_iteration)
+        print(
+            f"Resuming from iteration {start_iteration} (streaks: empty={empty_change_streak}, no_findings={no_findings_streak})"
+        )
+
+    # Handle edge case where start_iteration exceeds max_iters explicitly.
+    if start_iteration > max_iters:
+        logger.warning(
+            "Start iteration (%d) exceeds max_iters (%d); no iterations will be performed.",
+            start_iteration,
+            max_iters,
+        )
+        return tasks_left if tasks_left is not None else -1, appears_complete
+
+    for i in range(start_iteration, max_iters + 1):
         print(
             f"\n=== Iteration {i}/{max_iters}: Codex implements next chunk ===",
             flush=True,
@@ -199,6 +266,26 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
             done_by_checkboxes, done_by_codex, has_findings, tasks_left
         )
 
+        # Save checkpoint after each iteration
+        if checkpoint:
+            update_phase_state(
+                checkpoint,
+                "local",
+                {
+                    "status": "in_progress",
+                    "iteration": i,
+                    "tasks_left": tasks_left if tasks_left is not None else -1,
+                    "no_findings_streak": no_findings_streak,
+                    "empty_change_streak": empty_change_streak,
+                    "skipped_review_streak": skipped_review_streak,
+                    "qa_context_shared": qa_context_shared,
+                    "last_head_sha": head_after_iteration,
+                    "last_status_snapshot": list(status_after_iteration),
+                },
+            )
+            save_checkpoint(checkpoint)
+            logger.debug("Saved checkpoint at iteration %d", i)
+
         if not repo_changed_after_actions:
             if should_stop:
                 print(completion_msg)
@@ -232,5 +319,26 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
             break
     else:
         print("Reached local iteration cap, proceeding to PR step.")
+
+    # Mark checkpoint as completed when local loop finishes successfully.
+    # 'i' is always defined here because:
+    # - The edge case (start_iteration > max_iters) returns early before reaching this code.
+    # - Otherwise, the loop runs at least once, defining 'i'.
+    if checkpoint:
+        update_phase_state(
+            checkpoint,
+            "local",
+            {
+                "status": "completed",
+                "iteration": i,
+                "tasks_left": tasks_left if tasks_left is not None else -1,
+                "no_findings_streak": no_findings_streak,
+                "empty_change_streak": empty_change_streak,
+                "skipped_review_streak": skipped_review_streak,
+                "qa_context_shared": qa_context_shared,
+            },
+        )
+        save_checkpoint(checkpoint)
+        logger.debug("Marked local phase as completed")
 
     return tasks_left if tasks_left is not None else -1, appears_complete

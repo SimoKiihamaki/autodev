@@ -100,15 +100,18 @@ type model struct {
 
 	savedConfig config.Config
 	dirty       bool
+	termWidth   int // Terminal width for responsive layouts
 
 	keys     KeyMap
 	typing   bool
 	showHelp bool
 
-	prdList     list.Model
-	selectedPRD string
-	tags        []string
-	tagInput    textinput.Model
+	prdList      list.Model
+	selectedPRD  string
+	tags         []string
+	tagInput     textinput.Model
+	prdPreview   viewport.Model // Markdown preview viewport
+	prdPaneRatio float64        // Left pane width ratio (default 0.4)
 
 	inRepo       textinput.Model
 	inBase       textinput.Model
@@ -216,6 +219,11 @@ func New() model {
 	m.prdList.SetShowHelp(false)
 	m.prdList.SetFilteringEnabled(true)
 	m.prdList.DisableQuitKeybindings()
+
+	// Initialize PRD preview viewport
+	m.prdPreview = viewport.New(60, 20)
+	m.prdPreview.SetContent("")
+	m.prdPaneRatio = 0.4
 
 	m.initSettingsInputs()
 	m.initExecutorChoices()

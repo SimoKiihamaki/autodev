@@ -27,12 +27,47 @@ const toggleHint = "Enter/Space to switch Codex/Claude"
 // inputFocusHelpTemplate expects the input name as the first argument.
 const inputFocusHelpTemplate = "Input focused: %s (↑/↓/←/→ to navigate, Enter/Esc to blur)"
 
+// footerActions defines priority actions per tab for the contextual help footer
+var footerActions = map[string][]Action{
+	tabIDRun:      {ActConfirm, ActToggleFollow, ActCopyError, ActQuit},
+	tabIDPRD:      {ActConfirm, ActFocusTags, ActRescanPRDs, ActSave},
+	tabIDSettings: {ActNavigateDown, ActConfirm, ActCancel, ActSave},
+	tabIDEnv:      {ActConfirm, ActNavigateDown, ActSave},
+	tabIDPrompt:   {ActConfirm, ActCancel, ActSave},
+	tabIDLogs:     {ActToggleFollow, ActScrollBottom, ActPageDown},
+	tabIDHelp:     {ActQuit, ActHelp},
+}
+
 func focusStyle(active bool) lipgloss.Style {
 	style := lipgloss.NewStyle()
 	if active {
 		style = style.Background(lipgloss.Color(focusedBgColor))
 	}
 	return style
+}
+
+// renderContextualFooter generates a context-sensitive help footer for the current tab
+func renderContextualFooter(tabID string, keys KeyMap) string {
+	actions, ok := footerActions[tabID]
+	if !ok || len(actions) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, act := range actions {
+		keyLabel := actionKeyLabel(keys, tabID, act)
+		if keyLabel == "" {
+			continue
+		}
+		actionLabel := keys.Label(act)
+		parts = append(parts, fmt.Sprintf("%s %s", keyLabel, actionLabel))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return helpStyle.Render(strings.Join(parts, " · "))
 }
 
 func tabShortcutLabel(keys KeyMap, idx int) string {
@@ -136,15 +171,61 @@ func (m model) View() string {
 }
 
 func renderStatusBar(b *strings.Builder, m model) {
-	message, style := statusBarMessage(m)
-	if message == "" {
-		return
+	segments := []PowerlineSegment{}
+
+	// Tab indicator (left segment)
+	tabName := m.tabTitleAt(m.tabIndex)
+	segments = append(segments, PowerlineSegment{
+		Text:  tabName,
+		Style: powerlineLeftStyle,
+	})
+
+	// PRD indicator (if selected)
+	if m.selectedPRD != "" {
+		prdName := abbreviatePath(m.selectedPRD)
+		if len(prdName) > 25 {
+			prdName = "..." + prdName[len(prdName)-22:]
+		}
+		segments = append(segments, PowerlineSegment{
+			Text:  prdName,
+			Style: powerlineCenterStyle,
+		})
 	}
-	if b.Len() > 0 {
+
+	// Run phase indicator (if running)
+	if m.running && m.runPhase != "" {
+		phaseText := m.runPhase
+		if m.runIterCurrent > 0 {
+			if m.runIterTotal > 0 {
+				phaseText = fmt.Sprintf("%s %d/%d", m.runPhase, m.runIterCurrent, m.runIterTotal)
+			} else {
+				phaseText = fmt.Sprintf("%s %d", m.runPhase, m.runIterCurrent)
+			}
+		}
+		segments = append(segments, PowerlineSegment{
+			Text:  phaseText,
+			Style: powerlineRightStyle,
+		})
+	}
+
+	// Status/toast message
+	message, style := statusBarMessage(m)
+	if message != "" {
+		segments = append(segments, PowerlineSegment{
+			Text:  message,
+			Style: style,
+		})
+	}
+
+	// Render the powerline bar
+	if len(segments) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		bar := NewPowerlineBar(segments)
+		b.WriteString(bar.Render())
 		b.WriteString("\n")
 	}
-	b.WriteString(style.Render(message))
-	b.WriteString("\n")
 }
 
 func statusBarMessage(m model) (string, lipgloss.Style) {
@@ -183,9 +264,102 @@ func classifyStatusStyle(text string) lipgloss.Style {
 	}
 }
 
+// renderProgressStepper creates a visual progress indicator for the run phases
+func renderProgressStepper(m model) string {
+	steps := []StepperStep{}
+
+	if m.runLocal {
+		steps = append(steps, StepperStep{Label: "Local", Status: stepStatusForPhase(m, "local")})
+	}
+	if m.runPR {
+		steps = append(steps, StepperStep{Label: "PR", Status: stepStatusForPhase(m, "pr")})
+	}
+	if m.runReview {
+		steps = append(steps, StepperStep{Label: "Review", Status: stepStatusForPhase(m, "review")})
+	}
+
+	if len(steps) == 0 {
+		return ""
+	}
+
+	return NewStepper(steps).Render()
+}
+
+// stepStatusForPhase determines the status of a phase based on current run state
+func stepStatusForPhase(m model, phase string) StepStatus {
+	if !m.running {
+		return StepPending
+	}
+
+	currentPhase := strings.ToLower(m.runPhase)
+
+	// Empty runPhase during active run indicates preparation/starting phase.
+	// In this case, the first enabled phase will show as active (handled below
+	// when currentIdx remains -1).
+
+	// Determine phase order indices
+	phaseOrder := []string{}
+	if m.runLocal {
+		phaseOrder = append(phaseOrder, "local")
+	}
+	if m.runPR {
+		phaseOrder = append(phaseOrder, "pr")
+	}
+	if m.runReview {
+		phaseOrder = append(phaseOrder, "review")
+	}
+
+	// Find target phase index
+	targetIdx := -1
+	for i, p := range phaseOrder {
+		if p == phase {
+			targetIdx = i
+			break
+		}
+	}
+	if targetIdx == -1 {
+		return StepSkipped
+	}
+
+	// Find current phase index
+	currentIdx := -1
+	for i, p := range phaseOrder {
+		// Match phase names loosely
+		if strings.Contains(currentPhase, p) ||
+			(p == "local" && (strings.Contains(currentPhase, "iteration") || strings.Contains(currentPhase, "implement"))) ||
+			(p == "review" && strings.Contains(currentPhase, "review")) {
+			currentIdx = i
+			break
+		}
+	}
+
+	// If no current phase detected, we're still preparing
+	if currentIdx == -1 {
+		if targetIdx == 0 {
+			return StepActive // First phase is active during preparation
+		}
+		return StepPending
+	}
+
+	// Determine status based on position
+	if targetIdx < currentIdx {
+		return StepComplete
+	}
+	if targetIdx == currentIdx {
+		return StepActive
+	}
+	return StepPending
+}
+
 func renderRunView(b *strings.Builder, m model) {
 	if m.running || len(m.runFeedBuf) > 0 {
 		b.WriteString(sectionTitle.Render("Run Dashboard") + "\n")
+
+		// Progress stepper
+		if stepper := renderProgressStepper(m); stepper != "" {
+			b.WriteString(stepper + "\n\n")
+		}
+
 		b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 		b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 		b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
@@ -304,6 +478,12 @@ func renderRunView(b *strings.Builder, m model) {
 	}
 
 	b.WriteString(sectionTitle.Render("Run") + "\n")
+
+	// Progress stepper shows planned phases
+	if stepper := renderProgressStepper(m); stepper != "" {
+		b.WriteString(stepper + "\n\n")
+	}
+
 	b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 	b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
 	b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
@@ -318,8 +498,25 @@ func renderRunView(b *strings.Builder, m model) {
 }
 
 func renderPRDView(b *strings.Builder, m model) {
-	b.WriteString(sectionTitle.Render("PRD Selection") + "\n")
-	b.WriteString(m.prdList.View() + "\n")
+	b.WriteString(sectionTitle.Render("PRD Selection & Preview") + "\n")
+
+	// Left pane: file list
+	leftContent := m.prdList.View()
+
+	// Right pane: markdown preview
+	var rightContent string
+	if m.selectedPRD != "" {
+		previewBox := NewBorderedBox("Preview", m.prdPreview.View())
+		rightContent = previewBox.Render()
+	} else {
+		rightContent = helpStyle.Render("Select a PRD to preview its contents...")
+	}
+
+	// Render split pane
+	pane := NewSplitPane(leftContent, rightContent, m.prdPaneRatio)
+	b.WriteString(pane.Render(m.termWidth) + "\n")
+
+	// Selection info below the split pane
 	if m.selectedPRD != "" {
 		b.WriteString(okStyle.Render("Selected: "+abbreviatePath(m.selectedPRD)) + "\n")
 	} else {
@@ -328,27 +525,51 @@ func renderPRDView(b *strings.Builder, m model) {
 	if len(m.tags) > 0 {
 		b.WriteString("Tags: " + strings.Join(m.tags, ", ") + "\n")
 	}
-	b.WriteString("t add tag · r rescan · Enter select · ←/→ filter · Ctrl+S save\n")
+	b.WriteString(renderContextualFooter(tabIDPRD, m.keys) + "\n")
 }
 
 func renderSettingsView(b *strings.Builder, m model) {
-	b.WriteString(sectionTitle.Render("Settings") + "\n")
-	b.WriteString(m.inRepo.View() + "\n")
-	b.WriteString(m.inBase.View() + "\n")
-	b.WriteString(m.inBranch.View() + "\n")
-	b.WriteString(m.inCodexModel.View() + "\n")
-	b.WriteString(m.inPyCmd.View() + "\n")
-	b.WriteString(m.inPyScript.View() + "\n")
-	b.WriteString(m.inPolicy.View() + "\n")
+	b.WriteString(sectionTitle.Render("Settings") + "\n\n")
+
+	// Repository group
+	repoContent := lipgloss.JoinVertical(lipgloss.Left,
+		m.inRepo.View(),
+		m.inBase.View(),
+		m.inBranch.View(),
+	)
+	repoBox := NewBorderedBox("Repository", repoContent)
+	repoBox.Focused = isInSettingsGroup(m.focusedInput, []string{"repo", "base", "branch"})
+	b.WriteString(repoBox.Render() + "\n\n")
+
+	// Executors group
 	localToggle := renderExecutorToggle(executorLocalLabel, m.execLocalChoice, m.focusedInput == "toggleLocal")
 	prToggle := renderExecutorToggle(executorPRLabel, m.execPRChoice, m.focusedInput == "togglePR")
 	reviewToggle := renderExecutorToggle(executorReviewLabel, m.execReviewChoice, m.focusedInput == "toggleReview")
-	b.WriteString(localToggle + toggleSeparator + prToggle + toggleSeparator + reviewToggle + "\n")
-	b.WriteString(m.inWaitMin.View() + "  ")
-	b.WriteString(m.inPollSec.View() + "  ")
-	b.WriteString(m.inIdleMin.View() + "  ")
-	b.WriteString(m.inMaxIters.View() + "\n")
+	togglesLine := localToggle + toggleSeparator + prToggle + toggleSeparator + reviewToggle
 
+	execContent := lipgloss.JoinVertical(lipgloss.Left,
+		m.inCodexModel.View(),
+		m.inPyCmd.View(),
+		m.inPyScript.View(),
+		m.inPolicy.View(),
+		togglesLine,
+	)
+	execBox := NewBorderedBox("Executors", execContent)
+	execBox.Focused = isInSettingsGroup(m.focusedInput, []string{"codex", "pycmd", "pyscript", "policy", "toggleLocal", "togglePR", "toggleReview"})
+	b.WriteString(execBox.Render() + "\n\n")
+
+	// Timings group
+	timingsContent := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inWaitMin.View()+"  ",
+		m.inPollSec.View()+"  ",
+		m.inIdleMin.View()+"  ",
+		m.inMaxIters.View(),
+	)
+	timingsBox := NewBorderedBox("Timings", timingsContent)
+	timingsBox.Focused = isInSettingsGroup(m.focusedInput, []string{"waitmin", "pollsec", "idlemin", "maxiters"})
+	b.WriteString(timingsBox.Render() + "\n")
+
+	// Help text
 	if m.focusedInput != "" {
 		if isExecutorToggle(m.focusedInput) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf("Toggle focused: %s (%s, arrows to navigate, Esc to blur)", executorToggleLabel(m.focusedInput), toggleHint)) + "\n")
@@ -356,9 +577,18 @@ func renderSettingsView(b *strings.Builder, m model) {
 			b.WriteString("\n" + okStyle.Render(fmt.Sprintf(inputFocusHelpTemplate, m.focusedInput)) + "\n")
 		}
 	} else {
-		// Use KeyMap to generate help text for the settings tab
 		b.WriteString("\n" + overlayHelpSection("Settings", m.keys.HelpEntriesForTab(tabIDSettings)) + "\n")
 	}
+}
+
+// isInSettingsGroup checks if the focused input is within a settings group
+func isInSettingsGroup(input string, group []string) bool {
+	for _, g := range group {
+		if input == g {
+			return true
+		}
+	}
+	return false
 }
 
 func renderExecutorToggle(label string, choice executorChoice, focused bool) string {
@@ -435,6 +665,7 @@ func renderLogsView(b *strings.Builder, m model) {
 		b.WriteString(helpStyle.Render("Log file: "+m.logStatus) + "\n")
 	}
 	b.WriteString(m.logs.View() + "\n")
+	b.WriteString(renderContextualFooter(tabIDLogs, m.keys) + "\n")
 }
 
 func renderHelpView(b *strings.Builder, m model) {

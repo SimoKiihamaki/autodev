@@ -27,6 +27,16 @@ const (
 	criticalLogSendTimeout = 2 * time.Second
 )
 
+// Message types used for Bubble Tea's Update loop.
+// These messages drive state changes in the TUI:
+//   - runStartMsg:     signals that a run has started
+//   - logBatchMsg:     delivers a batch of log lines from the runner
+//   - runErrMsg:       reports an error that occurred during run setup
+//   - statusMsg:       updates the status bar text
+//   - runFinishMsg:    signals that a run has completed (with optional error)
+//   - toastExpiredMsg: signals that a toast notification should be dismissed
+//   - prdPreviewMsg:   delivers PRD file content for preview display
+
 type runStartMsg struct{}
 type logBatchMsg struct {
 	lines  []runner.Line
@@ -36,6 +46,11 @@ type runErrMsg struct{ err error }
 type statusMsg struct{ note string }
 type runFinishMsg struct{ err error }
 type toastExpiredMsg struct{ id uint64 }
+type prdPreviewMsg struct {
+	path    string
+	content string
+	err     error
+}
 
 // readLogsBatch attempts to read a batch of log lines from the log channel.
 // Returns at least one line per batch unless the channel is already closed, in which case it returns a closed empty batch.

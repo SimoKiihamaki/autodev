@@ -32,6 +32,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case prdScanMsg:
 		m.prdList.SetItems(typed.items)
 		m.ensureSelectedPRD(typed.items)
+		// Load preview for selected PRD
+		return m, m.loadPRDPreviewCmd()
+
+	case prdPreviewMsg:
+		if typed.path == m.selectedPRD && typed.err == nil {
+			m.prdPreview.SetContent(typed.content)
+		}
 		return m, nil
 
 	case statusMsg:
@@ -102,14 +109,30 @@ func (m model) handleResize(msg tea.WindowSizeMsg) model {
 	if h < 0 {
 		h = 0
 	}
-	prdW, prdH := w-2, h-10
-	if prdW < 0 {
-		prdW = 0
-	}
+	m.termWidth = w // Track terminal width for responsive layouts
+
+	// PRD list and preview sizing for split pane
+	prdH := h - 10
 	if prdH < 0 {
 		prdH = 0
 	}
-	m.prdList.SetSize(prdW, prdH)
+	// Calculate split pane widths
+	availableW := w - 6 // Account for borders and divider
+	if availableW < 40 {
+		availableW = 40
+	}
+	listW := int(float64(availableW) * m.prdPaneRatio)
+	previewW := availableW - listW
+	if listW < 20 {
+		listW = 20
+	}
+	if previewW < 20 {
+		previewW = 20
+	}
+	m.prdList.SetSize(listW, prdH)
+	m.prdPreview.Width = previewW
+	m.prdPreview.Height = prdH
+
 	logW, logH := w-2, h-8
 	if logW < 0 {
 		logW = 0

@@ -17,7 +17,8 @@ import (
 )
 
 func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
-	t.Parallel()
+	// Serial execution required due to t.Setenv usage (not safe with t.Parallel)
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	toolsDir := filepath.Join(repo, "tools")
@@ -65,7 +66,7 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 		t.Fatalf("expected python executable 'python3', got %q", plan.Cmd)
 	}
 
-	scriptArgs, err := buildScriptArgs(cfg, prd, logFile, "warning")
+	scriptArgs, _, err := buildScriptArgs(cfg, prd, logFile, "warning")
 	if err != nil {
 		t.Fatalf("buildScriptArgs failed: %v", err)
 	}
@@ -102,7 +103,8 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 }
 
 func TestOptionsRunPassesEnvAndArgs(t *testing.T) {
-	t.Parallel()
+	// Serial execution required due to t.Setenv usage (not safe with t.Parallel)
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	script := filepath.Join(repo, "wrapper.py")

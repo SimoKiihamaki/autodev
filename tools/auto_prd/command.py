@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import re
 import shlex
 import shutil
@@ -343,7 +344,39 @@ def run_cmd(
     extra_env: Optional[dict] = None,
     stdin: Optional[str] = None,
     sanitize_args: bool = True,
+    # Retry parameters (backward compatible defaults)
+    retries: int = 0,
+    retry_on_codes: Optional[set[int]] = None,
+    retry_on_stderr: Optional[list[str]] = None,
+    backoff_base: float = 1.0,
+    backoff_max: float = 60.0,
+    backoff_jitter: float = 0.5,
 ) -> tuple[str, str, int]:
+    """Execute a command with optional retry logic for transient failures.
+
+    Args:
+        cmd: Command sequence to execute.
+        cwd: Working directory for the command.
+        check: If True, raise CalledProcessError on non-zero exit.
+        capture: If True, capture stdout/stderr.
+        timeout: Timeout in seconds.
+        extra_env: Additional environment variables.
+        stdin: String input to pass to the command.
+        sanitize_args: If True, sanitize shell-sensitive characters.
+        retries: Number of retry attempts (0 = no retry, backward compatible).
+        retry_on_codes: Exit codes that should trigger a retry.
+        retry_on_stderr: Stderr patterns that should trigger a retry.
+        backoff_base: Base delay in seconds for exponential backoff.
+        backoff_max: Maximum delay in seconds between retries.
+        backoff_jitter: Random jitter factor (0.0-1.0) to add to delay.
+
+    Returns:
+        Tuple of (stdout, stderr, returncode).
+
+    Raises:
+        CalledProcessError: If check=True and command fails after all retries.
+        FileNotFoundError: If command executable not found.
+    """
     # Automatically sanitize all command arguments via scrub_cli_text when sanitize_args=True.
     # This replaces backticks, quotes, and other shell-sensitive characters to prevent shell injection.
     # Set sanitize_args=False to preserve special characters that may be intentional (e.g., JSON payloads, regex patterns).
@@ -376,49 +409,73 @@ def run_cmd(
         raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
     env = env_with_zsh(extra_env)
     cmd_display = shlex.join(sanitized_cmd)
-    logger.info("Running command: %s", cmd_display)
-    if cwd:
-        logger.debug("Command cwd: %s", cwd)
-    if timeout is not None:
-        logger.debug("Command timeout: %ss", timeout)
+
     stdin_bytes: Optional[bytes] = None
     if stdin is not None:
         stdin_bytes = stdin.encode("utf-8")
-        logger.debug("Command stdin bytes: %s", len(stdin_bytes))
-    start_time = time.monotonic()
-    try:
-        proc = subprocess.run(
-            sanitized_cmd,
-            cwd=str(cwd) if cwd else None,
-            check=False,
-            capture_output=capture,
-            text=False,
-            timeout=timeout,
-            env=env,
-            input=stdin_bytes,
-        )
-    except Exception:
+
+    # Execute with retry logic
+    attempt = 0
+
+    while True:
+        if attempt > 0:
+            logger.info(
+                "Retry attempt %d/%d for command: %s", attempt, retries, cmd_display
+            )
+        else:
+            logger.info("Running command: %s", cmd_display)
+
+        if cwd:
+            logger.debug("Command cwd: %s", cwd)
+        if timeout is not None:
+            logger.debug("Command timeout: %ss", timeout)
+        if stdin_bytes is not None:
+            logger.debug("Command stdin bytes: %s", len(stdin_bytes))
+
+        start_time = time.monotonic()
+        try:
+            proc = subprocess.run(
+                sanitized_cmd,
+                cwd=str(cwd) if cwd else None,
+                check=False,
+                capture_output=capture,
+                text=False,
+                timeout=timeout,
+                env=env,
+                input=stdin_bytes,
+            )
+        except subprocess.TimeoutExpired:
+            duration = time.monotonic() - start_time
+            logger.warning("Command timed out after %.2fs: %s", duration, cmd_display)
+            # Timeouts are generally not retryable (would just timeout again)
+            raise
+        except Exception:
+            duration = time.monotonic() - start_time
+            logger.exception(
+                "Command execution error after %.2fs: %s", duration, cmd_display
+            )
+            raise
+
         duration = time.monotonic() - start_time
-        logger.exception(
-            "Command execution error after %.2fs: %s", duration, cmd_display
-        )
-        raise
-    duration = time.monotonic() - start_time
-    stdout_bytes = proc.stdout or b""
-    stderr_bytes = proc.stderr or b""
-    stdout_text = decode_output(stdout_bytes)
-    stderr_text = decode_output(stderr_bytes)
-    if capture:
-        if stdout_text:
-            logger.debug("Command stdout: %s", truncate_for_log(stdout_text))
-        if stderr_text:
-            level = logging.ERROR if proc.returncode != 0 else logging.DEBUG
-            logger.log(level, "Command stderr: %s", truncate_for_log(stderr_text))
-    else:
-        logger.debug("Command output not captured (capture=False)")
-    if proc.returncode == 0:
-        logger.info("Command succeeded in %.2fs: %s", duration, cmd_display)
-    else:
+        stdout_bytes = proc.stdout or b""
+        stderr_bytes = proc.stderr or b""
+        stdout_text = decode_output(stdout_bytes)
+        stderr_text = decode_output(stderr_bytes)
+
+        if capture:
+            if stdout_text:
+                logger.debug("Command stdout: %s", truncate_for_log(stdout_text))
+            if stderr_text:
+                level = logging.ERROR if proc.returncode != 0 else logging.DEBUG
+                logger.log(level, "Command stderr: %s", truncate_for_log(stderr_text))
+        else:
+            logger.debug("Command output not captured (capture=False)")
+
+        if proc.returncode == 0:
+            logger.info("Command succeeded in %.2fs: %s", duration, cmd_display)
+            return stdout_text, stderr_text, proc.returncode
+
+        # Command failed - check if we should retry
         level = logging.ERROR if check else logging.WARNING
         logger.log(
             level,
@@ -427,11 +484,46 @@ def run_cmd(
             duration,
             cmd_display,
         )
-    if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(
-            proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes
-        )
-    return stdout_text, stderr_text, proc.returncode
+
+        should_retry = False
+        retry_reason = ""
+
+        if attempt < retries:
+            # Check if exit code matches retry condition
+            if retry_on_codes and proc.returncode in retry_on_codes:
+                should_retry = True
+                retry_reason = f"exit code {proc.returncode} in retry_on_codes"
+
+            # Check if stderr contains retryable patterns
+            if retry_on_stderr and not should_retry:
+                for pattern in retry_on_stderr:
+                    if pattern in stderr_text:
+                        should_retry = True
+                        retry_reason = f"stderr contains '{pattern}'"
+                        break
+
+        if should_retry:
+            # Calculate backoff delay with jitter
+            delay = min(backoff_base * (2**attempt), backoff_max)
+            jitter = random.uniform(0, backoff_jitter * delay)
+            total_delay = delay + jitter
+            logger.info(
+                "Retrying command in %.2fs (reason: %s): %s",
+                total_delay,
+                retry_reason,
+                cmd_display,
+            )
+            time.sleep(total_delay)
+            attempt += 1
+            continue
+
+        # No more retries - either exhausted or not retryable
+        if check:
+            raise subprocess.CalledProcessError(
+                proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes
+            )
+
+        return stdout_text, stderr_text, proc.returncode
 
 
 def safe_popen(

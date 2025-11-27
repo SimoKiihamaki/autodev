@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
@@ -72,8 +73,40 @@ outer:
 	return false
 }
 
+// resolveScriptPathForTest resolves symlinks for a script path, returning the original path if resolution fails.
+func resolveScriptPathForTest(script string) string {
+	resolved, err := filepath.EvalSymlinks(script)
+	if err != nil {
+		return script
+	}
+	return resolved
+}
+
+// assertScriptDirWhitelisted checks that AUTO_PRD_SAFE_SCRIPT_DIRS contains the expected directory
+func assertScriptDirWhitelisted(t *testing.T, env []string, expectedDir string) {
+	t.Helper()
+
+	found := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, safeScriptDirsEnv+"=") {
+			value := kv[len(safeScriptDirsEnv)+1:]
+			for _, part := range strings.Split(value, string(os.PathListSeparator)) {
+				if filepath.Clean(part) == filepath.Clean(expectedDir) {
+					found = true
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("env missing expected directory %q in %s", expectedDir, safeScriptDirsEnv)
+	}
+}
+
 func TestBuildArgsArgumentMapping(t *testing.T) {
-	t.Parallel()
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	toolsDir := filepath.Join(repo, "tools")
@@ -87,11 +120,7 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	}
 
 	// Resolve symlinks in script path since security code does symlink resolution
-	resolvedScript, err := filepath.EvalSymlinks(scriptAbs)
-	if err != nil {
-		// If symlink resolution fails, use the original path
-		resolvedScript = scriptAbs
-	}
+	resolvedScript := resolveScriptPathForTest(scriptAbs)
 	prd := filepath.Join(repo, "spec.md")
 	if err := os.WriteFile(prd, []byte("# spec"), 0o644); err != nil {
 		t.Fatalf("write prd: %v", err)
@@ -215,7 +244,6 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 
 			cfg := baseCfg.Clone()
 			input := baseInput
@@ -255,12 +283,15 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 			if tc.extraCheck != nil {
 				tc.extraCheck(t, plan, cfg)
 			}
+
+			// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+			assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 		})
 	}
 }
 
 func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
-	t.Parallel()
+	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()
 	toolsDir := filepath.Join(repo, "tools")
@@ -327,7 +358,6 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			cfg := baseCfg.Clone()
 			if tc.configure != nil {
 				tc.configure(&cfg)
@@ -350,11 +380,17 @@ func TestBuildArgsPhaseExecutorEnvs(t *testing.T) {
 					t.Fatalf("env[%s] unexpectedly present: %q", unexpected, val)
 				}
 			}
+
+			// Resolve symlinks in script path since security code does symlink resolution
+			resolvedScript := resolveScriptPathForTest(script)
+			// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+			assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 		})
 	}
 }
 
 func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
 	exePath, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
@@ -397,12 +433,78 @@ func TestBuildArgsAllowsInstalledScriptWithoutRepoPath(t *testing.T) {
 		LogFilePath: filepath.Join(prdDir, "run.log"),
 	}
 
-	if _, err := BuildArgs(input); err != nil {
+	plan, err := BuildArgs(input)
+	if err != nil {
 		t.Fatalf("BuildArgs rejected installed script without repo path: %v", err)
+	}
+
+	// Resolve symlinks in script path since security code does symlink resolution
+	resolvedScript := resolveScriptPathForTest(script)
+	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
+}
+
+func TestBuildArgsAllowsAbsoluteScriptOutsideRepo(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
+
+	targetRepo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(targetRepo, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	prdPath := filepath.Join(targetRepo, "plan.md")
+	if err := os.WriteFile(prdPath, []byte("# plan\n"), 0o600); err != nil {
+		t.Fatalf("write prd: %v", err)
+	}
+
+	externalDir := t.TempDir()
+	scriptDir := filepath.Join(externalDir, "autodev-tools")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir script dir: %v", err)
+	}
+	scriptPath := filepath.Join(scriptDir, "auto_prd_to_pr_v3.py")
+	if err := os.WriteFile(scriptPath, []byte("print('ok')\n"), 0o600); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	cfg := config.Defaults()
+	cfg.RepoPath = targetRepo
+	cfg.PythonScript = scriptPath
+
+	input := BuildArgsInput{
+		Config:  cfg,
+		PRDPath: prdPath,
+	}
+
+	plan, err := BuildArgs(input)
+	if err != nil {
+		t.Fatalf("BuildArgs rejected absolute script outside repo: %v", err)
+	}
+
+	// The script directory should now be present in AUTO_PRD_SAFE_SCRIPT_DIRS.
+	env := envSliceToMap(plan.Env)
+	value, ok := env[safeScriptDirsEnv]
+	if !ok {
+		t.Fatalf("%s missing in env; got %v", safeScriptDirsEnv, env)
+	}
+	found := false
+	expectedDir := filepath.Dir(filepath.Clean(resolveScriptPathForTest(scriptPath)))
+	for _, part := range filepath.SplitList(value) {
+		cleanPart := filepath.Clean(part)
+		if resolvedPart, err := filepath.EvalSymlinks(cleanPart); err == nil {
+			cleanPart = filepath.Clean(resolvedPart)
+		}
+		if cleanPart == expectedDir {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("%s missing script directory %q; value=%q", safeScriptDirsEnv, scriptDir, value)
 	}
 }
 
 func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir .git: %v", err)
@@ -461,4 +563,9 @@ func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
 	if gotResolved != wantResolved {
 		t.Fatalf("expected inferred repo %q (resolved %q), got %q (resolved %q)", repo, wantResolved, repoArg, gotResolved)
 	}
+
+	// Resolve symlinks in script path since security code does symlink resolution
+	resolvedScript := resolveScriptPathForTest(script)
+	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
+	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
 }
