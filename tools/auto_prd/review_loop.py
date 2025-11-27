@@ -131,9 +131,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 runner_kwargs["model"] = codex_model
 
             try:
-                _, _ = review_runner(
+                _, stderr = review_runner(
                     fix_prompt, **runner_kwargs
                 )  # returns tuple[str, str]
+                # Log stderr at debug level for diagnostic purposes
+                if stderr and stderr.strip():
+                    logger.debug("Review runner stderr output:\n%s", stderr)
             except Exception:  # pragma: no cover - best-effort resilience
                 logger.exception("Review runner failed")
                 sleep_with_jitter(float(poll))

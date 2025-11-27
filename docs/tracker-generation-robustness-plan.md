@@ -14,18 +14,30 @@ This error indicates `json.loads("")` was called with an empty string, meaning t
 
 ## Error Chain Analysis
 
+> **Note:** This section describes the error chain **before** the robustness improvements
+> were implemented. See "Current Implementation" below for how these issues have been resolved.
+
 ```
 codex/claude CLI → run_cmd() → codex_exec()/claude_exec() → generate_tracker() → _extract_json_from_response() → json.loads() → ValueError
 ```
 
-When the agent CLI returns **empty stdout**, the chain produces:
+When the agent CLI returns **empty stdout**, the chain **previously** produced:
 
-| Step | Input | Output | Problem |
+| Step | Input | Output | Problem (before fix) |
 |------|-------|--------|---------|
 | `run_cmd()` | CLI command | `("", stderr, 0)` | Success with empty output |
 | `codex_exec()` | stdout | `""` | Discards stderr |
 | `_extract_json_from_response()` | `""` | `""` | No validation |
 | `json.loads()` | `""` | `ValueError` | "char 0" error |
+
+### Current Implementation (after fixes)
+
+| Step | Input | Output | Behavior |
+|------|-------|--------|----------|
+| `run_cmd()` | CLI command | `(stdout, stderr, code)` | Returns all three values |
+| `codex_exec()/claude_exec()` | prompt | `tuple[str, str]` | Returns `(stdout, stderr)` |
+| `_extract_json_from_response()` | response | JSON string | Raises `ValueError` for empty input (line 591) |
+| `json.loads()` | JSON string | dict | Receives validated input |
 
 ---
 
@@ -105,16 +117,23 @@ def _extract_json_from_response(response: str) -> str:
 
 **Issue:** No validation, returns empty string silently.
 
-### 2. Agent Executors Discard stderr
+### 2. Agent Executors Discard stderr (FIXED)
 
 **File:** `tools/auto_prd/agents.py:102,283`
 
+**Before:**
 ```python
 out, _, _ = run_cmd(...)  # stderr discarded
 return out
 ```
 
-**Issue:** Rate limit and error messages are lost.
+**After (current implementation):**
+```python
+out, stderr, _ = run_cmd(...)
+return out, stderr  # Returns tuple[str, str]
+```
+
+**Issue:** ~~Rate limit and error messages are lost.~~ **RESOLVED** - stderr is now returned.
 
 ### 3. No Retry Mechanism for Tracker Generation
 

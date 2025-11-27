@@ -742,6 +742,36 @@ class GenerateTrackerJsonParsingTests(unittest.TestCase):
         # Should only be called once since invalid JSON is not the same as empty response
         self.assertEqual(mock_codex.call_count, 1)
 
+    @patch("auto_prd.tracker_generator.codex_exec")
+    @patch("auto_prd.tracker_generator.time.sleep")
+    def test_malformed_but_balanced_json_raises_value_error(
+        self, mock_sleep: MagicMock, mock_codex: MagicMock
+    ) -> None:
+        """Malformed but balanced JSON should raise ValueError without retry.
+
+        This tests the case where JSON extraction succeeds (braces are balanced)
+        but json.loads() fails due to syntax errors. The json.JSONDecodeError is
+        not in the retry exception list, so it propagates immediately.
+        """
+        # Balanced braces but invalid JSON syntax (trailing comma, unquoted key)
+        malformed_json = '{"version": "2.0.0", invalid_key: true}'
+        mock_codex.return_value = (malformed_json, "")
+
+        with self.assertRaises(ValueError) as ctx:
+            generate_tracker(
+                prd_path=self.prd_path,
+                repo_root=self.repo_root,
+                executor="codex",
+                allow_unsafe_execution=True,
+            )
+
+        # Should fail with JSON parsing error, not retry
+        self.assertIn("invalid JSON", str(ctx.exception))
+        # Only called once - json.JSONDecodeError is not retried
+        self.assertEqual(mock_codex.call_count, 1)
+        # Sleep should not be called since no retry occurred
+        mock_sleep.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

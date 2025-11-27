@@ -125,7 +125,7 @@ ERROR_PATTERNS: dict[ErrorCategory, list[str]] = {
         "codex_full_auto_block",
         "readonly mode",
         "empty response from agent",
-        "no json object",
+        "no json object found in response",
         "invalid tracker",
         "tracker generation failed",
         "unbalanced braces in json response",
@@ -160,7 +160,7 @@ RECOVERY_HINTS: dict[str, str] = {
     "readonly mode": "Codex entered readonly mode - check CODEX_AUTO_FULL_AUTO env var",
     "codex_full_auto_block": "Unsafe execution blocked - use --allow-unsafe-execution",
     "empty response from agent": "Agent returned no output - check API rate limits and authentication",
-    "no json object": "Agent output was not valid JSON - may need to retry or adjust prompt",
+    "no json object found in response": "Agent output was not valid JSON - may need to retry or adjust prompt",
     "unbalanced braces in json response": "Agent output was truncated - context may be too large",
 }
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +24,7 @@ except ImportError:
     HAS_JSONSCHEMA = False
 
 from .agents import claude_exec, codex_exec
+from .command import CalledProcessError, TimeoutExpired
 from .logging_utils import logger
 
 TRACKER_VERSION = "2.0.0"
@@ -778,8 +778,8 @@ def generate_tracker(
         except (
             ValueError,
             RuntimeError,
-            subprocess.CalledProcessError,
-            subprocess.TimeoutExpired,
+            CalledProcessError,
+            TimeoutExpired,
         ) as e:
             if attempt < MAX_TRACKER_GEN_ATTEMPTS - 1:
                 wait_time = TRACKER_GEN_RETRY_BACKOFF_BASE * (2**attempt)
@@ -799,20 +799,17 @@ def generate_tracker(
                 )
                 raise
 
-    # Guard against empty result if unexpected exception bypassed the retry loop
-    # (e.g., an exception type not listed in the except clause)
-    if not result or not result.strip():
-        raise ValueError(
-            f"No valid response from {executor} after retry loop - "
-            "result is empty (possible uncaught exception)"
-        )
-
-    # Log stderr on success at debug level for troubleshooting agent warnings
+    # Log stderr on success - use warning level for known warning patterns,
+    # debug level otherwise. This provides better visibility into transient issues.
     if stderr and stderr.strip():
-        logger.debug(
-            "Executor stderr (non-fatal): %s",
-            stderr[:500] if len(stderr) > 500 else stderr,
-        )
+        stderr_lower = stderr.lower()
+        stderr_preview = stderr[:500] if len(stderr) > 500 else stderr
+        # Known warning patterns that warrant higher visibility
+        warning_patterns = ["rate limit", "warning", "deprecated", "timeout"]
+        if any(pattern in stderr_lower for pattern in warning_patterns):
+            logger.warning("Executor stderr (non-fatal warning): %s", stderr_preview)
+        else:
+            logger.debug("Executor stderr (non-fatal): %s", stderr_preview)
 
     # Extract and parse JSON from response
     try:
