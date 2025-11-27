@@ -314,8 +314,12 @@ class IncrementalWorker:
         # Build implementation prompt with tracker context
         prompt = self._build_task_prompt(feature, task)
 
-        # Select runner based on policy
-        runner, runner_name = policy_runner(None, i=1, phase="implement")
+        # Select runner based on explicit executor override or policy
+        # Map executor parameter to policy: "claude" -> "claude-only", "codex" -> "codex-only"
+        executor_policy = None
+        if self.executor in ("claude", "codex"):
+            executor_policy = f"{self.executor}-only"
+        runner, runner_name = policy_runner(executor_policy, i=1, phase="implement")
         logger.info("Implementing task %s with %s", task_id, runner_name)
 
         runner_kwargs = {
