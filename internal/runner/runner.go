@@ -964,7 +964,7 @@ func ensureScriptDirWhitelisted(env []string, scriptDir string) []string {
 		newEnv[idx] = entry
 		return newEnv
 	}
-	return append(env, entry)
+	return append(env[:len(env):len(env)], entry)
 }
 
 func (o Options) Run(ctx context.Context) error {

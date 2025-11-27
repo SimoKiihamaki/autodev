@@ -125,6 +125,9 @@ def orchestrate_local_loop(
             f"Resuming from iteration {start_iteration} (streaks: empty={empty_change_streak}, no_findings={no_findings_streak})"
         )
 
+    # Initialize i before the loop to ensure it's always defined, even if the loop
+    # never runs (when start_iteration > max_iters).
+    i = start_iteration
     for i in range(start_iteration, max_iters + 1):
         print(
             f"\n=== Iteration {i}/{max_iters}: Codex implements next chunk ===",
@@ -312,16 +315,14 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         print("Reached local iteration cap, proceeding to PR step.")
 
     # Mark checkpoint as completed when local loop finishes successfully.
-    # Note: 'i' retains its value from the last loop iteration,
-    # so it's available here even after the loop ends.
+    # 'i' is initialized before the loop, so it's always defined here.
     if checkpoint:
-        final_iteration = i if start_iteration <= max_iters else max_iters
         update_phase_state(
             checkpoint,
             "local",
             {
                 "status": "completed",
-                "iteration": final_iteration,
+                "iteration": i,
                 "tasks_left": tasks_left if tasks_left is not None else -1,
                 "no_findings_streak": no_findings_streak,
                 "empty_change_streak": empty_change_streak,
