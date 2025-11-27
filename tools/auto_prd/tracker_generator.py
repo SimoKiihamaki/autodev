@@ -771,6 +771,11 @@ def generate_tracker(
             # If we get here, we have a non-empty response - break retry loop
             break
 
+        except PermissionError:
+            # PermissionError indicates authentication/authorization failure
+            # (e.g., missing allow_unsafe_execution). Do not retry - propagate
+            # immediately as the user must fix their configuration.
+            raise
         except (ValueError, RuntimeError) as e:
             if attempt < MAX_TRACKER_GEN_ATTEMPTS - 1:
                 wait_time = TRACKER_GEN_RETRY_BACKOFF_BASE * (2**attempt)

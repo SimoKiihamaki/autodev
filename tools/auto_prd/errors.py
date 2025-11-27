@@ -123,12 +123,12 @@ ERROR_PATTERNS: dict[ErrorCategory, list[str]] = {
         "Runner returned non-zero",
         "CODEX_FULL_AUTO_BLOCK",
         "readonly mode",
-        "empty response",
-        "Empty response",
-        "No JSON object found",
+        # Match actual error messages from tracker_generator.py (case-insensitive matching in classify_error)
+        "Empty response from agent",
+        "No JSON object",
         "invalid tracker",
         "tracker generation failed",
-        "Unbalanced braces",
+        "Unbalanced braces in JSON response",
     ],
     ErrorCategory.TIMEOUT: [
         "timed out",
@@ -148,6 +148,8 @@ ERROR_PATTERNS: dict[ErrorCategory, list[str]] = {
 }
 
 # Recovery hints for common error patterns
+# Note: classify_error() uses case-insensitive matching (pattern.lower() in message.lower()),
+# so hints only need one casing variant
 RECOVERY_HINTS: dict[str, str] = {
     "Connection reset": "Network issue - will retry automatically",
     "Connection timed out": "Server not responding - check network connectivity",
@@ -158,11 +160,10 @@ RECOVERY_HINTS: dict[str, str] = {
     "No space left on device": "Free up disk space before continuing",
     "readonly mode": "Codex entered readonly mode - check CODEX_AUTO_FULL_AUTO env var",
     "CODEX_FULL_AUTO_BLOCK": "Unsafe execution blocked - use --allow-unsafe-execution",
-    # Tracker generation error hints
-    "empty response": "Agent returned no output - check API rate limits and authentication",
-    "Empty response": "Agent returned no output - check API rate limits and authentication",
-    "No JSON object found": "Agent output was not valid JSON - may need to retry or adjust prompt",
-    "Unbalanced braces": "Agent output was truncated - context may be too large",
+    # Tracker generation error hints (match actual error messages from tracker_generator.py)
+    "Empty response from agent": "Agent returned no output - check API rate limits and authentication",
+    "No JSON object": "Agent output was not valid JSON - may need to retry or adjust prompt",
+    "Unbalanced braces in JSON response": "Agent output was truncated - context may be too large",
 }
 
 
