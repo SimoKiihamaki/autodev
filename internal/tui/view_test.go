@@ -36,7 +36,7 @@ func TestRenderRunViewErrorBanner(t *testing.T) {
 		t.Fatalf("expected copy hint in view, got:\n%s", out)
 	}
 
-	if !strings.Contains(out, "Enter retry") {
+	if !strings.Contains(out, "Enter retry all") {
 		t.Fatalf("expected retry hint in view, got:\n%s", out)
 	}
 }

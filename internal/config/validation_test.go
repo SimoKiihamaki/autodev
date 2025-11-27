@@ -542,3 +542,137 @@ func TestErrorInjectionScenarios(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateInterFieldNegativeCodexTimeout(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.CodexTimeoutSeconds = intPtr(-1)
+
+	result := cfg.ValidateInterField()
+
+	if result.Valid {
+		t.Error("negative codex_timeout_seconds should be invalid")
+	}
+
+	errors := result.Errors()
+	found := false
+	for _, e := range errors {
+		if e.Field == "timings.codex_timeout_seconds" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected error on codex_timeout_seconds")
+	}
+}
+
+func TestValidateInterFieldNegativeClaudeTimeout(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.ClaudeTimeoutSeconds = intPtr(-1)
+
+	result := cfg.ValidateInterField()
+
+	if result.Valid {
+		t.Error("negative claude_timeout_seconds should be invalid")
+	}
+
+	errors := result.Errors()
+	found := false
+	for _, e := range errors {
+		if e.Field == "timings.claude_timeout_seconds" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected error on claude_timeout_seconds")
+	}
+}
+
+func TestValidateInterFieldShortCodexTimeout(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.CodexTimeoutSeconds = intPtr(30) // Less than 60
+
+	result := cfg.ValidateInterField()
+
+	// Should still be valid but with warning
+	if !result.Valid {
+		t.Error("short codex_timeout_seconds should still be valid")
+	}
+
+	warnings := result.Warnings()
+	found := false
+	for _, w := range warnings {
+		if w.Field == "timings.codex_timeout_seconds" && strings.Contains(w.Message, "short timeout") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected warning for very short codex timeout")
+	}
+}
+
+func TestValidateInterFieldShortClaudeTimeout(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.ClaudeTimeoutSeconds = intPtr(45) // Less than 60
+
+	result := cfg.ValidateInterField()
+
+	// Should still be valid but with warning
+	if !result.Valid {
+		t.Error("short claude_timeout_seconds should still be valid")
+	}
+
+	warnings := result.Warnings()
+	found := false
+	for _, w := range warnings {
+		if w.Field == "timings.claude_timeout_seconds" && strings.Contains(w.Message, "short timeout") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected warning for very short claude timeout")
+	}
+}
+
+func TestValidateInterFieldZeroTimeoutIsValid(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.CodexTimeoutSeconds = intPtr(0)
+	cfg.Timings.ClaudeTimeoutSeconds = intPtr(0)
+
+	result := cfg.ValidateInterField()
+
+	// Zero timeout (meaning no timeout) should be valid without warnings
+	if !result.Valid {
+		t.Errorf("zero timeouts should be valid, got errors: %v", result.Errors())
+	}
+
+	// Should not have warnings about short timeout since 0 means "no timeout"
+	for _, w := range result.Warnings() {
+		if strings.Contains(w.Field, "timeout") {
+			t.Errorf("zero timeout should not trigger warnings, got: %v", w)
+		}
+	}
+}
+
+func TestValidateInterFieldReasonableTimeout(t *testing.T) {
+	cfg := Defaults()
+	cfg.Timings.CodexTimeoutSeconds = intPtr(300)  // 5 minutes
+	cfg.Timings.ClaudeTimeoutSeconds = intPtr(600) // 10 minutes
+
+	result := cfg.ValidateInterField()
+
+	// Reasonable timeouts should be valid with no warnings
+	if !result.Valid {
+		t.Errorf("reasonable timeouts should be valid, got errors: %v", result.Errors())
+	}
+
+	// Should not have timeout-related warnings
+	for _, w := range result.Warnings() {
+		if strings.Contains(w.Field, "timeout") {
+			t.Errorf("reasonable timeout should not trigger warnings, got: %v", w)
+		}
+	}
+}

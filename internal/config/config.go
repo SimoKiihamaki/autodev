@@ -21,6 +21,8 @@ const (
 	EnvExecutorPR           = "AUTO_PRD_EXECUTOR_PR"
 	EnvExecutorReviewFix    = "AUTO_PRD_EXECUTOR_REVIEW_FIX"
 	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
+	EnvCodexTimeoutSeconds  = "AUTO_PRD_CODEX_TIMEOUT_SECONDS"
+	EnvClaudeTimeoutSeconds = "AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"
 )
 
 // Default configuration values
@@ -40,10 +42,12 @@ type Flags struct {
 }
 
 type Timings struct {
-	WaitMinutes       *int `yaml:"wait_minutes"`
-	ReviewPollSeconds *int `yaml:"review_poll_seconds"`
-	IdleGraceMinutes  *int `yaml:"idle_grace_minutes"`
-	MaxLocalIters     *int `yaml:"max_local_iters"`
+	WaitMinutes          *int `yaml:"wait_minutes"`
+	ReviewPollSeconds    *int `yaml:"review_poll_seconds"`
+	IdleGraceMinutes     *int `yaml:"idle_grace_minutes"`
+	MaxLocalIters        *int `yaml:"max_local_iters"`
+	CodexTimeoutSeconds  *int `yaml:"codex_timeout_seconds"`  // Timeout for Codex execution (0 or nil = no timeout)
+	ClaudeTimeoutSeconds *int `yaml:"claude_timeout_seconds"` // Timeout for Claude execution (0 or nil = no timeout)
 }
 
 // BatchProcessing configures how log messages are batched for performance.
@@ -444,6 +448,12 @@ func (c Config) Clone() Config {
 	if c.Timings.MaxLocalIters != nil {
 		copyCfg.Timings.MaxLocalIters = intPtr(*c.Timings.MaxLocalIters)
 	}
+	if c.Timings.CodexTimeoutSeconds != nil {
+		copyCfg.Timings.CodexTimeoutSeconds = intPtr(*c.Timings.CodexTimeoutSeconds)
+	}
+	if c.Timings.ClaudeTimeoutSeconds != nil {
+		copyCfg.Timings.ClaudeTimeoutSeconds = intPtr(*c.Timings.ClaudeTimeoutSeconds)
+	}
 	if c.BatchProcessing.MaxBatchSize != nil {
 		copyCfg.BatchProcessing.MaxBatchSize = intPtr(*c.BatchProcessing.MaxBatchSize)
 	}
@@ -508,7 +518,9 @@ func (c Config) Equal(other Config) bool {
 	if !equalIntPointers(c.Timings.WaitMinutes, other.Timings.WaitMinutes) ||
 		!equalIntPointers(c.Timings.ReviewPollSeconds, other.Timings.ReviewPollSeconds) ||
 		!equalIntPointers(c.Timings.IdleGraceMinutes, other.Timings.IdleGraceMinutes) ||
-		!equalIntPointers(c.Timings.MaxLocalIters, other.Timings.MaxLocalIters) {
+		!equalIntPointers(c.Timings.MaxLocalIters, other.Timings.MaxLocalIters) ||
+		!equalIntPointers(c.Timings.CodexTimeoutSeconds, other.Timings.CodexTimeoutSeconds) ||
+		!equalIntPointers(c.Timings.ClaudeTimeoutSeconds, other.Timings.ClaudeTimeoutSeconds) {
 		return false
 	}
 
@@ -728,6 +740,22 @@ func (c Config) ValidateInterField() ValidationResult {
 	// Warn if local phase is disabled but max_local_iters is set
 	if !c.RunPhases.Local && c.Timings.MaxLocalIters != nil && *c.Timings.MaxLocalIters != 50 {
 		result.AddInfo("timings.max_local_iters", "has no effect when local phase is disabled")
+	}
+
+	// Validate timeout values (must be non-negative; 0 means no timeout)
+	if c.Timings.CodexTimeoutSeconds != nil && *c.Timings.CodexTimeoutSeconds < 0 {
+		result.AddError("timings.codex_timeout_seconds", "must be >= 0 (0 = no timeout)")
+	}
+	if c.Timings.ClaudeTimeoutSeconds != nil && *c.Timings.ClaudeTimeoutSeconds < 0 {
+		result.AddError("timings.claude_timeout_seconds", "must be >= 0 (0 = no timeout)")
+	}
+
+	// Warn if very short timeout is set (may not allow enough time)
+	if c.Timings.CodexTimeoutSeconds != nil && *c.Timings.CodexTimeoutSeconds > 0 && *c.Timings.CodexTimeoutSeconds < 60 {
+		result.AddWarning("timings.codex_timeout_seconds", "very short timeout (<60s) may not allow sufficient time for execution")
+	}
+	if c.Timings.ClaudeTimeoutSeconds != nil && *c.Timings.ClaudeTimeoutSeconds > 0 && *c.Timings.ClaudeTimeoutSeconds < 60 {
+		result.AddWarning("timings.claude_timeout_seconds", "very short timeout (<60s) may not allow sufficient time for execution")
 	}
 
 	// Warn if review_fix phase is disabled but review timing settings are customized

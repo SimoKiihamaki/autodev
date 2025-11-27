@@ -4,3 +4,8 @@ package utils
 func BoolPtr(b bool) *bool {
 	return &b
 }
+
+// IntPtr returns a pointer to an int value.
+func IntPtr(i int) *int {
+	return &i
+}

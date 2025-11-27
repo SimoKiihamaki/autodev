@@ -224,6 +224,11 @@ func TestResetToDefaultsMarksDirty(t *testing.T) {
 		PR:        "codex",
 		ReviewFix: "codex",
 	}
+	// Ensure timeout fields have explicit zero values (not nil) so they match
+	// what populateConfigFromInputs produces when parsing "0" from the UI
+	zeroTimeout := 0
+	custom.Timings.CodexTimeoutSeconds = &zeroTimeout
+	custom.Timings.ClaudeTimeoutSeconds = &zeroTimeout
 
 	m := model{
 		cfg:           custom,

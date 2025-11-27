@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
+	"github.com/SimoKiihamaki/autodev/internal/utils"
 )
 
 // envSliceToMap flattens the env slice returned by BuildArgs for assertions.
@@ -568,4 +569,101 @@ func TestBuildArgsInfersRepoPathWhenUnset(t *testing.T) {
 	resolvedScript := resolveScriptPathForTest(script)
 	// Check that the script directory is whitelisted in AUTO_PRD_SAFE_SCRIPT_DIRS
 	assertScriptDirWhitelisted(t, plan.Env, filepath.Dir(resolvedScript))
+}
+
+func TestBuildArgsTimeoutEnvVars(t *testing.T) {
+	t.Setenv(safeScriptDirsEnv, "")
+
+	repo := t.TempDir()
+	toolsDir := filepath.Join(repo, "tools")
+	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+		t.Fatalf("mkdir tools: %v", err)
+	}
+	scriptRel := filepath.Join("tools", "auto_prd_to_pr_v3.py")
+	scriptAbs := filepath.Join(repo, scriptRel)
+	if err := os.WriteFile(scriptAbs, []byte("print('stub')\n"), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	prd := filepath.Join(repo, "test.md")
+	if err := os.WriteFile(prd, []byte("# Test"), 0o644); err != nil {
+		t.Fatalf("failed to create prd: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		codexTimeout  *int
+		claudeTimeout *int
+		wantCodexEnv  string
+		wantClaudeEnv string
+	}{
+		{
+			name:          "no timeouts configured",
+			codexTimeout:  nil,
+			claudeTimeout: nil,
+			wantCodexEnv:  "",
+			wantClaudeEnv: "",
+		},
+		{
+			name:          "zero timeouts (no timeout)",
+			codexTimeout:  utils.IntPtr(0),
+			claudeTimeout: utils.IntPtr(0),
+			wantCodexEnv:  "",
+			wantClaudeEnv: "",
+		},
+		{
+			name:          "codex timeout only",
+			codexTimeout:  utils.IntPtr(300),
+			claudeTimeout: nil,
+			wantCodexEnv:  "300",
+			wantClaudeEnv: "",
+		},
+		{
+			name:          "claude timeout only",
+			codexTimeout:  nil,
+			claudeTimeout: utils.IntPtr(600),
+			wantCodexEnv:  "",
+			wantClaudeEnv: "600",
+		},
+		{
+			name:          "both timeouts set",
+			codexTimeout:  utils.IntPtr(300),
+			claudeTimeout: utils.IntPtr(600),
+			wantCodexEnv:  "300",
+			wantClaudeEnv: "600",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Defaults()
+			cfg.RepoPath = repo
+			cfg.PythonScript = scriptRel
+			cfg.Timings.CodexTimeoutSeconds = tc.codexTimeout
+			cfg.Timings.ClaudeTimeoutSeconds = tc.claudeTimeout
+
+			plan, err := BuildArgs(BuildArgsInput{
+				Config:  cfg,
+				PRDPath: prd,
+			})
+			if err != nil {
+				t.Fatalf("BuildArgs failed: %v", err)
+			}
+
+			envMap := envSliceToMap(plan.Env)
+
+			// Check codex timeout
+			gotCodexEnv := envMap[config.EnvCodexTimeoutSeconds]
+			if gotCodexEnv != tc.wantCodexEnv {
+				t.Errorf("expected %s=%q, got %q", config.EnvCodexTimeoutSeconds, tc.wantCodexEnv, gotCodexEnv)
+			}
+
+			// Check claude timeout
+			gotClaudeEnv := envMap[config.EnvClaudeTimeoutSeconds]
+			if gotClaudeEnv != tc.wantClaudeEnv {
+				t.Errorf("expected %s=%q, got %q", config.EnvClaudeTimeoutSeconds, tc.wantClaudeEnv, gotClaudeEnv)
+			}
+		})
+	}
 }

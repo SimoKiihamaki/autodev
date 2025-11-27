@@ -98,6 +98,28 @@ func (m *model) handleRunTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 			}
 			m.updateDirtyState()
 			handled = true
+		case ActResumeFromPR:
+			if m.isActiveOrCancelling() {
+				continue
+			}
+			m.setResumeFromPhase("pr")
+			note := "Phases set: skip local → start from PR"
+			m.status = note
+			if flash := m.flash(note, 0); flash != nil {
+				cmds = append(cmds, flash)
+			}
+			handled = true
+		case ActResumeFromReview:
+			if m.isActiveOrCancelling() {
+				continue
+			}
+			m.setResumeFromPhase("review")
+			note := "Phases set: skip local+PR → start from Review"
+			m.status = note
+			if flash := m.flash(note, 0); flash != nil {
+				cmds = append(cmds, flash)
+			}
+			handled = true
 		}
 	}
 

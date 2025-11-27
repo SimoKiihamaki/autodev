@@ -19,7 +19,7 @@ func TestNavigationWrapping(t *testing.T) {
 		{
 			name: "settings wrap down",
 			setup: func(m *model) {
-				m.focusInput("maxiters")
+				m.focusInput("claudetimeout") // Now the bottom-right element in the last row
 			},
 			action: func(_ *testing.T, m *model) {
 				m.navigateSettings("down")
@@ -35,7 +35,7 @@ func TestNavigationWrapping(t *testing.T) {
 			action: func(_ *testing.T, m *model) {
 				m.navigateSettings("up")
 			},
-			wantFocus: "waitmin",
+			wantFocus: "codextimeout", // Now wraps to the last row's first element
 			focusKind: "input",
 		},
 		{
@@ -54,7 +54,7 @@ func TestNavigationWrapping(t *testing.T) {
 		{
 			name: "settings confirm wraps to repo",
 			setup: func(m *model) {
-				m.focusInput("maxiters")
+				m.focusInput("claudetimeout") // Last element in the settings grid
 			},
 			action: func(t *testing.T, m *model) {
 				if handled, _ := m.handleSettingsTabActions([]Action{ActConfirm}, tea.KeyMsg{}); !handled {

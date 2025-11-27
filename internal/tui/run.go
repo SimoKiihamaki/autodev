@@ -255,7 +255,7 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.PythonScript = strings.TrimSpace(m.inPyScript.Value())
 	dst.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
 
-	const numNumericFields = 4 // Update if more numeric fields are added
+	const numNumericFields = 6 // Update if more numeric fields are added
 	invalid := make([]string, 0, numNumericFields)
 	parseErrs := make([]numericParseError, 0, numNumericFields)
 
@@ -296,6 +296,20 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 		val := v
 		dst.Timings.MaxLocalIters = &val
 	})
+	setNumeric(m.inCodexTimeout.Value(), "Codex timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Timings.CodexTimeoutSeconds = &val
+	})
+	setNumeric(m.inClaudeTimeout.Value(), "Claude timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Timings.ClaudeTimeoutSeconds = &val
+	})
 
 	dst.Flags.AllowUnsafe = m.flagAllowUnsafe
 	dst.Flags.DryRun = m.flagDryRun
@@ -326,6 +340,29 @@ func (m *model) applyPRDMetadata(dst *config.Config) {
 	meta := dst.PRDs[m.selectedPRD]
 	meta.Tags = normalizeTags(m.tags)
 	dst.PRDs[m.selectedPRD] = meta
+}
+
+// setResumeFromPhase configures the phase flags to start from a specific phase,
+// skipping earlier phases. This is useful for resuming interrupted runs.
+func (m *model) setResumeFromPhase(phase string) {
+	switch phase {
+	case "local":
+		m.runLocal = true
+		m.runPR = true
+		m.runReview = true
+	case "pr":
+		m.runLocal = false
+		m.runPR = true
+		m.runReview = true
+	case "review":
+		m.runLocal = false
+		m.runPR = false
+		m.runReview = true
+	}
+	m.cfg.RunPhases.Local = m.runLocal
+	m.cfg.RunPhases.PR = m.runPR
+	m.cfg.RunPhases.ReviewFix = m.runReview
+	m.updateDirtyState()
 }
 
 func (m *model) saveConfig() tea.Cmd {

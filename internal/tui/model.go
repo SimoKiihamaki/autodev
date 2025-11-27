@@ -123,17 +123,19 @@ type model struct {
 	prdPreview   viewport.Model // Markdown preview viewport
 	prdPaneRatio float64        // Left pane width ratio (default 0.4)
 
-	inRepo       textinput.Model
-	inBase       textinput.Model
-	inBranch     textinput.Model
-	inCodexModel textinput.Model
-	inPyCmd      textinput.Model
-	inPyScript   textinput.Model
-	inPolicy     textinput.Model
-	inWaitMin    textinput.Model
-	inPollSec    textinput.Model
-	inIdleMin    textinput.Model
-	inMaxIters   textinput.Model
+	inRepo          textinput.Model
+	inBase          textinput.Model
+	inBranch        textinput.Model
+	inCodexModel    textinput.Model
+	inPyCmd         textinput.Model
+	inPyScript      textinput.Model
+	inPolicy        textinput.Model
+	inWaitMin       textinput.Model
+	inPollSec       textinput.Model
+	inIdleMin       textinput.Model
+	inMaxIters      textinput.Model
+	inCodexTimeout  textinput.Model
+	inClaudeTimeout textinput.Model
 
 	settingsInputs map[string]*textinput.Model
 
@@ -199,7 +201,7 @@ type model struct {
 // explicit sequence so keyboard traversal remains predictable.
 var settingsInputNames = []string{
 	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
-	"waitmin", "pollsec", "idlemin", "maxiters",
+	"waitmin", "pollsec", "idlemin", "maxiters", "codextimeout", "claudetimeout",
 }
 
 var envFlagNames = []string{
@@ -364,6 +366,8 @@ func (m *model) initSettingsInputs() {
 	m.inPollSec = mkInput("Review poll seconds", formatIntPtr(cfg.Timings.ReviewPollSeconds), 6)
 	m.inIdleMin = mkInput("Idle grace minutes", formatIntPtr(cfg.Timings.IdleGraceMinutes), 6)
 	m.inMaxIters = mkInput("Max local iters", formatIntPtr(cfg.Timings.MaxLocalIters), 6)
+	m.inCodexTimeout = mkInput("Codex timeout (0=none)", formatIntPtr(cfg.Timings.CodexTimeoutSeconds), 8)
+	m.inClaudeTimeout = mkInput("Claude timeout (0=none)", formatIntPtr(cfg.Timings.ClaudeTimeoutSeconds), 8)
 
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring
@@ -382,6 +386,10 @@ func (m *model) initSettingsInputs() {
 		"pollsec":  &m.inPollSec,
 		"idlemin":  &m.inIdleMin,
 		"maxiters": &m.inMaxIters,
+
+		// timeouts
+		"codextimeout":  &m.inCodexTimeout,
+		"claudetimeout": &m.inClaudeTimeout,
 	}
 }
 
