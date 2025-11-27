@@ -293,6 +293,10 @@ func stepStatusForPhase(m model, phase string) StepStatus {
 
 	currentPhase := strings.ToLower(m.runPhase)
 
+	// Empty runPhase during active run indicates preparation/starting phase.
+	// In this case, the first enabled phase will show as active (handled below
+	// when currentIdx remains -1).
+
 	// Determine phase order indices
 	phaseOrder := []string{}
 	if m.runLocal {

@@ -78,7 +78,18 @@ def orchestrate_local_loop(
     print(f"Unchecked checkboxes in PRD (heuristic): {unchecked}/{total_checkboxes}")
 
     # Initialize state - restore from checkpoint if resuming
-    local_state = checkpoint.get("phases", {}).get("local", {}) if checkpoint else {}
+    # Defensive checks for potentially corrupted or missing checkpoint data
+    local_state: dict = {}
+    if (
+        checkpoint
+        and isinstance(checkpoint, dict)
+        and "phases" in checkpoint
+        and isinstance(checkpoint.get("phases"), dict)
+        and "local" in checkpoint["phases"]
+        and isinstance(checkpoint["phases"].get("local"), dict)
+    ):
+        local_state = checkpoint["phases"]["local"]
+
     start_iteration = (
         local_state.get("iteration", 0) + 1
         if local_state.get("status") == "in_progress"
