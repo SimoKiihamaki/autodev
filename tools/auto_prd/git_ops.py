@@ -210,12 +210,10 @@ def safe_stash_pop(repo_root: Path, selector: str) -> None:
             else:
                 stderr = str(exc.stderr)
 
-        # Check for conflict indicators
+        # Check for conflict indicators (git stash pop outputs "CONFLICT" in uppercase)
         conflict_indicators = [
             "CONFLICT",
-            "conflict",
             "Merge conflict",
-            "could not apply",
         ]
         is_conflict = any(indicator in stderr for indicator in conflict_indicators)
 

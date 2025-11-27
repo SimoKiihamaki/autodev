@@ -396,10 +396,6 @@ def run(args) -> None:
 
         # Review/fix phase
         if include("review_fix"):
-            # Restore processed comment IDs from checkpoint if resuming
-            review_state = checkpoint["phases"]["review_fix"]
-            processed_ids = set(review_state.get("processed_comment_ids", []))
-
             mark_phase_started(checkpoint, "review_fix")
             save_checkpoint(checkpoint)
 

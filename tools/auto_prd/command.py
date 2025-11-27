@@ -416,10 +416,6 @@ def run_cmd(
 
     # Execute with retry logic
     attempt = 0
-    last_exc: Optional[subprocess.CalledProcessError] = None
-    last_stdout_text = ""
-    last_stderr_text = ""
-    last_returncode = 0
 
     while True:
         if attempt > 0:
@@ -465,9 +461,6 @@ def run_cmd(
         stderr_bytes = proc.stderr or b""
         stdout_text = decode_output(stdout_bytes)
         stderr_text = decode_output(stderr_bytes)
-        last_stdout_text = stdout_text
-        last_stderr_text = stderr_text
-        last_returncode = proc.returncode
 
         if capture:
             if stdout_text:
@@ -526,10 +519,9 @@ def run_cmd(
 
         # No more retries - either exhausted or not retryable
         if check:
-            last_exc = subprocess.CalledProcessError(
+            raise subprocess.CalledProcessError(
                 proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes
             )
-            raise last_exc
 
         return stdout_text, stderr_text, proc.returncode
 

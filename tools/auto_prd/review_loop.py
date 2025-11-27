@@ -73,7 +73,9 @@ def review_fix_loop(
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
     # Track processed comment IDs - restore from checkpoint if resuming
-    review_state = checkpoint["phases"]["review_fix"] if checkpoint else {}
+    review_state = (
+        checkpoint.get("phases", {}).get("review_fix", {}) if checkpoint else {}
+    )
     processed_comment_ids: set[int] = set(review_state.get("processed_comment_ids", []))
     cycles = review_state.get("cycles", 0)
 

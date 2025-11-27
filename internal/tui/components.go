@@ -236,24 +236,20 @@ func (p PowerlineBar) RenderFullWidth(width int) string {
 
 	// Calculate content width
 	var contentParts []string
-	totalContentWidth := 0
-	for i, seg := range p.Segments {
+	for _, seg := range p.Segments {
 		if seg.Text == "" {
 			continue
 		}
 		rendered := seg.Style.Render(seg.Text)
 		contentParts = append(contentParts, rendered)
-		totalContentWidth += lipgloss.Width(rendered)
-		if i < len(p.Segments)-1 {
-			totalContentWidth += len(p.Separator)
-		}
 	}
 
 	content := strings.Join(contentParts, p.Separator)
 
 	// If we have extra width, pad the last segment
-	if width > totalContentWidth {
-		paddingNeeded := width - totalContentWidth
+	contentWidth := lipgloss.Width(content)
+	if width > contentWidth {
+		paddingNeeded := width - contentWidth
 		return content + strings.Repeat(" ", paddingNeeded)
 	}
 

@@ -78,7 +78,7 @@ def orchestrate_local_loop(
     print(f"Unchecked checkboxes in PRD (heuristic): {unchecked}/{total_checkboxes}")
 
     # Initialize state - restore from checkpoint if resuming
-    local_state = checkpoint["phases"]["local"] if checkpoint else {}
+    local_state = checkpoint.get("phases", {}).get("local", {}) if checkpoint else {}
     start_iteration = (
         local_state.get("iteration", 0) + 1
         if local_state.get("status") == "in_progress"
