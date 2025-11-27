@@ -162,7 +162,7 @@ At the end, print: TASKS_LEFT=<N>
         if runner is codex_exec:
             runner_kwargs["model"] = codex_model
 
-        impl_output = runner(impl_prompt, **runner_kwargs)
+        impl_output, _ = runner(impl_prompt, **runner_kwargs)
         print("✓ Codex implementation pass completed.", flush=True)
         readonly_indicator = detect_readonly_block(impl_output)
         if readonly_indicator:
@@ -229,7 +229,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     "based on CodeRabbit feedback…",
                     flush=True,
                 )
-                fix_output = runner(fix_prompt, **runner_kwargs)
+                fix_output, _ = runner(fix_prompt, **runner_kwargs)
                 print("✓ Codex fix pass completed.", flush=True)
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:
