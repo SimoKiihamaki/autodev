@@ -454,14 +454,18 @@ RECOVERY_HINTS: dict[str, str] = {
 
 #### 4.1 Add Unit Tests for Edge Cases
 
-**File:** `tools/tests/test_tracker_generator.py` (new file)
+**File:** `tools/auto_prd/tests/test_tracker_generator.py`
+
+> **Note:** The actual implementation uses `unittest.TestCase` with methods like
+> `self.assertRaises`, `self.assertEqual`, etc. The examples below reflect this.
 
 ```python
 """Tests for tracker_generator module edge cases."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+import tempfile
+import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from auto_prd.tracker_generator import (
     _extract_json_from_response,
@@ -470,68 +474,83 @@ from auto_prd.tracker_generator import (
 )
 
 
-class TestExtractJsonFromResponse:
+class ExtractJsonFromResponseTests(unittest.TestCase):
     """Tests for _extract_json_from_response function."""
 
-    def test_empty_response_raises_value_error(self):
+    def test_empty_response_raises_value_error(self) -> None:
         """Empty string should raise ValueError."""
-        with pytest.raises(ValueError, match="Empty response"):
+        with self.assertRaises(ValueError) as ctx:
             _extract_json_from_response("")
+        self.assertIn("Empty response", str(ctx.exception))
 
-    def test_whitespace_only_raises_value_error(self):
+    def test_whitespace_only_raises_value_error(self) -> None:
         """Whitespace-only string should raise ValueError."""
-        with pytest.raises(ValueError, match="Empty response"):
+        with self.assertRaises(ValueError) as ctx:
             _extract_json_from_response("   \n\t  ")
+        self.assertIn("Empty response", str(ctx.exception))
 
-    def test_no_json_object_raises_value_error(self):
+    def test_no_json_object_raises_value_error(self) -> None:
         """Response without JSON object should raise ValueError."""
-        with pytest.raises(ValueError, match="No JSON object"):
+        with self.assertRaises(ValueError) as ctx:
             _extract_json_from_response("Error: rate limit exceeded")
+        self.assertIn("No JSON object", str(ctx.exception))
 
-    def test_unbalanced_braces_raises_value_error(self):
+    def test_unbalanced_braces_raises_value_error(self) -> None:
         """Truncated JSON should raise ValueError."""
-        with pytest.raises(ValueError, match="Unbalanced braces"):
+        with self.assertRaises(ValueError) as ctx:
             _extract_json_from_response('{"version": "2.0.0", "features": [')
+        self.assertIn("Unbalanced braces", str(ctx.exception))
 
-    def test_valid_json_extracted(self):
+    def test_valid_json_extracted(self) -> None:
         """Valid JSON should be extracted correctly."""
         response = '{"version": "2.0.0"}'
         result = _extract_json_from_response(response)
-        assert result == '{"version": "2.0.0"}'
+        self.assertEqual(result, '{"version": "2.0.0"}')
 
-    def test_json_in_markdown_code_block(self):
+    def test_json_in_markdown_code_block(self) -> None:
         """JSON in markdown code block should be extracted."""
-        response = '''Here is the tracker:
+        response = """Here is the tracker:
 ```json
 {"version": "2.0.0"}
 ```
-'''
+"""
         result = _extract_json_from_response(response)
-        assert result == '{"version": "2.0.0"}'
+        self.assertEqual(result, '{"version": "2.0.0"}')
 
-    def test_json_with_surrounding_text(self):
+    def test_json_with_surrounding_text(self) -> None:
         """JSON with surrounding text should be extracted."""
         response = 'Here is the output: {"version": "2.0.0"} End of output.'
         result = _extract_json_from_response(response)
-        assert result == '{"version": "2.0.0"}'
+        self.assertEqual(result, '{"version": "2.0.0"}')
 
 
-class TestGenerateTrackerRetry:
+class GenerateTrackerRetryTests(unittest.TestCase):
     """Tests for generate_tracker retry behavior."""
 
-    @patch("auto_prd.tracker_generator.codex_exec")
-    def test_retries_on_empty_response(
-        self, mock_codex: MagicMock, tmp_path: Path
-    ):
-        """Should retry when agent returns empty response."""
-        prd_path = tmp_path / "test.md"
-        prd_path.write_text("# Test PRD\n\n- [ ] Task 1")
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_root = Path(self.temp_dir)
+        self.prd_path = self.repo_root / "test.md"
+        self.prd_path.write_text("# Test PRD\n\n- [ ] Task 1")
 
-        # First two calls return empty, third succeeds
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+        shutil.rmtree(self.temp_dir)
+
+    @patch("auto_prd.tracker_generator.codex_exec")
+    @patch("auto_prd.tracker_generator.time.sleep")
+    def test_retries_on_empty_response(
+        self, mock_sleep: MagicMock, mock_codex: MagicMock
+    ) -> None:
+        """Should retry when agent returns empty response."""
+        import json
+
         valid_tracker = {
             "version": TRACKER_VERSION,
             "metadata": {
-                "prd_source": str(prd_path),
+                "prd_source": str(self.prd_path),
                 "prd_hash": "sha256:abc123",
                 "created_at": "2024-01-01T00:00:00Z",
                 "created_by": "codex",
@@ -540,10 +559,32 @@ class TestGenerateTrackerRetry:
                 {
                     "id": "F001",
                     "name": "Test",
+                    "description": "Test description",
+                    "priority": "medium",
+                    "complexity": "S",
                     "status": "pending",
-                    "goals": {"primary": "Test"},
-                    "tasks": [{"id": "T001", "description": "Test", "status": "pending"}],
-                    "acceptance_criteria": [],
+                    "dependencies": [],
+                    "goals": {
+                        "primary": "Test",
+                        "secondary": [],
+                        "measurable_outcomes": [],
+                    },
+                    "tasks": [
+                        {"id": "T001", "description": "Test", "status": "pending"}
+                    ],
+                    "acceptance_criteria": [
+                        {
+                            "id": "AC001",
+                            "criterion": "Test",
+                            "verification_method": "unit_test",
+                            "status": "pending",
+                        }
+                    ],
+                    "testing": {"unit_tests": [], "integration_tests": []},
+                    "validation": {"benchmarks": [], "quality_gates": []},
+                    "files": {"to_create": [], "to_modify": []},
+                    "commits": [],
+                    "verification_evidence": {},
                 }
             ],
             "validation_summary": {
@@ -553,41 +594,41 @@ class TestGenerateTrackerRetry:
             },
         }
 
-        import json
-        mock_codex.side_effect = ["", "", json.dumps(valid_tracker)]
+        # First two calls return empty, third succeeds (return tuples of stdout, stderr)
+        mock_codex.side_effect = [("", ""), ("", ""), (json.dumps(valid_tracker), "")]
 
-        # Should succeed on third attempt
-        with patch("auto_prd.tracker_generator.time.sleep"):
-            result = generate_tracker(
-                prd_path=prd_path,
-                repo_root=tmp_path,
+        result = generate_tracker(
+            prd_path=self.prd_path,
+            repo_root=self.repo_root,
+            executor="codex",
+            allow_unsafe_execution=True,
+        )
+
+        self.assertEqual(mock_codex.call_count, 3)
+        self.assertEqual(result["version"], TRACKER_VERSION)
+
+    @patch("auto_prd.tracker_generator.codex_exec")
+    @patch("auto_prd.tracker_generator.time.sleep")
+    def test_fails_after_max_retries(
+        self, mock_sleep: MagicMock, mock_codex: MagicMock
+    ) -> None:
+        """Should fail after exhausting retries."""
+        mock_codex.return_value = ("", "")  # Always empty (stdout, stderr tuple)
+
+        with self.assertRaises(ValueError) as ctx:
+            generate_tracker(
+                prd_path=self.prd_path,
+                repo_root=self.repo_root,
                 executor="codex",
                 allow_unsafe_execution=True,
             )
 
-        assert mock_codex.call_count == 3
-        assert result["version"] == TRACKER_VERSION
+        self.assertIn("Empty response", str(ctx.exception))
+        self.assertEqual(mock_codex.call_count, 3)  # MAX_TRACKER_GEN_ATTEMPTS
 
-    @patch("auto_prd.tracker_generator.codex_exec")
-    def test_fails_after_max_retries(
-        self, mock_codex: MagicMock, tmp_path: Path
-    ):
-        """Should fail after exhausting retries."""
-        prd_path = tmp_path / "test.md"
-        prd_path.write_text("# Test PRD")
 
-        mock_codex.return_value = ""  # Always empty
-
-        with patch("auto_prd.tracker_generator.time.sleep"):
-            with pytest.raises(ValueError, match="empty response|Empty response"):
-                generate_tracker(
-                    prd_path=prd_path,
-                    repo_root=tmp_path,
-                    executor="codex",
-                    allow_unsafe_execution=True,
-                )
-
-        assert mock_codex.call_count == 3  # MAX_TRACKER_GEN_ATTEMPTS
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 ---
