@@ -334,10 +334,10 @@ def rollback_feature(
                 return result
             else:
                 result.errors.append(error)
-                # Reset to original state before attempting other commits
-                # to avoid preserving staged changes from earlier reverts
+                # Reset to original state and stop processing - continuing
+                # would attempt reverts against the reset state which is invalid
                 reset_hard(repo_root, start_sha)
-                continue
+                return result
 
         result.commits_reverted.append(sha)
 

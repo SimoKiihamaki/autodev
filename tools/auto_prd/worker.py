@@ -30,6 +30,9 @@ from .tracker_generator import (
 )
 from .utils import detect_readonly_block
 
+# Default model for Codex executor - used consistently across the module
+DEFAULT_CODEX_MODEL = "gpt-5-codex"
+
 
 @dataclass
 class TaskResult:
@@ -90,7 +93,7 @@ class IncrementalWorker:
         tracker: dict[str, Any],
         repo_root: Path,
         executor: str = "claude",
-        codex_model: str = "gpt-5.1-codex",  # Default to balanced speed/capability variant
+        codex_model: str = DEFAULT_CODEX_MODEL,
         allow_unsafe_execution: bool = True,
         dry_run: bool = False,
     ):
@@ -530,7 +533,7 @@ def run_worker(
     repo_root: Path,
     feature_id: str | None = None,
     executor: str = "claude",
-    codex_model: str = "gpt-5-codex",
+    codex_model: str = DEFAULT_CODEX_MODEL,
     allow_unsafe_execution: bool = True,
     dry_run: bool = False,
     checkpoint: dict[str, Any] | None = None,
