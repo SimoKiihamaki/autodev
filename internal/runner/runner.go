@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -376,6 +377,15 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	// Add the script directory to the current process' whitelist before validation.
 	// This ensures bundled installations that live outside the repo (the "escape" case)
 	// remain permitted while still forcing the directory onto the allowlist.
+	//
+	// TOCTOU safety note: This order (whitelist update → validation) is intentional and safe:
+	// 1. The whitelist update (Setenv) only affects the CURRENT process' environment.
+	// 2. validatePythonScriptPath reads the environment via resolvedSafeScriptDirs() which
+	//    calls os.Getenv synchronously within the same goroutine.
+	// 3. External processes cannot modify this process' environment variables.
+	// 4. The resolvedScript path was already resolved from symlinks above, so the path
+	//    being whitelisted is the same path being validated.
+	// Therefore, no TOCTOU race exists between the whitelist update and validation.
 	if scriptDir := filepath.Dir(resolvedScript); scriptDir != "" {
 		if merged, added := mergeSafeScriptDir(os.Getenv(safeScriptDirsEnv), scriptDir); added {
 			if err := os.Setenv(safeScriptDirsEnv, merged); err != nil {
@@ -384,7 +394,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		}
 	}
 
-	// Validate the resolved script path for security (prevents TOCTOU)
+	// Validate the resolved script path for security
 	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
 		return nil, "", err
 	}
@@ -856,7 +866,12 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 }
 
 func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
-	if scriptDir == "" || !filepath.IsAbs(scriptDir) {
+	if scriptDir == "" {
+		log.Printf("runner: mergeSafeScriptDir called with empty scriptDir; ignoring")
+		return existing, false
+	}
+	if !filepath.IsAbs(scriptDir) {
+		log.Printf("runner: mergeSafeScriptDir called with relative path %q; ignoring (must be absolute)", scriptDir)
 		return existing, false
 	}
 
@@ -871,6 +886,7 @@ func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 			}
 			clean := filepath.Clean(part)
 			if !filepath.IsAbs(clean) {
+				log.Printf("runner: ignoring relative path %q in %s (must be absolute)", part, safeScriptDirsEnv)
 				continue
 			}
 			if _, ok := seen[clean]; ok {

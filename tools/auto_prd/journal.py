@@ -451,7 +451,12 @@ def summarize_journal(entries: list[dict[str, Any]]) -> dict[str, Any]:
             start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
             end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
             summary["duration_ms"] = int((end - start).total_seconds() * 1000)
-        except ValueError:
-            pass
+        except ValueError as e:
+            logger.warning(
+                "Failed to parse journal entry timestamps: start_time=%r, end_time=%r. Error: %s",
+                start_time,
+                end_time,
+                e,
+            )
 
     return summary

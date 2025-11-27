@@ -11,7 +11,6 @@ from .checkpoint import (
     mark_phase_complete,
     mark_phase_started,
     mark_session_complete,
-    mark_session_failed,
     save_checkpoint,
     update_phase_state,
 )

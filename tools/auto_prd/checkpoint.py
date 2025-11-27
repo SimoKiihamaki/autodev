@@ -190,6 +190,7 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
         try:
             os.unlink(temp_path)
         except OSError:
+            # Ignore errors deleting temp file; it may not exist or may have already been removed.
             pass
         raise
 
@@ -437,7 +438,11 @@ def cleanup_old_sessions(max_age_days: int = 30, keep_completed: int = 10) -> in
                     age_days = (now - updated).days
                     completed_sessions.append((checkpoint_file, age_days))
                 except ValueError:
-                    pass
+                    logger.warning(
+                        "Skipping checkpoint file %s due to invalid updated_at timestamp: %r",
+                        checkpoint_file,
+                        updated_at,
+                    )
         except (json.JSONDecodeError, OSError):
             continue
 
@@ -450,8 +455,10 @@ def cleanup_old_sessions(max_age_days: int = 30, keep_completed: int = 10) -> in
             try:
                 checkpoint_file.unlink()
                 deleted += 1
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning(
+                    "Failed to delete checkpoint file %s: %s", checkpoint_file, e
+                )
 
     if deleted > 0:
         logger.info("Cleaned up %d old checkpoint files", deleted)
