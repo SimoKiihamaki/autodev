@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,10 @@ TRACKER_VERSION = "2.0.0"
 TRACKER_DIR = ".aprd"
 TRACKER_FILE = "tracker.json"
 MAX_TRACKER_SIZE = 1 * 1024 * 1024  # 1 MB maximum tracker file size
+
+# Retry constants for tracker generation
+MAX_TRACKER_GEN_ATTEMPTS = 3
+TRACKER_GEN_RETRY_BACKOFF_BASE = 10  # seconds
 
 # Load schema at module level for validation
 _SCHEMA_PATH = Path(__file__).parent / "tracker_schema.json"
@@ -574,8 +579,15 @@ def _extract_json_from_response(response: str) -> str:
 
     Returns:
         Extracted JSON string
+
+    Raises:
+        ValueError: If response is empty or contains no JSON
     """
     text = response.strip()
+
+    # Validate input - empty response is a clear error
+    if not text:
+        raise ValueError("Empty response from agent - cannot extract JSON")
 
     # Try to find JSON in markdown code block
     if "```json" in text:
@@ -591,19 +603,25 @@ def _extract_json_from_response(response: str) -> str:
 
     # Find the actual JSON object
     brace_start = text.find("{")
-    if brace_start >= 0:
-        # Find matching closing brace
-        depth = 0
-        for i, char in enumerate(text[brace_start:], start=brace_start):
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    text = text[brace_start : i + 1]
-                    break
+    if brace_start < 0:
+        # Log preview of what we received for debugging
+        preview = text[:200] + "..." if len(text) > 200 else text
+        raise ValueError(
+            f"No JSON object found in response. Response preview: {preview}"
+        )
 
-    return text
+    # Find matching closing brace
+    depth = 0
+    for i, char in enumerate(text[brace_start:], start=brace_start):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace_start : i + 1]
+
+    # Unbalanced braces - incomplete output
+    raise ValueError("Unbalanced braces in JSON response - incomplete output")
 
 
 def generate_tracker(
@@ -725,23 +743,52 @@ def generate_tracker(
         }
         return tracker
 
-    # Call agent
+    # Call agent with retry logic
     logger.info("Sending PRD to %s for analysis...", executor)
 
-    if executor == "codex":
-        result = codex_exec(
-            prompt=prompt,
-            repo_root=repo_root,
-            allow_unsafe_execution=allow_unsafe_execution,
-            dry_run=dry_run,
-        )
-    else:
-        result = claude_exec(
-            prompt=prompt,
-            repo_root=repo_root,
-            allow_unsafe_execution=allow_unsafe_execution,
-            dry_run=dry_run,
-        )
+    result: str = ""
+    for attempt in range(MAX_TRACKER_GEN_ATTEMPTS):
+        try:
+            if executor == "codex":
+                result = codex_exec(
+                    prompt=prompt,
+                    repo_root=repo_root,
+                    allow_unsafe_execution=allow_unsafe_execution,
+                    dry_run=dry_run,
+                )
+            else:
+                result = claude_exec(
+                    prompt=prompt,
+                    repo_root=repo_root,
+                    allow_unsafe_execution=allow_unsafe_execution,
+                    dry_run=dry_run,
+                )
+
+            # Validate response before proceeding
+            if not result or not result.strip():
+                raise ValueError(f"Empty response from {executor}")
+
+            # If we get here, we have a non-empty response - break retry loop
+            break
+
+        except (ValueError, RuntimeError) as e:
+            if attempt < MAX_TRACKER_GEN_ATTEMPTS - 1:
+                wait_time = TRACKER_GEN_RETRY_BACKOFF_BASE * (2**attempt)
+                logger.warning(
+                    "Tracker generation attempt %d/%d failed: %s. Retrying in %ds...",
+                    attempt + 1,
+                    MAX_TRACKER_GEN_ATTEMPTS,
+                    e,
+                    wait_time,
+                )
+                time.sleep(wait_time)
+            else:
+                logger.error(
+                    "Tracker generation failed after %d attempts: %s",
+                    MAX_TRACKER_GEN_ATTEMPTS,
+                    e,
+                )
+                raise
 
     # Extract and parse JSON from response
     json_str = _extract_json_from_response(result)

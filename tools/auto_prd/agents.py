@@ -99,13 +99,21 @@ def codex_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(
+    out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
         check=True,
         stdin=prompt,
         timeout=get_codex_exec_timeout(),
     )
+
+    # Log warning if stdout is empty but stderr has content (may indicate rate limiting)
+    if not out.strip() and stderr.strip():
+        logger.warning(
+            "Codex returned empty stdout. Stderr content: %s",
+            stderr[:500] if len(stderr) > 500 else stderr,
+        )
+
     return out
 
 
@@ -280,11 +288,19 @@ def claude_exec(
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN"
-    out, _, _ = run_cmd(
+    out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
         check=True,
         stdin=prompt,
         timeout=get_claude_exec_timeout(),
     )
+
+    # Log warning if stdout is empty but stderr has content (may indicate rate limiting)
+    if not out.strip() and stderr.strip():
+        logger.warning(
+            "Claude returned empty stdout. Stderr content: %s",
+            stderr[:500] if len(stderr) > 500 else stderr,
+        )
+
     return out

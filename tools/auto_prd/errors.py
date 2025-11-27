@@ -123,6 +123,12 @@ ERROR_PATTERNS: dict[ErrorCategory, list[str]] = {
         "Runner returned non-zero",
         "CODEX_FULL_AUTO_BLOCK",
         "readonly mode",
+        "empty response",
+        "Empty response",
+        "No JSON object found",
+        "invalid tracker",
+        "tracker generation failed",
+        "Unbalanced braces",
     ],
     ErrorCategory.TIMEOUT: [
         "timed out",
@@ -152,6 +158,11 @@ RECOVERY_HINTS: dict[str, str] = {
     "No space left on device": "Free up disk space before continuing",
     "readonly mode": "Codex entered readonly mode - check CODEX_AUTO_FULL_AUTO env var",
     "CODEX_FULL_AUTO_BLOCK": "Unsafe execution blocked - use --allow-unsafe-execution",
+    # Tracker generation error hints
+    "empty response": "Agent returned no output - check API rate limits and authentication",
+    "Empty response": "Agent returned no output - check API rate limits and authentication",
+    "No JSON object found": "Agent output was not valid JSON - may need to retry or adjust prompt",
+    "Unbalanced braces": "Agent output was truncated - context may be too large",
 }
 
 
