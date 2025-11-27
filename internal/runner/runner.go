@@ -865,13 +865,16 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 	return newEnv
 }
 
+// mergeSafeScriptDir merges a script directory into the existing whitelist.
+// Note: This function uses the standard library log package for warnings, consistent
+// with the rest of the codebase. Structured logging could be added in a future refactor.
 func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 	if scriptDir == "" {
-		log.Printf("runner: mergeSafeScriptDir called with empty scriptDir; ignoring")
+		log.Printf("[WARN] runner: mergeSafeScriptDir called with empty scriptDir; ignoring")
 		return existing, false
 	}
 	if !filepath.IsAbs(scriptDir) {
-		log.Printf("runner: mergeSafeScriptDir called with relative path %q; ignoring (must be absolute)", scriptDir)
+		log.Printf("[WARN] runner: mergeSafeScriptDir called with relative path %q; ignoring (must be absolute)", scriptDir)
 		return existing, false
 	}
 
@@ -886,7 +889,7 @@ func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 			}
 			clean := filepath.Clean(part)
 			if !filepath.IsAbs(clean) {
-				log.Printf("runner: ignoring relative path %q in %s (must be absolute)", part, safeScriptDirsEnv)
+				log.Printf("[WARN] runner: ignoring relative path %q in %s (must be absolute)", part, safeScriptDirsEnv)
 				continue
 			}
 			if _, ok := seen[clean]; ok {
