@@ -52,7 +52,7 @@ test-go-race:
 
 test-py:
 	@echo "🧪 Running Python tests..."
-	cd $(TOOLS_DIR) && $(PYTHON) -m pytest auto_prd/tests/ -v
+	cd $(TOOLS_DIR) && uv run pytest tests/ -v
 
 # Formatting
 fmt: fmt-go fmt-py
