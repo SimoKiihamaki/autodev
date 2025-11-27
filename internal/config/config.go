@@ -440,3 +440,183 @@ func equalIntPointers(a, b *int) bool {
 	}
 	return *a == *b
 }
+
+// ValidationIssue represents a configuration validation issue.
+type ValidationIssue struct {
+	Field    string
+	Message  string
+	Severity string // "error", "warning", "info"
+}
+
+// ValidationResult holds the results of inter-field validation.
+type ValidationResult struct {
+	Valid  bool
+	Issues []ValidationIssue
+}
+
+// AddError adds an error-level issue.
+func (v *ValidationResult) AddError(field, message string) {
+	v.Issues = append(v.Issues, ValidationIssue{
+		Field:    field,
+		Message:  message,
+		Severity: "error",
+	})
+	v.Valid = false
+}
+
+// AddWarning adds a warning-level issue.
+func (v *ValidationResult) AddWarning(field, message string) {
+	v.Issues = append(v.Issues, ValidationIssue{
+		Field:    field,
+		Message:  message,
+		Severity: "warning",
+	})
+}
+
+// AddInfo adds an informational issue.
+func (v *ValidationResult) AddInfo(field, message string) {
+	v.Issues = append(v.Issues, ValidationIssue{
+		Field:    field,
+		Message:  message,
+		Severity: "info",
+	})
+}
+
+// Errors returns only error-level issues.
+func (v *ValidationResult) Errors() []ValidationIssue {
+	var errs []ValidationIssue
+	for _, issue := range v.Issues {
+		if issue.Severity == "error" {
+			errs = append(errs, issue)
+		}
+	}
+	return errs
+}
+
+// Warnings returns only warning-level issues.
+func (v *ValidationResult) Warnings() []ValidationIssue {
+	var warns []ValidationIssue
+	for _, issue := range v.Issues {
+		if issue.Severity == "warning" {
+			warns = append(warns, issue)
+		}
+	}
+	return warns
+}
+
+// ValidateInterField performs cross-field validation on the configuration.
+// It checks for logical inconsistencies and potentially problematic combinations.
+func (c Config) ValidateInterField() ValidationResult {
+	result := ValidationResult{Valid: true}
+
+	// Check that at least one phase is enabled
+	if !c.RunPhases.Local && !c.RunPhases.PR && !c.RunPhases.ReviewFix {
+		result.AddError("run_phases", "at least one phase must be enabled (local, pr, or review_fix)")
+	}
+
+	// Warn if infinite_reviews is true but review_fix phase is disabled
+	if c.Flags.InfiniteReviews && !c.RunPhases.ReviewFix {
+		result.AddWarning("flags.infinite_reviews", "infinite_reviews has no effect when review_fix phase is disabled")
+	}
+
+	// Warn if dry_run and allow_unsafe are both true (redundant)
+	if c.Flags.DryRun && c.Flags.AllowUnsafe {
+		result.AddInfo("flags", "allow_unsafe has no effect when dry_run is enabled")
+	}
+
+	// Validate timing constraints
+	if c.Timings.ReviewPollSeconds != nil && c.Timings.IdleGraceMinutes != nil {
+		pollSeconds := *c.Timings.ReviewPollSeconds
+		idleGraceSeconds := *c.Timings.IdleGraceMinutes * 60
+
+		// Warn if poll interval is longer than idle grace (would never poll)
+		if pollSeconds > idleGraceSeconds && idleGraceSeconds > 0 {
+			result.AddWarning("timings", "review_poll_seconds exceeds idle_grace_minutes; reviews may timeout before first poll")
+		}
+	}
+
+	// Warn if poll interval is very short (< 30s can cause rate limits)
+	if c.Timings.ReviewPollSeconds != nil && *c.Timings.ReviewPollSeconds < 30 {
+		result.AddWarning("timings.review_poll_seconds", "very short poll interval may cause API rate limits; consider >= 30 seconds")
+	}
+
+	// Validate max_local_iters
+	if c.Timings.MaxLocalIters != nil {
+		if *c.Timings.MaxLocalIters <= 0 {
+			result.AddError("timings.max_local_iters", "must be > 0")
+		} else if *c.Timings.MaxLocalIters > 200 {
+			result.AddWarning("timings.max_local_iters", "very high iteration limit (>200) may indicate runaway execution")
+		}
+	}
+
+	// Warn if local phase is disabled but max_local_iters is set
+	if !c.RunPhases.Local && c.Timings.MaxLocalIters != nil && *c.Timings.MaxLocalIters != 50 {
+		result.AddInfo("timings.max_local_iters", "has no effect when local phase is disabled")
+	}
+
+	// Warn if review_fix phase is disabled but review timing settings are customized
+	if !c.RunPhases.ReviewFix {
+		defaultTimings := Defaults().Timings
+		if c.Timings.ReviewPollSeconds != nil && defaultTimings.ReviewPollSeconds != nil &&
+			*c.Timings.ReviewPollSeconds != *defaultTimings.ReviewPollSeconds {
+			result.AddInfo("timings.review_poll_seconds", "has no effect when review_fix phase is disabled")
+		}
+		if c.Timings.IdleGraceMinutes != nil && defaultTimings.IdleGraceMinutes != nil &&
+			*c.Timings.IdleGraceMinutes != *defaultTimings.IdleGraceMinutes {
+			result.AddInfo("timings.idle_grace_minutes", "has no effect when review_fix phase is disabled")
+		}
+		if c.Timings.WaitMinutes != nil && defaultTimings.WaitMinutes != nil &&
+			*c.Timings.WaitMinutes != *defaultTimings.WaitMinutes {
+			result.AddInfo("timings.wait_minutes", "has no effect when review_fix phase is disabled")
+		}
+	}
+
+	// Validate executor policy
+	validPolicies := map[string]bool{
+		"codex-first": true,
+		"codex-only":  true,
+		"claude-only": true,
+		"":            true, // Empty defaults to codex-first
+	}
+	if !validPolicies[c.ExecutorPolicy] {
+		result.AddError("executor_policy", "must be one of: codex-first, codex-only, claude-only")
+	}
+
+	// Validate phase executors
+	validExecutors := map[string]bool{
+		"codex":  true,
+		"claude": true,
+		"":       true, // Empty means use policy default
+	}
+	if !validExecutors[c.PhaseExecutors.Implement] {
+		result.AddError("phase_executors.implement", "must be 'codex', 'claude', or empty")
+	}
+	if !validExecutors[c.PhaseExecutors.Fix] {
+		result.AddError("phase_executors.fix", "must be 'codex', 'claude', or empty")
+	}
+	if !validExecutors[c.PhaseExecutors.PR] {
+		result.AddError("phase_executors.pr", "must be 'codex', 'claude', or empty")
+	}
+	if !validExecutors[c.PhaseExecutors.ReviewFix] {
+		result.AddError("phase_executors.review_fix", "must be 'codex', 'claude', or empty")
+	}
+
+	// Validate log level
+	validLogLevels := map[string]bool{
+		"DEBUG":   true,
+		"INFO":    true,
+		"WARNING": true,
+		"ERROR":   true,
+		"WARN":    true, // Alias
+	}
+	if !validLogLevels[strings.ToUpper(c.LogLevel)] {
+		result.AddError("log_level", "must be one of: DEBUG, INFO, WARNING, ERROR")
+	}
+
+	// Validate batch processing
+	if c.BatchProcessing.BatchTimeoutMs != nil && *c.BatchProcessing.BatchTimeoutMs < 0 {
+		result.AddError("batch_processing.batch_timeout_ms", "must be >= 0")
+	}
+
+	return result
+}

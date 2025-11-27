@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from .agents import codex_exec, coderabbit_has_findings, coderabbit_prompt_only
+from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
+from .logging_utils import logger
 from .policy import policy_runner
 from .utils import checkbox_stats, detect_readonly_block, parse_tasks_left
 
@@ -55,19 +57,57 @@ def orchestrate_local_loop(
     codex_model: str,
     allow_unsafe_execution: bool,
     dry_run: bool,
+    checkpoint: Optional[dict[str, Any]] = None,
 ) -> Tuple[int, bool]:
+    """Orchestrate the local Codex/CodeRabbit iteration loop.
+
+    Args:
+        prd_path: Path to the PRD file.
+        repo_root: Repository root directory.
+        base_branch: Base branch for CodeRabbit comparison.
+        max_iters: Maximum number of iterations.
+        codex_model: Codex model to use.
+        allow_unsafe_execution: Allow unsafe execution mode.
+        dry_run: If True, skip actual execution.
+        checkpoint: Optional checkpoint dict for resume support.
+
+    Returns:
+        Tuple of (tasks_left, appears_complete).
+    """
     unchecked, total_checkboxes = checkbox_stats(prd_path)
     print(f"Unchecked checkboxes in PRD (heuristic): {unchecked}/{total_checkboxes}")
-    tasks_left: Optional[int] = None
+
+    # Initialize state - restore from checkpoint if resuming
+    local_state = checkpoint["phases"]["local"] if checkpoint else {}
+    start_iteration = (
+        local_state.get("iteration", 0) + 1
+        if local_state.get("status") == "in_progress"
+        else 1
+    )
+
+    tasks_left: Optional[int] = (
+        local_state.get("tasks_left")
+        if local_state.get("tasks_left", -1) >= 0
+        else None
+    )
     appears_complete = False
-    no_findings_streak = 0
-    skipped_review_streak = 0
-    qa_context_shared = False
+    no_findings_streak = local_state.get("no_findings_streak", 0)
+    skipped_review_streak = local_state.get("skipped_review_streak", 0)
+    qa_context_shared = local_state.get("qa_context_shared", False)
+    empty_change_streak = local_state.get("empty_change_streak", 0)
+
+    # Get current git state
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
-    empty_change_streak = 0
 
-    for i in range(1, max_iters + 1):
+    # If resuming, restore from checkpoint state if available
+    if start_iteration > 1:
+        logger.info("Resuming local loop from iteration %d", start_iteration)
+        print(
+            f"Resuming from iteration {start_iteration} (streaks: empty={empty_change_streak}, no_findings={no_findings_streak})"
+        )
+
+    for i in range(start_iteration, max_iters + 1):
         print(
             f"\n=== Iteration {i}/{max_iters}: Codex implements next chunk ===",
             flush=True,
@@ -198,6 +238,25 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         should_stop, completion_msg = should_stop_for_completion(
             done_by_checkboxes, done_by_codex, has_findings, tasks_left
         )
+
+        # Save checkpoint after each iteration
+        if checkpoint:
+            update_phase_state(
+                checkpoint,
+                "local",
+                {
+                    "iteration": i,
+                    "tasks_left": tasks_left if tasks_left is not None else -1,
+                    "no_findings_streak": no_findings_streak,
+                    "empty_change_streak": empty_change_streak,
+                    "skipped_review_streak": skipped_review_streak,
+                    "qa_context_shared": qa_context_shared,
+                    "last_head_sha": head_after_iteration,
+                    "last_status_snapshot": list(status_after_iteration),
+                },
+            )
+            save_checkpoint(checkpoint)
+            logger.debug("Saved checkpoint at iteration %d", i)
 
         if not repo_changed_after_actions:
             if should_stop:

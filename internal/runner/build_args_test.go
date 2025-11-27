@@ -475,14 +475,19 @@ func TestBuildArgsAllowsAbsoluteScriptOutsideRepo(t *testing.T) {
 		PRDPath: prdPath,
 	}
 
-	if _, err := BuildArgs(input); err != nil {
+	plan, err := BuildArgs(input)
+	if err != nil {
 		t.Fatalf("BuildArgs rejected absolute script outside repo: %v", err)
 	}
 
 	// The script directory should now be present in AUTO_PRD_SAFE_SCRIPT_DIRS.
-	value := os.Getenv(safeScriptDirsEnv)
+	env := envSliceToMap(plan.Env)
+	value, ok := env[safeScriptDirsEnv]
+	if !ok {
+		t.Fatalf("%s missing in env; got %v", safeScriptDirsEnv, env)
+	}
 	found := false
-	expectedDir := filepath.Clean(resolveScriptPathForTest(scriptDir))
+	expectedDir := filepath.Dir(filepath.Clean(resolveScriptPathForTest(scriptPath)))
 	for _, part := range filepath.SplitList(value) {
 		cleanPart := filepath.Clean(part)
 		if resolvedPart, err := filepath.EvalSymlinks(cleanPart); err == nil {

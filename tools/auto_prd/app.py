@@ -3,12 +3,23 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+from .checkpoint import (
+    create_checkpoint,
+    generate_session_id,
+    mark_phase_complete,
+    mark_phase_started,
+    mark_session_complete,
+    mark_session_failed,
+    save_checkpoint,
+    update_phase_state,
+)
 from .command import ensure_claude_debug_dir, register_safe_cwd, run_cmd
 from .constants import DEFAULT_LOG_DIR_NAME, PHASES_WITH_COMMIT_RISK, VALID_PHASES
 from .gh_ops import get_pr_number_for_head, post_final_comment
 from .git_ops import (
+    StashConflictError,
     ensure_gh_alias,
     git_branch_exists,
     git_commit,
@@ -18,11 +29,11 @@ from .git_ops import (
     git_push_branch,
     git_root,
     git_stage_all,
-    git_stash_pop,
     git_stash_worktree,
     git_status_snapshot,
     parse_owner_repo_from_git,
     print_codex_diagnostics,
+    safe_stash_pop,
 )
 from .local_loop import orchestrate_local_loop
 from .logging_utils import logger, setup_file_logging
@@ -103,6 +114,18 @@ def run(args) -> None:
         print(f"Using PRD: {prd_path}")
         logger.info("Resolved repository root to %s", repo_root)
         logger.info("Resolved PRD path to %s", prd_path)
+
+        # Initialize or load checkpoint
+        checkpoint: Optional[dict[str, Any]] = getattr(args, "checkpoint", None)
+        if checkpoint:
+            # Resuming from existing checkpoint
+            session_id = checkpoint["session_id"]
+            print(f"Resuming session: {session_id}")
+            logger.info("Resuming session %s", session_id)
+        else:
+            # Create new checkpoint
+            session_id = generate_session_id(prd_path)
+            logger.info("Creating new session %s", session_id)
 
         owner_repo = args.repo_slug or parse_owner_repo_from_git()
         repo_default_branch = git_default_branch(repo_root)
@@ -231,12 +254,30 @@ def run(args) -> None:
         else:
             print(f"Continuing on current branch: {new_branch}")
 
+        # Create checkpoint if not resuming
+        if checkpoint is None:
+            checkpoint = create_checkpoint(
+                session_id=session_id,
+                prd_path=prd_path,
+                repo_root=repo_root,
+                base_branch=base_branch,
+                feature_branch=new_branch,
+                selected_phases=selected_phases,
+            )
+            save_checkpoint(checkpoint)
+            print(f"Session: {session_id}")
+            logger.info("Created checkpoint for session %s", session_id)
+
         if stash_selector:
             try:
                 print(
                     f"Restoring stashed changes ({stash_selector}) onto branch '{new_branch}'…"
                 )
-                git_stash_pop(repo_root, stash_selector)
+                safe_stash_pop(repo_root, stash_selector)
+            except StashConflictError as exc:
+                # Provide actionable recovery instructions for conflicts
+                logger.error("Stash conflict detected: %s", exc)
+                raise SystemExit(str(exc)) from exc
             except subprocess.CalledProcessError as exc:
                 details = extract_called_process_error_details(exc)
                 raise SystemExit(
@@ -282,7 +323,20 @@ def run(args) -> None:
             print_codex_diagnostics(repo_root)
         tasks_left = -1
         appears_complete = False
+
+        # Local phase
         if include("local"):
+            # Check if resuming from local phase
+            local_state = checkpoint["phases"]["local"]
+            resume_iteration = 0
+            if local_state["status"] == "in_progress":
+                resume_iteration = local_state.get("iteration", 0)
+                logger.info("Resuming local phase from iteration %d", resume_iteration)
+
+            mark_phase_started(checkpoint, "local")
+            update_phase_state(checkpoint, "local", {"max_iters": args.max_local_iters})
+            save_checkpoint(checkpoint)
+
             tasks_left, appears_complete = orchestrate_local_loop(
                 prd_path=prd_path,
                 repo_root=repo_root,
@@ -291,9 +345,19 @@ def run(args) -> None:
                 codex_model=args.codex_model,
                 allow_unsafe_execution=args.allow_unsafe_execution,
                 dry_run=args.dry_run,
+                checkpoint=checkpoint,  # Pass checkpoint for iteration-level updates
             )
+
+            mark_phase_complete(checkpoint, "local")
+            update_phase_state(checkpoint, "local", {"tasks_left": tasks_left})
+            save_checkpoint(checkpoint)
+
+        # PR phase
         pr_number = None
         if include("pr"):
+            mark_phase_started(checkpoint, "pr")
+            save_checkpoint(checkpoint)
+
             pr_number = open_or_get_pr(
                 new_branch=new_branch,
                 base_branch=base_branch,
@@ -305,6 +369,13 @@ def run(args) -> None:
                 skip_runner=perform_auto_pr_commit,
                 already_pushed=branch_pushed,
             )
+
+            mark_phase_complete(checkpoint, "pr")
+            update_phase_state(
+                checkpoint, "pr", {"pr_number": pr_number, "branch_pushed": True}
+            )
+            save_checkpoint(checkpoint)
+        # Review/fix phase - get PR number if not running PR phase
         if include("review_fix") and not include("pr"):
             if pr_number is None:
                 head_branch = git_current_branch(repo_root)
@@ -322,7 +393,16 @@ def run(args) -> None:
                     print(
                         "No open PR associated with the current branch; review/fix loop will be skipped."
                     )
+
+        # Review/fix phase
         if include("review_fix"):
+            # Restore processed comment IDs from checkpoint if resuming
+            review_state = checkpoint["phases"]["review_fix"]
+            processed_ids = set(review_state.get("processed_comment_ids", []))
+
+            mark_phase_started(checkpoint, "review_fix")
+            save_checkpoint(checkpoint)
+
             review_fix_loop(
                 pr_number=pr_number,
                 owner_repo=owner_repo,
@@ -334,7 +414,11 @@ def run(args) -> None:
                 dry_run=args.dry_run,
                 initial_wait_minutes=args.wait_minutes,
                 infinite_reviews=args.infinite_reviews,
+                checkpoint=checkpoint,  # Pass checkpoint for comment tracking
             )
+
+            mark_phase_complete(checkpoint, "review_fix")
+            save_checkpoint(checkpoint)
 
         post_final_comment(
             pr_number=pr_number,
@@ -343,6 +427,12 @@ def run(args) -> None:
             repo_root=repo_root,
             dry_run=args.dry_run,
         )
+
+        # Mark session complete
+        mark_session_complete(checkpoint)
+        save_checkpoint(checkpoint)
+        print(f"Session {session_id} completed successfully.")
+        logger.info("Session %s completed", session_id)
 
         if appears_complete:
             print(f"Final TASKS_LEFT={tasks_left}", flush=True)

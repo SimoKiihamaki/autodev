@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
 from .app import run
+from .checkpoint import find_resumable_session, list_sessions, load_checkpoint
 from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
 from .executor import AutoPrdError
 from .policy import EXECUTOR_CHOICES
@@ -111,7 +114,98 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated list of phases to run (local,pr,review_fix). Default: all phases.",
     )
+
+    # Session management arguments
+    resume_group = parser.add_argument_group("session management")
+    resume_group.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume the most recent in-progress session for the given PRD.",
+    )
+    resume_group.add_argument(
+        "--resume-session",
+        metavar="SESSION_ID",
+        default=None,
+        help="Resume a specific session by ID.",
+    )
+    resume_group.add_argument(
+        "--list-sessions",
+        action="store_true",
+        help="List available sessions and exit.",
+    )
+    resume_group.add_argument(
+        "--force-new",
+        action="store_true",
+        help="Force creation of a new session even if a resumable one exists.",
+    )
+
     return parser
+
+
+def handle_list_sessions() -> None:
+    """List available sessions and exit."""
+    sessions = list_sessions(limit=50)
+    if not sessions:
+        print("No sessions found.")
+        return
+
+    print(f"{'Session ID':<50} {'Status':<12} {'Phase':<12} {'Updated':<20}")
+    print("-" * 94)
+    for session in sessions:
+        session_id = session.get("session_id", "unknown")[:48]
+        status = session.get("status", "unknown")
+        phase = session.get("current_phase") or "-"
+        updated = session.get("updated_at", "")[:19]  # Truncate to seconds
+        print(f"{session_id:<50} {status:<12} {phase:<12} {updated:<20}")
+
+
+def resolve_checkpoint(args) -> dict | None:
+    """Resolve checkpoint based on CLI arguments.
+
+    Returns:
+        Checkpoint dict if resuming, None for new session.
+    """
+    from .git_ops import git_root
+
+    if args.force_new:
+        return None
+
+    if args.resume_session:
+        checkpoint = load_checkpoint(args.resume_session)
+        if checkpoint is None:
+            raise SystemExit(f"Session not found: {args.resume_session}")
+        print(f"Resuming session: {args.resume_session}")
+        return checkpoint
+
+    if args.resume:
+        prd_path = Path(args.prd).resolve()
+        try:
+            repo_root = Path(args.repo).resolve() if args.repo else git_root()
+        except Exception:
+            repo_root = Path.cwd()
+
+        checkpoint = find_resumable_session(prd_path, repo_root)
+        if checkpoint is None:
+            print("No resumable session found. Starting new session.")
+            return None
+
+        session_id = checkpoint.get("session_id", "unknown")
+        current_phase = checkpoint.get("current_phase", "unknown")
+        print(f"Found resumable session: {session_id}")
+        print(f"  Current phase: {current_phase}")
+
+        # Check for PRD changes
+        from .checkpoint import prd_changed_since_checkpoint
+
+        if prd_changed_since_checkpoint(checkpoint, prd_path):
+            print("  WARNING: PRD has been modified since session started.")
+            print(
+                "  Use --force-new to start fresh, or continue with potentially stale tasks."
+            )
+
+        return checkpoint
+
+    return None
 
 
 def main() -> None:
@@ -120,6 +214,16 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+
+    # Handle --list-sessions
+    if args.list_sessions:
+        handle_list_sessions()
+        sys.exit(0)
+
+    # Resolve checkpoint for resume
+    checkpoint = resolve_checkpoint(args)
+    args.checkpoint = checkpoint  # Attach to args for app.run()
+
     try:
         run(args)
     except AutoPrdError as exc:

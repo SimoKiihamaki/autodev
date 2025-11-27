@@ -5,9 +5,10 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .agents import codex_exec
+from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
 from .gh_ops import (
     acknowledge_review_items,
@@ -35,7 +36,23 @@ def review_fix_loop(
     dry_run: bool = False,
     initial_wait_minutes: int = 0,
     infinite_reviews: bool = False,
+    checkpoint: Optional[dict[str, Any]] = None,
 ) -> None:
+    """Run the review/fix loop for a PR.
+
+    Args:
+        pr_number: The PR number.
+        owner_repo: Owner/repo string.
+        repo_root: Repository root directory.
+        idle_grace: Idle grace period in minutes.
+        poll_interval: Polling interval in seconds.
+        codex_model: Codex model to use.
+        allow_unsafe_execution: Allow unsafe execution.
+        dry_run: If True, skip actual execution.
+        initial_wait_minutes: Initial wait for bot reviews.
+        infinite_reviews: Continue indefinitely while feedback exists.
+        checkpoint: Optional checkpoint dict for resume support.
+    """
     if pr_number is None:
         return
     if dry_run:
@@ -55,10 +72,19 @@ def review_fix_loop(
     last_activity = time.monotonic()
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
-    # Track processed comment IDs locally so we can inject deterministic state during tests
-    # and avoid relying on hidden module globals. TODO: consider persisting across runs to
-    # prevent duplicate acknowledgements after restarts.
-    processed_comment_ids: set[int] = set()
+    # Track processed comment IDs - restore from checkpoint if resuming
+    review_state = checkpoint["phases"]["review_fix"] if checkpoint else {}
+    processed_comment_ids: set[int] = set(review_state.get("processed_comment_ids", []))
+    cycles = review_state.get("cycles", 0)
+
+    if processed_comment_ids:
+        logger.info(
+            "Resumed with %d previously processed comment IDs",
+            len(processed_comment_ids),
+        )
+        print(
+            f"Resuming with {len(processed_comment_ids)} previously processed comments."
+        )
 
     def sleep_with_jitter(base: float) -> None:
         jitter = _JITTER_RNG.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)
@@ -115,6 +141,26 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             acknowledge_review_items(
                 owner_repo, pr_number, unresolved, processed_comment_ids
             )
+
+            # Persist checkpoint with updated processed comment IDs
+            cycles += 1
+            if checkpoint:
+                update_phase_state(
+                    checkpoint,
+                    "review_fix",
+                    {
+                        "processed_comment_ids": list(processed_comment_ids),
+                        "cycles": cycles,
+                        "last_activity_time": time.monotonic(),
+                    },
+                )
+                save_checkpoint(checkpoint)
+                logger.debug(
+                    "Saved review checkpoint: %d comments processed, cycle %d",
+                    len(processed_comment_ids),
+                    cycles,
+                )
+
             last_activity = time.monotonic()
             sleep_with_jitter(float(poll))
             continue
