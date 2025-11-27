@@ -445,6 +445,22 @@ class ExtractJsonFromResponseTests(unittest.TestCase):
         result = _extract_json_from_response(response)
         self.assertEqual(result, '{"outer": {"inner": "value"}}')
 
+    def test_json_with_array_in_object(self) -> None:
+        """JSON with arrays should be extracted correctly."""
+        response = '{"items": [1, 2, 3]}'
+        result = _extract_json_from_response(response)
+        self.assertEqual(result, '{"items": [1, 2, 3]}')
+
+    def test_json_in_generic_code_block(self) -> None:
+        """JSON in generic code block (without json marker) should be extracted."""
+        response = """Here is the tracker:
+```
+{"version": "2.0.0"}
+```
+"""
+        result = _extract_json_from_response(response)
+        self.assertEqual(result, '{"version": "2.0.0"}')
+
 
 class GenerateTrackerRetryTests(unittest.TestCase):
     """Tests for generate_tracker retry behavior."""
@@ -618,6 +634,111 @@ class GenerateTrackerRetryTests(unittest.TestCase):
 
         self.assertEqual(mock_claude.call_count, 2)
         self.assertEqual(result["version"], TRACKER_VERSION)
+
+    @patch("auto_prd.tracker_generator.codex_exec")
+    @patch("auto_prd.tracker_generator.time.sleep")
+    def test_exponential_backoff_timing(
+        self, mock_sleep: MagicMock, mock_codex: MagicMock
+    ) -> None:
+        """Should use exponential backoff with base of 10 seconds."""
+        mock_codex.return_value = ""  # Always empty
+
+        with self.assertRaises(ValueError):
+            generate_tracker(
+                prd_path=self.prd_path,
+                repo_root=self.repo_root,
+                executor="codex",
+                allow_unsafe_execution=True,
+            )
+
+        # Check backoff values: 10 * 2^0 = 10, 10 * 2^1 = 20
+        sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
+        self.assertEqual(sleep_calls, [10, 20])
+
+
+class GenerateTrackerDryRunTests(unittest.TestCase):
+    """Tests for generate_tracker dry run behavior."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_root = Path(self.temp_dir)
+        self.prd_path = self.repo_root / "test.md"
+        self.prd_path.write_text("# Test PRD")
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def test_dry_run_returns_valid_tracker(self) -> None:
+        """Dry run should return a minimal valid tracker."""
+        result = generate_tracker(
+            prd_path=self.prd_path,
+            repo_root=self.repo_root,
+            executor="codex",
+            dry_run=True,
+            allow_unsafe_execution=True,
+        )
+
+        self.assertEqual(result["version"], TRACKER_VERSION)
+        self.assertEqual(len(result["features"]), 1)
+        self.assertEqual(result["features"][0]["id"], "F001")
+        self.assertEqual(result["validation_summary"]["total_features"], 1)
+
+    def test_dry_run_does_not_call_agent(self) -> None:
+        """Dry run should not call agent executors."""
+        with patch("auto_prd.tracker_generator.codex_exec") as mock_codex:
+            with patch("auto_prd.tracker_generator.claude_exec") as mock_claude:
+                generate_tracker(
+                    prd_path=self.prd_path,
+                    repo_root=self.repo_root,
+                    executor="codex",
+                    dry_run=True,
+                    allow_unsafe_execution=True,
+                )
+
+                mock_codex.assert_not_called()
+                mock_claude.assert_not_called()
+
+
+class GenerateTrackerJsonParsingTests(unittest.TestCase):
+    """Tests for JSON parsing in generate_tracker."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_root = Path(self.temp_dir)
+        self.prd_path = self.repo_root / "test.md"
+        self.prd_path.write_text("# Test PRD")
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    @patch("auto_prd.tracker_generator.codex_exec")
+    @patch("auto_prd.tracker_generator.time.sleep")
+    def test_invalid_json_does_not_trigger_retry(
+        self, mock_sleep: MagicMock, mock_codex: MagicMock
+    ) -> None:
+        """Should not retry on invalid JSON (only empty response triggers retry)."""
+        # Return text that has JSON but is malformed
+        mock_codex.return_value = '{"version": "2.0.0"'  # Missing closing brace
+
+        with self.assertRaises(ValueError) as ctx:
+            generate_tracker(
+                prd_path=self.prd_path,
+                repo_root=self.repo_root,
+                executor="codex",
+                allow_unsafe_execution=True,
+            )
+
+        self.assertIn("Unbalanced braces", str(ctx.exception))
+        # Should only be called once since invalid JSON is not the same as empty response
+        self.assertEqual(mock_codex.call_count, 1)
 
 
 if __name__ == "__main__":
