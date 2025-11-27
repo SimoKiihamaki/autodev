@@ -20,6 +20,8 @@ const (
 	ActGotoTab4 Action = "goto_tab_4"
 	ActGotoTab5 Action = "goto_tab_5"
 	ActGotoTab6 Action = "goto_tab_6"
+	ActGotoTab7 Action = "goto_tab_7"
+	ActGotoTab8 Action = "goto_tab_8"
 
 	ActConfirm          Action = "confirm"
 	ActCancel           Action = "cancel"
@@ -53,6 +55,7 @@ const (
 	ActToggleFlagSyncGit  Action = "toggle_flag_syncgit"
 	ActToggleFlagInfinite Action = "toggle_flag_infinite"
 	ActResetDefaults      Action = "reset_defaults"
+	ActRefresh            Action = "refresh"
 )
 
 // tabActions maps tab indices to their corresponding actions for single source of truth
@@ -63,6 +66,8 @@ var tabActions = []Action{
 	ActGotoTab4,
 	ActGotoTab5,
 	ActGotoTab6,
+	ActGotoTab7,
+	ActGotoTab8,
 }
 
 func gotoTabAction(index int) (Action, bool) {
@@ -320,6 +325,8 @@ func DefaultKeyMap() KeyMap {
 		ActGotoTab4:      {key("4")},
 		ActGotoTab5:      {key("5")},
 		ActGotoTab6:      {key("6")},
+		ActGotoTab7:      {key("7")},
+		ActGotoTab8:      {key("8")},
 	}
 
 	perTab := map[string]map[Action][]KeyCombo{
@@ -385,6 +392,11 @@ func DefaultKeyMap() KeyMap {
 			ActScrollBottom: {key("end")},
 			ActToggleFollow: {key("f")},
 		},
+		tabIDProgress: {
+			ActRefresh:      {key("u")},
+			ActNavigateUp:   {key("up")},
+			ActNavigateDown: {key("down")},
+		},
 		tabIDHelp: {},
 	}
 
@@ -398,6 +410,8 @@ func DefaultKeyMap() KeyMap {
 		ActGotoTab4:           "Switch to tab 4",
 		ActGotoTab5:           "Switch to tab 5",
 		ActGotoTab6:           "Switch to tab 6",
+		ActGotoTab7:           "Switch to tab 7",
+		ActGotoTab8:           "Switch to tab 8",
 		ActConfirm:            "Confirm / Activate",
 		ActCancel:             "Cancel / Blur",
 		ActNavigateUp:         "Move up",
@@ -429,6 +443,7 @@ func DefaultKeyMap() KeyMap {
 		ActToggleFlagDryRun:   "Toggle Dry Run",
 		ActToggleFlagSyncGit:  "Toggle Sync Git",
 		ActToggleFlagInfinite: "Toggle Infinite Reviews",
+		ActRefresh:            "Refresh",
 	}
 
 	typingSensitive := map[Action]bool{
@@ -440,6 +455,8 @@ func DefaultKeyMap() KeyMap {
 		ActGotoTab4:      true,
 		ActGotoTab5:      true,
 		ActGotoTab6:      true,
+		ActGotoTab7:      true,
+		ActGotoTab8:      true,
 		ActResetDefaults: true,
 	}
 

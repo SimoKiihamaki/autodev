@@ -114,9 +114,14 @@ func (m *model) startRunCmd() tea.Cmd {
 	m.markSaved()
 	m.prepareRunLogFile()
 
-	// Channel buffers up to 2048 log lines for the TUI to bound memory usage; drops occur only when
-	// the producer outpaces the consumer beyond this buffer, but every line remains in the file log written by the runner.
-	m.logCh = make(chan runner.Line, 2048)
+	// Channel buffer size is configurable; defaults to 2048 to bound memory usage while allowing bursts.
+	// Drops occur only when the producer outpaces the consumer beyond this buffer,
+	// but every line remains in the file log written by the runner.
+	bufferSize := config.DefaultLogChannelBuffer
+	if m.cfg.BatchProcessing.LogChannelBuffer != nil && *m.cfg.BatchProcessing.LogChannelBuffer > 0 {
+		bufferSize = *m.cfg.BatchProcessing.LogChannelBuffer
+	}
+	m.logCh = make(chan runner.Line, bufferSize)
 
 	ch := m.logCh
 	m.resetLogState()

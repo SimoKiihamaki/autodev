@@ -39,7 +39,10 @@ func ctrlBackspaceKey() tea.KeyMsg {
 }
 
 func TestTypingGuardBlocksGlobalShortcuts(t *testing.T) {
-	t.Parallel()
+	// NOTE: Do not use t.Parallel() here. The charmbracelet/bubbles library
+	// uses internal state (runeutil.sanitizer) that is not goroutine-safe.
+	// Running subtests in parallel causes data races when the sanitizer
+	// is written during input handling while keys are being normalized.
 
 	keyQuit := runeKey('q')
 	keyHelp := runeKey('?')
@@ -47,7 +50,7 @@ func TestTypingGuardBlocksGlobalShortcuts(t *testing.T) {
 	keyResetDefaults := ctrlBackspaceKey()
 
 	t.Run("while_typing_globals_ignored", func(t *testing.T) {
-		t.Parallel()
+		// Do not run in parallel - see note above
 		m := newModelForTypingGuardTest()
 		m.tabIndex = 2
 		m.cfg.BaseBranch = "develop"
@@ -108,7 +111,7 @@ func TestTypingGuardBlocksGlobalShortcuts(t *testing.T) {
 	})
 
 	t.Run("when_not_typing_globals_fire", func(t *testing.T) {
-		t.Parallel()
+		// Do not run in parallel - see note above
 		m := newModelForTypingGuardTest()
 		m.tabIndex = 2
 		m.cfg.BaseBranch = "develop"

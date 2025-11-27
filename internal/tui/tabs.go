@@ -12,6 +12,7 @@ const (
 	tabIDEnv      = "env"
 	tabIDPrompt   = "prompt"
 	tabIDLogs     = "logs"
+	tabIDProgress = "progress"
 	tabIDHelp     = "help"
 )
 
@@ -22,6 +23,7 @@ var defaultTabSpecs = []tabSpec{
 	{ID: tabIDEnv, Title: "Env"},
 	{ID: tabIDPrompt, Title: "Prompt"},
 	{ID: tabIDLogs, Title: "Logs"},
+	{ID: tabIDProgress, Title: "Progress"},
 	{ID: tabIDHelp, Title: "Help"},
 }
 
