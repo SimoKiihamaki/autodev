@@ -283,6 +283,8 @@ func (m *model) handlePRDTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 					m.tags = []string{}
 				}
 				m.updateDirtyState()
+				// Load preview for newly selected PRD
+				cmds = append(cmds, m.loadPRDPreviewCmd())
 			}
 			handled = true
 		case ActFocusTags:

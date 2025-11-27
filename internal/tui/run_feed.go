@@ -85,15 +85,50 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 	style := logInfoStyle
 	lower := strings.ToLower(plain)
 	switch {
+	// Existing error handling
 	case line.Err:
 		displayText = "[ERR] " + plain
 		style = logErrorStyle
+
+	// Unicode prefix indicators
 	case strings.HasPrefix(plain, "⚠️"):
 		style = logWarnStyle
 	case strings.HasPrefix(plain, "✓"):
 		style = logSuccessStyle
 	case strings.HasPrefix(plain, "→"):
 		style = logActionStyle
+
+	// Phase/section headers (=== ... ===)
+	case reSectionHeader.MatchString(plain):
+		style = logPhaseStyle
+
+	// TASKS_LEFT signals - highly visible
+	case strings.Contains(lower, "tasks_left"):
+		style = logTasksLeftStyle
+
+	// Error patterns
+	case strings.Contains(lower, "error") && !strings.Contains(lower, "no error"):
+		style = logErrorStyle
+	case strings.Contains(lower, "traceback"):
+		style = logErrorStyle
+	case strings.Contains(lower, "exception"):
+		style = logErrorStyle
+
+	// Warning patterns
+	case strings.Contains(lower, "warning"):
+		style = logWarnStyle
+	case strings.Contains(lower, "warn"):
+		style = logWarnStyle
+
+	// Success patterns
+	case strings.Contains(lower, "success"):
+		style = logSuccessStyle
+	case strings.Contains(lower, "passed"):
+		style = logSuccessStyle
+	case strings.Contains(lower, "completed"):
+		style = logSuccessStyle
+
+	// System messages
 	case strings.Contains(lower, "process finished"):
 		style = logSystemStyle
 	case strings.Contains(lower, "review loop"):

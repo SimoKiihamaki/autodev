@@ -12,3 +12,4 @@ build/
 latest
 __pycache__/
 *.pyc
+servers/
