@@ -224,7 +224,7 @@ class IncrementalWorker:
 
         # Run verification
         logger.info("Worker: Running verification for feature %s", feature_id)
-        verification_passed = self._verify_feature(feature)
+        verification_passed = self._verify_feature()
 
         # Update final status
         if verification_passed and tasks_completed == len(tasks):
@@ -471,11 +471,8 @@ Report what was completed and any issues encountered.
 
         return None
 
-    def _verify_feature(self, feature: dict[str, Any]) -> bool:
+    def _verify_feature(self) -> bool:
         """Verify a feature by running tests and checks.
-
-        Args:
-            feature: Feature dictionary
 
         Returns:
             True if verification passes
@@ -504,7 +501,7 @@ Report what was completed and any issues encountered.
 
             try:
                 logger.info("Running verification: %s", " ".join(cmd))
-                out, err, exit_code = run_cmd(
+                _, _, exit_code = run_cmd(
                     cmd,
                     cwd=self.repo_root,
                     check=False,

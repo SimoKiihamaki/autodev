@@ -20,7 +20,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from .checkpoint import prd_changed_since_checkpoint
 from .command import run_cmd
@@ -83,7 +83,7 @@ class SessionStartup:
     """
 
     # Steps to execute in order
-    STEPS = [
+    STEPS: ClassVar[list[str]] = [
         "verify_working_directory",
         "review_git_history",
         "load_tracker",
@@ -263,7 +263,7 @@ class SessionStartup:
 
             # Get recent commits for context
             try:
-                out, _, _ = run_cmd(
+                out, *_ = run_cmd(
                     ["git", "log", "--oneline", "-5"],
                     cwd=self.repo_root,
                     check=True,
@@ -434,7 +434,7 @@ class SessionStartup:
             if marker_file.exists():
                 try:
                     logger.info("Running baseline tests: %s", " ".join(cmd))
-                    out, err, exit_code = run_cmd(
+                    out, _, exit_code = run_cmd(
                         cmd,
                         cwd=self.repo_root,
                         check=False,

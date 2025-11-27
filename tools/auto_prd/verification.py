@@ -279,7 +279,7 @@ class VerificationProtocol:
                 continue
             cmd = self._build_test_command_for_file(file_path)
             if not cmd:
-                logger.warning(f"Could not build test command for: {file_path}")
+                logger.warning("Could not build test command for: %s", file_path)
                 status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("description", file_path), cmd)
@@ -324,7 +324,7 @@ class VerificationProtocol:
                 continue
             cmd = self._build_test_command_for_file(file_path)
             if not cmd:
-                logger.warning(f"Could not build test command for: {file_path}")
+                logger.warning("Could not build test command for: %s", file_path)
                 status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("description", file_path), cmd)
@@ -367,7 +367,7 @@ class VerificationProtocol:
                 continue
             cmd = self._build_test_command_for_file(file_path, e2e=True)
             if not cmd:
-                logger.warning(f"Could not build test command for: {file_path}")
+                logger.warning("Could not build test command for: %s", file_path)
                 status_updates[file_path] = "skipped"
                 continue
             result = self._run_test_command(test.get("scenario", file_path), cmd)
@@ -619,8 +619,13 @@ class VerificationProtocol:
         integration_results: list[TestResult],
         e2e_results: list[TestResult],
         duration: float,
+        persist_to_disk: bool = True,
     ) -> VerificationEvidence:
         """Collect verification evidence.
+
+        This method builds an in-memory evidence object. By default, it also
+        persists test outputs to disk, but this can be disabled for testing
+        or when persistence is handled externally.
 
         Args:
             feature_id: Feature being verified
@@ -628,24 +633,31 @@ class VerificationProtocol:
             integration_results: Integration test results
             e2e_results: E2E test results
             duration: Total verification duration
+            persist_to_disk: If True, write test outputs to disk (default True)
 
         Returns:
             VerificationEvidence object
         """
-        # Create evidence directory
-        self._evidence_dir.mkdir(parents=True, exist_ok=True)
-        feature_evidence_dir = self._evidence_dir / feature_id
-        feature_evidence_dir.mkdir(exist_ok=True)
-
         test_logs: list[str] = []
-
-        # Save test outputs
         all_results = unit_results + integration_results + e2e_results
-        for i, result in enumerate(all_results):
-            sanitized_name = _sanitize_filename(result.name) or f"test_{i}"
-            log_file = feature_evidence_dir / f"test_{i}_{sanitized_name}.log"
-            log_file.write_text(result.output)
-            test_logs.append(str(log_file))
+
+        if persist_to_disk and all_results:
+            # Create evidence directory and save test outputs
+            self._evidence_dir.mkdir(parents=True, exist_ok=True)
+            feature_evidence_dir = self._evidence_dir / feature_id
+            feature_evidence_dir.mkdir(exist_ok=True)
+
+            for i, result in enumerate(all_results):
+                sanitized_name = _sanitize_filename(result.name) or f"test_{i}"
+                log_file = feature_evidence_dir / f"test_{i}_{sanitized_name}.log"
+                log_file.write_text(result.output)
+                test_logs.append(str(log_file))
+        else:
+            # Build in-memory log references without persisting
+            for i, result in enumerate(all_results):
+                sanitized_name = _sanitize_filename(result.name) or f"test_{i}"
+                # Use virtual path for in-memory reference
+                test_logs.append(f"<memory>/{feature_id}/test_{i}_{sanitized_name}.log")
 
         return VerificationEvidence(
             test_output_logs=test_logs,

@@ -9,7 +9,7 @@ AutoDev consists of two main components:
 1. **Go TUI Frontend** (`cmd/aprd/`) - Interactive terminal interface for configuration and execution
 2. **Python Agent Harness** (`tools/auto_prd/`) - Backend automation pipeline
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Go TUI (aprd)                           │
 │  ┌──────────┬──────────┬──────────┬──────────┬────────────────┐ │
@@ -45,7 +45,7 @@ AutoDev consists of two main components:
 
 ### Package Structure
 
-```
+```text
 internal/
 ├── config/          # Configuration management
 │   └── config.go    # YAML config with versioning & migration
@@ -125,7 +125,7 @@ Features:
 
 ### Module Structure
 
-```
+```text
 tools/auto_prd/
 ├── __init__.py
 ├── cli.py              # Main CLI entry point
@@ -149,7 +149,7 @@ tools/auto_prd/
 
 Converts PRD markdown into structured JSON tracker:
 
-```
+```text
 PRD.md → [Claude/Codex Analysis] → tracker.json
 ```
 
@@ -211,7 +211,7 @@ def rollback_feature(tracker, feature_id, repo_root):
 
 ### Run Execution Flow
 
-```
+```text
 1. User selects PRD in TUI
 2. User configures settings (phases, executors)
 3. User triggers "Run"
@@ -228,7 +228,7 @@ def rollback_feature(tracker, feature_id, repo_root):
 
 ### Configuration Flow
 
-```
+```text
 ~/.config/aprd/config.yaml
         │
         ▼

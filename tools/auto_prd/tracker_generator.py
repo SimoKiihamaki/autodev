@@ -28,6 +28,7 @@ from .logging_utils import logger
 TRACKER_VERSION = "2.0.0"
 TRACKER_DIR = ".aprd"
 TRACKER_FILE = "tracker.json"
+MAX_TRACKER_SIZE = 1 * 1024 * 1024  # 1 MB maximum tracker file size
 
 # Load schema at module level for validation
 _SCHEMA_PATH = Path(__file__).parent / "tracker_schema.json"
@@ -203,12 +204,22 @@ def load_tracker(repo_root: Path) -> dict[str, Any] | None:
         repo_root: Repository root directory
 
     Returns:
-        Tracker dictionary or None if not found/invalid
+        Tracker dictionary or None if not found/invalid/too large
     """
     tracker_path = get_tracker_path(repo_root)
     if not tracker_path.exists():
         return None
     try:
+        # Check file size before reading to guard against overly large files
+        file_size = tracker_path.stat().st_size
+        if file_size > MAX_TRACKER_SIZE:
+            logger.warning(
+                "Tracker file too large (%d bytes, max %d bytes): %s",
+                file_size,
+                MAX_TRACKER_SIZE,
+                tracker_path,
+            )
+            return None
         return json.loads(tracker_path.read_text())
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load tracker: %s", e)
