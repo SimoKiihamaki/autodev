@@ -747,8 +747,6 @@ def generate_tracker(
     # Call agent with retry logic
     logger.info("Sending PRD to %s for analysis...", executor)
 
-    result: str = ""
-    stderr: str = ""
     for attempt in range(MAX_TRACKER_GEN_ATTEMPTS):
         try:
             if executor == "codex":

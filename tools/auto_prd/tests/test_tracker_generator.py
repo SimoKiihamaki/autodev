@@ -634,6 +634,8 @@ class GenerateTrackerRetryTests(unittest.TestCase):
 
         self.assertEqual(mock_claude.call_count, 2)
         self.assertEqual(result["version"], TRACKER_VERSION)
+        # Verify sleep was called for retry (1 time for 1 retry)
+        self.assertEqual(mock_sleep.call_count, 1)
 
     @patch("auto_prd.tracker_generator.codex_exec")
     @patch("auto_prd.tracker_generator.time.sleep")
