@@ -312,7 +312,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         print("Reached local iteration cap, proceeding to PR step.")
 
     # Mark checkpoint as completed when local loop finishes successfully.
-    # Note: 'i' retains its value from the last loop iteration in Python,
+    # Note: 'i' retains its value from the last loop iteration,
     # so it's available here even after the loop ends.
     if checkpoint:
         final_iteration = i if start_iteration <= max_iters else max_iters

@@ -402,6 +402,9 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	// is the actual file that will be executed, even if an attacker tries to swap a symlink
 	// between resolution and validation.
 	scriptDir := filepath.Dir(resolvedScript)
+	if !filepath.IsAbs(scriptDir) {
+		return nil, "", fmt.Errorf("script directory is not absolute: %q", scriptDir)
+	}
 
 	// Validate the resolved script path for security, passing script directory as extra safe dir
 	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath, scriptDir); err != nil {
@@ -879,7 +882,7 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 // validate this precondition before calling. Empty or relative scriptDir values cause an early
 // return without modification, as this indicates a programming error in the caller.
 //
-// The seen map uses map[string]bool for clarity (true = path is in the set).
+// The seen map uses map[string]struct{} for memory-efficient set membership tracking.
 func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 	if scriptDir == "" {
 		// Empty scriptDir is a no-op; caller should have validated this.
@@ -892,8 +895,8 @@ func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 	}
 
 	sep := string(os.PathListSeparator)
-	// Use map[string]bool for readability: true means path is in the set.
-	seen := make(map[string]bool)
+	// Use map[string]struct{} for memory-efficient set membership (empty struct has zero size).
+	seen := make(map[string]struct{})
 	parts := make([]string, 0, 4)
 	if existing != "" {
 		for _, part := range strings.Split(existing, sep) {
@@ -907,17 +910,17 @@ func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 				// that we cannot fix here. The path is not added to the whitelist.
 				continue
 			}
-			if seen[clean] {
+			if _, exists := seen[clean]; exists {
 				continue
 			}
-			seen[clean] = true
+			seen[clean] = struct{}{}
 			parts = append(parts, clean)
 		}
 	}
 
 	cleanDir := filepath.Clean(scriptDir)
-	if !seen[cleanDir] {
-		seen[cleanDir] = true
+	if _, exists := seen[cleanDir]; !exists {
+		seen[cleanDir] = struct{}{}
 		parts = append(parts, cleanDir)
 		return strings.Join(parts, sep), true
 	}
