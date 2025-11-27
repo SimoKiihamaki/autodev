@@ -16,9 +16,9 @@ func renderEnvView(b *strings.Builder, m model) {
 
 // renderPhaseToggles renders the phase toggle buttons.
 func renderPhaseToggles(b *strings.Builder, m model) {
-	localStyle := focusStyle(m.focusedFlag == "local")
-	prStyle := focusStyle(m.focusedFlag == "pr")
-	reviewStyle := focusStyle(m.focusedFlag == "review")
+	localStyle := focusStyle(m.focusedFlag == FlagNameLocal)
+	prStyle := focusStyle(m.focusedFlag == FlagNamePR)
+	reviewStyle := focusStyle(m.focusedFlag == FlagNameReview)
 
 	b.WriteString("Phases: " +
 		localStyle.Render(actionKeyLabel(m.keys, tabIDEnv, ActToggleFlagLocal)+" Local="+fmt.Sprint(m.runLocal)) + "  " +
@@ -28,10 +28,10 @@ func renderPhaseToggles(b *strings.Builder, m model) {
 
 // renderFlagToggles renders the flag toggle buttons.
 func renderFlagToggles(b *strings.Builder, m model) {
-	unsafeStyle := focusStyle(m.focusedFlag == "unsafe")
-	dryrunStyle := focusStyle(m.focusedFlag == "dryrun")
-	syncgitStyle := focusStyle(m.focusedFlag == "syncgit")
-	infiniteStyle := focusStyle(m.focusedFlag == "infinite")
+	unsafeStyle := focusStyle(m.focusedFlag == FlagNameUnsafe)
+	dryrunStyle := focusStyle(m.focusedFlag == FlagNameDryRun)
+	syncgitStyle := focusStyle(m.focusedFlag == FlagNameSyncGit)
+	infiniteStyle := focusStyle(m.focusedFlag == FlagNameInfinite)
 
 	b.WriteString(unsafeStyle.Render(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)", m.flagAllowUnsafe)) + "\n")
 	b.WriteString(dryrunStyle.Render(fmt.Sprintf("[d] Dry Run:     %v", m.flagDryRun)) + "\n")

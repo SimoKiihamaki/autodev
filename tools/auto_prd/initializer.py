@@ -43,7 +43,7 @@ class InitResult:
     @property
     def success(self) -> bool:
         """Check if initialization was successful."""
-        return len(self.errors) == 0 and self.tracker is not None
+        return len(self.errors) == 0 and bool(self.tracker)
 
 
 @dataclass

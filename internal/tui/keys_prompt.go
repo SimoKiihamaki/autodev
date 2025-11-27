@@ -7,7 +7,6 @@ import (
 // handlePromptTabActions handles key actions for the Initial Prompt tab.
 func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 	handled := false
-	var cmds []tea.Cmd
 
 	for _, act := range actions {
 		switch act {
@@ -25,7 +24,7 @@ func (m *model) handlePromptTabActions(actions []Action, msg tea.KeyMsg) (bool, 
 	}
 
 	if handled {
-		return true, batchCmd(cmds)
+		return true, nil
 	}
 
 	if !m.prompt.Focused() {

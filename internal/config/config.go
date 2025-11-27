@@ -814,7 +814,8 @@ func (c Config) ValidateInterField() ValidationResult {
 // - Contain backslash
 // - Contain control characters, space, tilde, caret, colon, question mark, asterisk, or open bracket
 // - Be empty
-// Note: Dashes at the start or end ARE allowed per git spec.
+// Note: Leading hyphens are disallowed to prevent git option injection (e.g., "-branch"
+// being interpreted as a command-line flag). Trailing hyphens are allowed per git spec.
 func isValidGitBranchName(name string) bool {
 	if name == "" {
 		return false
