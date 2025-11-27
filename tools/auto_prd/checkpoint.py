@@ -182,10 +182,9 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
     )
     fd_closed = False
     try:
+        # os.fdopen takes ownership; fd will be closed by context manager
+        fd_closed = True
         with os.fdopen(fd, "w") as f:
-            fd_closed = (
-                True  # os.fdopen takes ownership; fd will be closed by context manager
-            )
             json.dump(checkpoint, f, indent=2, sort_keys=True)
             f.flush()
             os.fsync(f.fileno())
@@ -197,6 +196,7 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
             try:
                 os.close(fd)
             except OSError:
+                # Ignore errors closing fd; it may already be closed or invalid during cleanup.
                 pass
         # Clean up temp file on failure
         try:
