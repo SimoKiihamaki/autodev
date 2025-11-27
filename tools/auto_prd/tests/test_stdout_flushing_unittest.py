@@ -5,8 +5,6 @@ Unittest-compatible tests for stdout/stderr flushing behavior.
 
 import unittest
 import sys
-import time
-import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 

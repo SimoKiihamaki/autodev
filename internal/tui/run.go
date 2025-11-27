@@ -172,33 +172,33 @@ func (m *model) preflightChecks() error {
 		return fmt.Errorf("failed to parse Python command %q (after trimming): %w", cmd, err)
 	}
 	if len(exeParts) == 0 || strings.TrimSpace(exeParts[0]) == "" {
-		return errors.New("Python command is required (configure in Settings)")
+		return errors.New("python command is required (configure in Settings)")
 	}
 	if _, err := exec.LookPath(exeParts[0]); err != nil {
 		return fmt.Errorf("python executable %q not found on PATH: %w", exeParts[0], err)
 	}
 	if strings.TrimSpace(m.cfg.PythonScript) == "" {
-		return errors.New("Set Python script path in Settings")
+		return errors.New("set Python script path in Settings")
 	}
 	scriptPath := m.cfg.PythonScript
 	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
 		if err != nil {
 			return fmt.Errorf(
-				"Python script not found: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+				"python script not found: %s (set the correct path in Settings or via AUTO_PRD_SCRIPT)",
 				abbreviatePath(scriptPath),
 			)
 		}
 		return fmt.Errorf(
-			"Python script path points to directory: %s. Set the correct path in Settings or via AUTO_PRD_SCRIPT.",
+			"python script path points to directory: %s (set the correct path in Settings or via AUTO_PRD_SCRIPT)",
 			abbreviatePath(scriptPath),
 		)
 	}
 	info, err := os.Stat(m.selectedPRD)
 	if err != nil {
-		return fmt.Errorf("Selected PRD missing: %w", err)
+		return fmt.Errorf("selected PRD missing: %w", err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("Selected PRD points to a directory: %s", abbreviatePath(m.selectedPRD))
+		return fmt.Errorf("selected PRD points to a directory: %s", abbreviatePath(m.selectedPRD))
 	}
 	if !strings.HasSuffix(strings.ToLower(m.selectedPRD), ".md") {
 		log.Printf("tui: selected PRD without .md extension: %s", abbreviatePath(m.selectedPRD))

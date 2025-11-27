@@ -63,15 +63,6 @@ func (c executorChoice) configValue() string {
 	}
 }
 
-func (c executorChoice) displayLabel() string {
-	switch c {
-	case executorClaude:
-		return "Claude"
-	default:
-		return "Codex"
-	}
-}
-
 func newItem(title, desc, path string) item {
 	parts := []string{title, desc, path}
 	filtered := make([]string, 0, len(parts))
@@ -395,18 +386,6 @@ func (m model) Init() tea.Cmd {
 	return m.scanPRDsCmd()
 }
 
-// settingsInputMap returns a shallow copy of the settings input map.
-// The map keys are copied, but the values remain pointers into the model so
-// callers share the same text inputs. Adding or removing entries on the returned
-// map won't affect the model, but mutating the pointed inputs will.
-func (m *model) settingsInputMap() map[string]*textinput.Model {
-	out := make(map[string]*textinput.Model, len(m.settingsInputs))
-	for k, v := range m.settingsInputs {
-		out[k] = v
-	}
-	return out
-}
-
 // resetLogState resets the log buffer and viewport content to initial state
 func (m *model) resetLogState() {
 	m.logBuf = nil
@@ -426,10 +405,7 @@ func (m *model) hasTypingFocus() bool {
 			return true
 		}
 	}
-	if m.prdList.FilterState() == list.Filtering {
-		return true
-	}
-	return false
+	return m.prdList.FilterState() == list.Filtering
 }
 
 func (m *model) SetTyping(on bool) {
@@ -509,13 +485,6 @@ func (m *model) moveQuitSelection(delta int) {
 	}
 }
 
-func (m model) quitSelectionLabel() string {
-	if m.quitConfirmIndex < 0 || m.quitConfirmIndex >= len(quitOptions) {
-		return ""
-	}
-	return quitOptions[m.quitConfirmIndex]
-}
-
 func (m model) currentTabID() string {
 	if len(m.tabs) == 0 || m.tabIndex < 0 || m.tabIndex >= len(m.tabs) {
 		return tabIDRun
@@ -523,19 +492,11 @@ func (m model) currentTabID() string {
 	return m.tabs[m.tabIndex]
 }
 
-func (m model) tabCount() int {
-	return len(m.tabs)
-}
-
 func (m model) tabTitleAt(index int) string {
 	if index < 0 || index >= len(m.tabs) {
 		return ""
 	}
 	return tabTitle(m.tabs[index])
-}
-
-func (m model) tabTitleForID(id string) string {
-	return tabTitle(id)
 }
 
 func (m *model) setActiveTabByID(id string) {

@@ -3,8 +3,6 @@ Test utilities and helper functions for the auto_prd test suite.
 This module consolidates common patterns used across test files to maintain DRY principles.
 """
 
-import sys
-from pathlib import Path
 
 
 def safe_import(relative_module_path, fallback_module_path, item_names=None):

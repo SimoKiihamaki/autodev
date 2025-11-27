@@ -15,7 +15,6 @@ from pathlib import Path
 from tools.auto_prd.tests import safe_cleanup, get_project_root
 from tools.auto_prd.tests.test_helpers import (
     safe_import,
-    try_send_with_timeout,
     assert_threads_cleanly_terminated,
 )
 
@@ -225,7 +224,7 @@ This is a test PRD for integration testing.
             has_sufficient_output = len(non_empty_lines) >= min_lines_threshold
             has_diverse_output = len(unique_lines) >= 3  # Should have some variety
 
-            print(f"Streaming validation:")
+            print("Streaming validation:")
             print(
                 f"  ✓ Sufficient output (≥{min_lines_threshold} lines): {has_sufficient_output}"
             )

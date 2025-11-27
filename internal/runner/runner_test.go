@@ -313,9 +313,8 @@ func TestStreamWithSlowConsumer(t *testing.T) {
 	// First consume the blocking line
 	select {
 	case line := <-logs:
-		if line.Text == "blocking line" {
-			// Good, now the stream should be able to send the backlog message
-		}
+		// Good, now the stream should be able to send the backlog message
+		_ = line // silence unused variable warning
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for blocking line")
 	}

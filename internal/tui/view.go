@@ -361,8 +361,8 @@ func renderRunView(b *strings.Builder, m model) {
 		}
 
 		b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
-		b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
-		b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
+		fmt.Fprintf(b, "Executor policy: %s\n", m.cfg.ExecutorPolicy)
+		fmt.Fprintf(b, "Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview)
 
 		switch {
 		case m.running:
@@ -420,14 +420,10 @@ func renderRunView(b *strings.Builder, m model) {
 			lastComplete = "(none)"
 		}
 
-		iteration := "(none)"
+		var iteration string
 		switch {
 		case m.runIterCurrent == iterIndexUnknown:
-			if m.runIterLabel != "" {
-				iteration = m.runIterLabel
-			} else {
-				iteration = ""
-			}
+			iteration = m.runIterLabel
 		case m.runIterCurrent > 0:
 			switch {
 			case m.runIterTotal > 0:
@@ -442,15 +438,13 @@ func renderRunView(b *strings.Builder, m model) {
 			}
 		case m.runIterLabel != "":
 			iteration = m.runIterLabel
-		default:
-			iteration = ""
 		}
 
-		b.WriteString(fmt.Sprintf("Phase: %s\n", phase))
-		b.WriteString(fmt.Sprintf("Current: %s\n", current))
-		b.WriteString(fmt.Sprintf("Previous: %s\n", previous))
-		b.WriteString(fmt.Sprintf("Last Complete: %s\n", lastComplete))
-		b.WriteString(fmt.Sprintf("Iteration: %s\n\n", iteration))
+		fmt.Fprintf(b, "Phase: %s\n", phase)
+		fmt.Fprintf(b, "Current: %s\n", current)
+		fmt.Fprintf(b, "Previous: %s\n", previous)
+		fmt.Fprintf(b, "Last Complete: %s\n", lastComplete)
+		fmt.Fprintf(b, "Iteration: %s\n\n", iteration)
 
 		followMode := "off"
 		switch {
@@ -485,8 +479,8 @@ func renderRunView(b *strings.Builder, m model) {
 	}
 
 	b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
-	b.WriteString(fmt.Sprintf("Executor policy: %s\n", m.cfg.ExecutorPolicy))
-	b.WriteString(fmt.Sprintf("Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview))
+	fmt.Fprintf(b, "Executor policy: %s\n", m.cfg.ExecutorPolicy)
+	fmt.Fprintf(b, "Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview)
 	if m.errMsg != "" {
 		b.WriteString(errorStyle.Render(annotateUnsaved("Status: Error: "+m.errMsg, m.dirty)) + "\n")
 	} else if m.status != "" {

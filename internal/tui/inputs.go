@@ -124,7 +124,7 @@ func (m *model) navigateVertical(direction string, row, col int, reverseGrid [][
 		return
 	}
 
-	step := 1
+	var step int
 	switch direction {
 	case "up":
 		step = -1
