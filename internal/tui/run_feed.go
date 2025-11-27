@@ -84,13 +84,18 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 	displayText := plain
 	style := logInfoStyle
 	lower := strings.ToLower(plain)
+
+	// Priority-based styling: more specific/severe patterns are checked first.
+	// This prevents lines with multiple keywords (e.g., "warning: operation completed successfully")
+	// from being incorrectly categorized. Order matters - errors take precedence over warnings,
+	// warnings over success, etc.
 	switch {
-	// Existing error handling
+	// Highest priority: explicit error flag from runner
 	case line.Err:
 		displayText = "[ERR] " + plain
 		style = logErrorStyle
 
-	// Unicode prefix indicators
+	// Unicode prefix indicators - explicit intent, check early
 	case strings.HasPrefix(plain, "⚠️"):
 		style = logWarnStyle
 	case strings.HasPrefix(plain, "✓"):
@@ -102,37 +107,38 @@ func (m *model) formatLogLine(line runner.Line) (string, string) {
 	case reSectionHeader.MatchString(plain):
 		style = logPhaseStyle
 
-	// TASKS_LEFT signals - highly visible
+	// TASKS_LEFT signals - highly visible, specific pattern
 	case strings.Contains(lower, "tasks_left"):
 		style = logTasksLeftStyle
 
-	// Error patterns
-	case strings.Contains(lower, "error") && !strings.Contains(lower, "no error"):
-		style = logErrorStyle
+	// Error patterns - check before warnings and success (higher severity)
 	case strings.Contains(lower, "traceback"):
 		style = logErrorStyle
 	case strings.Contains(lower, "exception"):
 		style = logErrorStyle
+	case strings.Contains(lower, "error") && !strings.Contains(lower, "no error"):
+		style = logErrorStyle
 
-	// Warning patterns
+	// Warning patterns - check before success (higher severity)
 	case strings.Contains(lower, "warning"):
 		style = logWarnStyle
-	case strings.Contains(lower, "warn"):
+	case strings.Contains(lower, "warn") && !strings.Contains(lower, "warning"):
+		// Only match "warn" if "warning" wasn't already matched (avoid double-check)
 		style = logWarnStyle
 
-	// Success patterns
+	// System messages - check before generic success patterns
+	case strings.Contains(lower, "process finished"):
+		style = logSystemStyle
+	case strings.Contains(lower, "review loop"):
+		style = logSystemStyle
+
+	// Success patterns - lowest priority among keyword-based styles
 	case strings.Contains(lower, "success"):
 		style = logSuccessStyle
 	case strings.Contains(lower, "passed"):
 		style = logSuccessStyle
 	case strings.Contains(lower, "completed"):
 		style = logSuccessStyle
-
-	// System messages
-	case strings.Contains(lower, "process finished"):
-		style = logSystemStyle
-	case strings.Contains(lower, "review loop"):
-		style = logSystemStyle
 	}
 	return style.Render(displayText), plain
 }

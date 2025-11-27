@@ -146,15 +146,27 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // Escaping the repo is an allowed configuration so long as the script directory is explicitly
 // whitelisted. Operators frequently install aprd in a shared tools directory and then execute it
 // from unrelated repositories. In that flow the path *must* be permitted to leave the repo root,
-// otherwise legitimate launches will fail with “escape repository directory” errors. The check
+// otherwise legitimate launches will fail with "escape repository directory" errors. The check
 // below therefore rejects escapes only when the directory is not covered by AUTO_PRD_SAFE_SCRIPT_DIRS.
-func validatePythonScriptPath(scriptPath, repoPath string) error {
+//
+// The optional extraSafeDirs parameter allows callers to provide additional directories that should
+// be considered safe without requiring environment variable modifications. This enables validation
+// to occur without side effects to the process environment.
+func validatePythonScriptPath(scriptPath, repoPath string, extraSafeDirs ...string) error {
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
 	}
 
 	safeDirs := resolvedSafeScriptDirs()
+
+	// Append any extra safe directories provided by the caller.
+	// This allows validation without modifying the process environment.
+	for _, dir := range extraSafeDirs {
+		if dir != "" && filepath.IsAbs(dir) {
+			safeDirs = append(safeDirs, dir)
+		}
+	}
 
 	// If repoPath is configured, ensure the script is within the repo
 	if repoPath != "" {
@@ -373,29 +385,26 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		return nil, "", err
 	}
 
-	// Add the script directory to the current process' whitelist before validation.
+	// Pass the script directory as an extra safe directory to validation.
 	// This ensures bundled installations that live outside the repo (the "escape" case)
 	// remain permitted while still forcing the directory onto the allowlist.
 	//
+	// Environment synchronization strategy: We pass the script directory directly to
+	// validatePythonScriptPath via the extraSafeDirs parameter instead of modifying
+	// os.Environ. The actual environment variable update for child processes happens
+	// later via ensureScriptDirWhitelisted in BuildArgs. This unified approach avoids
+	// race conditions between process environment modifications and the env slice
+	// passed to child processes.
+	//
 	// TOCTOU safety note: The primary protection against TOCTOU (Time-of-Check to Time-of-Use)
 	// vulnerabilities here is that resolveScriptPath (above) already resolves the script path
-	// to its canonical form using filepath.EvalSymlinks. This means the path being whitelisted
-	// and validated is the actual file that will be executed, even if an attacker tries to swap
-	// a symlink between resolution and validation. The environment variable update (Setenv) is
-	// process-local and not the main TOCTOU protection. validatePythonScriptPath reads the
-	// environment synchronously in the same goroutine, and external processes cannot modify
-	// this process' environment variables. Therefore, no TOCTOU race exists between path
-	// resolution, whitelist update, and validation.
-	if scriptDir := filepath.Dir(resolvedScript); scriptDir != "" {
-		if merged, added := mergeSafeScriptDir(os.Getenv(safeScriptDirsEnv), scriptDir); added {
-			if err := os.Setenv(safeScriptDirsEnv, merged); err != nil {
-				return nil, "", fmt.Errorf("failed to update %s: %w", safeScriptDirsEnv, err)
-			}
-		}
-	}
+	// to its canonical form using filepath.EvalSymlinks. This means the path being validated
+	// is the actual file that will be executed, even if an attacker tries to swap a symlink
+	// between resolution and validation.
+	scriptDir := filepath.Dir(resolvedScript)
 
-	// Validate the resolved script path for security
-	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath); err != nil {
+	// Validate the resolved script path for security, passing script directory as extra safe dir
+	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath, scriptDir); err != nil {
 		return nil, "", err
 	}
 

@@ -96,11 +96,18 @@ def orchestrate_local_loop(
         else 1
     )
 
-    tasks_left: Optional[int] = (
-        local_state.get("tasks_left")
-        if local_state.get("tasks_left", -1) >= 0
-        else None
-    )
+    # Restore tasks_left from checkpoint if present.
+    # Use explicit key check to distinguish between:
+    # - Key missing: no checkpoint data (tasks_left = None)
+    # - Key present with value >= 0: valid task count
+    # - Key present with value -1: sentinel for "no tasks_left reported"
+    if "tasks_left" in local_state:
+        stored_tasks_left = local_state["tasks_left"]
+        tasks_left: Optional[int] = (
+            stored_tasks_left if stored_tasks_left >= 0 else None
+        )
+    else:
+        tasks_left: Optional[int] = None
     appears_complete = False
     no_findings_streak = local_state.get("no_findings_streak", 0)
     skipped_review_streak = local_state.get("skipped_review_streak", 0)
@@ -256,6 +263,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                 checkpoint,
                 "local",
                 {
+                    "status": "in_progress",
                     "iteration": i,
                     "tasks_left": tasks_left if tasks_left is not None else -1,
                     "no_findings_streak": no_findings_streak,
@@ -302,5 +310,26 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
             break
     else:
         print("Reached local iteration cap, proceeding to PR step.")
+
+    # Mark checkpoint as completed when local loop finishes successfully.
+    # Note: 'i' retains its value from the last loop iteration in Python,
+    # so it's available here even after the loop ends.
+    if checkpoint:
+        final_iteration = i if start_iteration <= max_iters else max_iters
+        update_phase_state(
+            checkpoint,
+            "local",
+            {
+                "status": "completed",
+                "iteration": final_iteration,
+                "tasks_left": tasks_left if tasks_left is not None else -1,
+                "no_findings_streak": no_findings_streak,
+                "empty_change_streak": empty_change_streak,
+                "skipped_review_streak": skipped_review_streak,
+                "qa_context_shared": qa_context_shared,
+            },
+        )
+        save_checkpoint(checkpoint)
+        logger.debug("Marked local phase as completed")
 
     return tasks_left if tasks_left is not None else -1, appears_complete
