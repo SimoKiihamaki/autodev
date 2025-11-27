@@ -363,7 +363,7 @@ def print_codex_diagnostics(repo_root: Path) -> None:
         print(f"codex /status skipped (set {SAFE_ENV_VAR}=1 to enable).")
         return
     try:
-        status_out = codex_exec("/status", repo_root, allow_unsafe_execution=True)
+        status_out, _ = codex_exec("/status", repo_root, allow_unsafe_execution=True)
         if status_out.strip():
             print(status_out.strip())
     except (

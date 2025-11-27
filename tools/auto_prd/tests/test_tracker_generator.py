@@ -533,8 +533,8 @@ class GenerateTrackerRetryTests(unittest.TestCase):
             },
         }
 
-        # First two calls return empty, third succeeds
-        mock_codex.side_effect = ["", "", json.dumps(valid_tracker)]
+        # First two calls return empty, third succeeds (return tuples of stdout, stderr)
+        mock_codex.side_effect = [("", ""), ("", ""), (json.dumps(valid_tracker), "")]
 
         result = generate_tracker(
             prd_path=self.prd_path,
@@ -554,7 +554,7 @@ class GenerateTrackerRetryTests(unittest.TestCase):
         self, mock_sleep: MagicMock, mock_codex: MagicMock
     ) -> None:
         """Should fail after exhausting retries."""
-        mock_codex.return_value = ""  # Always empty
+        mock_codex.return_value = ("", "")  # Always empty (stdout, stderr tuple)
 
         with self.assertRaises(ValueError) as ctx:
             generate_tracker(
@@ -622,8 +622,8 @@ class GenerateTrackerRetryTests(unittest.TestCase):
             },
         }
 
-        # First call empty, second succeeds
-        mock_claude.side_effect = ["", json.dumps(valid_tracker)]
+        # First call empty, second succeeds (return tuples of stdout, stderr)
+        mock_claude.side_effect = [("", ""), (json.dumps(valid_tracker), "")]
 
         result = generate_tracker(
             prd_path=self.prd_path,
@@ -641,7 +641,7 @@ class GenerateTrackerRetryTests(unittest.TestCase):
         self, mock_sleep: MagicMock, mock_codex: MagicMock
     ) -> None:
         """Should use exponential backoff with base of 10 seconds."""
-        mock_codex.return_value = ""  # Always empty
+        mock_codex.return_value = ("", "")  # Always empty (stdout, stderr tuple)
 
         with self.assertRaises(ValueError):
             generate_tracker(
@@ -725,8 +725,8 @@ class GenerateTrackerJsonParsingTests(unittest.TestCase):
         self, mock_sleep: MagicMock, mock_codex: MagicMock
     ) -> None:
         """Should not retry on invalid JSON (only empty response triggers retry)."""
-        # Return text that has JSON but is malformed
-        mock_codex.return_value = '{"version": "2.0.0"'  # Missing closing brace
+        # Return text that has JSON but is malformed (stdout, stderr tuple)
+        mock_codex.return_value = ('{"version": "2.0.0"', "")  # Missing closing brace
 
         with self.assertRaises(ValueError) as ctx:
             generate_tracker(

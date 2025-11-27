@@ -69,7 +69,7 @@ def codex_exec(
     allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
-) -> str:
+) -> tuple[str, str]:
     os.environ.setdefault("CI", "1")
     allow_flag = allow_unsafe_execution
     if yolo is not None:
@@ -98,7 +98,7 @@ def codex_exec(
     args.extend(["exec", "--model", model, "-"])
     if dry_run:
         logger.info("Dry run enabled; skipping Codex execution. Args: %s", args)
-        return "DRY_RUN"
+        return "DRY_RUN", ""
     out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
@@ -114,7 +114,7 @@ def codex_exec(
             stderr[:500] if len(stderr) > 500 else stderr,
         )
 
-    return out
+    return out, stderr
 
 
 def parse_rate_limit_sleep(message: str) -> Optional[int]:
@@ -254,7 +254,7 @@ def claude_exec(
     allow_unsafe_execution: Optional[bool] = None,
     dry_run: bool = False,
     extra: Optional[list[str]] = None,
-) -> str:
+) -> tuple[str, str]:
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
     allow_flag = allow_unsafe_execution
     if yolo is not None:
@@ -287,7 +287,7 @@ def claude_exec(
     args.extend(["-p", "-"])
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
-        return "DRY_RUN"
+        return "DRY_RUN", ""
     out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
@@ -303,4 +303,4 @@ def claude_exec(
             stderr[:500] if len(stderr) > 500 else stderr,
         )
 
-    return out
+    return out, stderr

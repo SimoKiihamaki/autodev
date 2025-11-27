@@ -747,21 +747,20 @@ def generate_tracker(
     logger.info("Sending PRD to %s for analysis...", executor)
 
     result: str = ""
+    stderr: str = ""
     for attempt in range(MAX_TRACKER_GEN_ATTEMPTS):
         try:
             if executor == "codex":
-                result = codex_exec(
+                result, stderr = codex_exec(
                     prompt=prompt,
                     repo_root=repo_root,
                     allow_unsafe_execution=allow_unsafe_execution,
-                    dry_run=dry_run,
                 )
             else:
-                result = claude_exec(
+                result, stderr = claude_exec(
                     prompt=prompt,
                     repo_root=repo_root,
                     allow_unsafe_execution=allow_unsafe_execution,
-                    dry_run=dry_run,
                 )
 
             # Validate response before proceeding
@@ -796,7 +795,17 @@ def generate_tracker(
                 raise
 
     # Extract and parse JSON from response
-    json_str = _extract_json_from_response(result)
+    try:
+        json_str = _extract_json_from_response(result)
+    except ValueError:
+        # Log stderr preview when JSON extraction fails on non-empty output
+        # (helps diagnose cases where agent wrote an error message instead of JSON)
+        if stderr.strip():
+            logger.warning(
+                "JSON extraction failed. Stderr preview: %s",
+                stderr[:500] if len(stderr) > 500 else stderr,
+            )
+        raise
 
     try:
         tracker = json.loads(json_str)
