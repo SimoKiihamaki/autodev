@@ -54,7 +54,7 @@ func renderRunIdle(b *strings.Builder, m model) {
 	} else {
 		b.WriteString(annotateUnsaved("Status: Idle", m.dirty) + "\n")
 	}
-	b.WriteString(helpStyle.Render("Press Enter to start a run · q quit · Ctrl+C force quit\n"))
+	b.WriteString(helpStyle.Render("Enter start · s skip to PR · Shift+S skip to Review · q quit\n"))
 }
 
 // renderRunStatus renders the current run status line.
@@ -186,8 +186,8 @@ func renderRunHelpFooter(b *strings.Builder, m model) {
 	if m.running {
 		b.WriteString(helpStyle.Render(fmt.Sprintf("Ctrl+C cancel · q quit · %s\n", runScrollHelp)))
 	} else {
-		b.WriteString(helpStyle.Render("Press Enter to start a new run\n"))
-		b.WriteString(helpStyle.Render(fmt.Sprintf("Enter start · q quit · Ctrl+C force quit · %s\n", runScrollHelp)))
+		b.WriteString(helpStyle.Render("Enter start · s skip to PR · Shift+S skip to Review · q quit\n"))
+		b.WriteString(helpStyle.Render(runScrollHelp + "\n"))
 	}
 }
 

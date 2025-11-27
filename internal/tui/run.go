@@ -342,6 +342,29 @@ func (m *model) applyPRDMetadata(dst *config.Config) {
 	dst.PRDs[m.selectedPRD] = meta
 }
 
+// setResumeFromPhase configures the phase flags to start from a specific phase,
+// skipping earlier phases. This is useful for resuming interrupted runs.
+func (m *model) setResumeFromPhase(phase string) {
+	switch phase {
+	case "local":
+		m.runLocal = true
+		m.runPR = true
+		m.runReview = true
+	case "pr":
+		m.runLocal = false
+		m.runPR = true
+		m.runReview = true
+	case "review":
+		m.runLocal = false
+		m.runPR = false
+		m.runReview = true
+	}
+	m.cfg.RunPhases.Local = m.runLocal
+	m.cfg.RunPhases.PR = m.runPR
+	m.cfg.RunPhases.ReviewFix = m.runReview
+	m.updateDirtyState()
+}
+
 func (m *model) saveConfig() tea.Cmd {
 	return func() tea.Msg {
 		invalidNumeric, parseErrs := m.populateConfigFromInputs(&m.cfg)

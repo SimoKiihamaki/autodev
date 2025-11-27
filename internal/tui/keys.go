@@ -56,6 +56,11 @@ const (
 	ActToggleFlagInfinite Action = "toggle_flag_infinite"
 	ActResetDefaults      Action = "reset_defaults"
 	ActRefresh            Action = "refresh"
+
+	// Run tab actions for session resume
+	ActResumeFromLocal  Action = "resume_from_local"
+	ActResumeFromPR     Action = "resume_from_pr"
+	ActResumeFromReview Action = "resume_from_review"
 )
 
 // tabActions maps tab indices to their corresponding actions for single source of truth
@@ -331,15 +336,17 @@ func DefaultKeyMap() KeyMap {
 
 	perTab := map[string]map[Action][]KeyCombo{
 		tabIDRun: {
-			ActConfirm:      {key("enter")},
-			ActNavigateUp:   {key("up")},
-			ActNavigateDown: {key("down")},
-			ActPageUp:       {key("pgup")},
-			ActPageDown:     {key("pgdown")},
-			ActScrollTop:    {key("home")},
-			ActScrollBottom: {key("end")},
-			ActToggleFollow: {key("f")},
-			ActCopyError:    {key("y")},
+			ActConfirm:          {key("enter")},
+			ActNavigateUp:       {key("up")},
+			ActNavigateDown:     {key("down")},
+			ActPageUp:           {key("pgup")},
+			ActPageDown:         {key("pgdown")},
+			ActScrollTop:        {key("home")},
+			ActScrollBottom:     {key("end")},
+			ActToggleFollow:     {key("f")},
+			ActCopyError:        {key("y")},
+			ActResumeFromPR:     {key("s")},   // s = Skip local phase
+			ActResumeFromReview: {shift("s")}, // Shift+S = Skip to Review
 		},
 		tabIDPRD: {
 			ActConfirm:       {key("enter")},
@@ -444,6 +451,9 @@ func DefaultKeyMap() KeyMap {
 		ActToggleFlagSyncGit:  "Toggle Sync Git",
 		ActToggleFlagInfinite: "Toggle Infinite Reviews",
 		ActRefresh:            "Refresh",
+		ActResumeFromLocal:    "Resume from Local",
+		ActResumeFromPR:       "Skip to PR",
+		ActResumeFromReview:   "Skip to Review",
 	}
 
 	typingSensitive := map[Action]bool{
