@@ -369,17 +369,29 @@ def run(args) -> None:
                         tracker["validation_summary"]["total_features"],
                     )
                     # Commit tracker to git - only stage the tracker file
+                    # Check for pre-existing staged changes to avoid bundling
+                    # unrelated work with the tracker commit
                     if not args.dry_run:
                         try:
-                            git_add(repo_root, tracker_path)
-                            if git_has_staged_changes(repo_root):
-                                git_commit(
-                                    repo_root,
-                                    "chore(aprd): initialize implementation tracker",
+                            had_staged_before = git_has_staged_changes(repo_root)
+                            if had_staged_before:
+                                logger.warning(
+                                    "Pre-existing staged changes detected; "
+                                    "skipping auto-commit of tracker to avoid "
+                                    "bundling unrelated work. Tracker file staged "
+                                    "but not committed."
                                 )
-                                logger.info("Committed tracker to git")
+                                git_add(repo_root, tracker_path)
                             else:
-                                logger.debug("No tracker changes to commit")
+                                git_add(repo_root, tracker_path)
+                                if git_has_staged_changes(repo_root):
+                                    git_commit(
+                                        repo_root,
+                                        "chore(aprd): initialize implementation tracker",
+                                    )
+                                    logger.info("Committed tracker to git")
+                                else:
+                                    logger.debug("No tracker changes to commit")
                         except subprocess.CalledProcessError as exc:
                             details = extract_called_process_error_details(exc)
                             logger.warning(

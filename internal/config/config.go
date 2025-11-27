@@ -246,13 +246,16 @@ type LoadResult struct {
 }
 
 // Load reads the configuration from disk, falling back to defaults on error.
-// For corrupt configs, it logs a warning and returns defaults.
-func Load() (Config, error) {
+// For corrupt configs, it logs a warning and returns defaults. This function
+// always returns a valid Config and never returns an error; warnings are
+// logged internally. Use LoadWithWarnings() if you need access to warnings
+// for UI display or other handling.
+func Load() Config {
 	result := LoadWithWarnings()
 	for _, warning := range result.Warnings {
 		log.Printf("Warning: %s", warning)
 	}
-	return result.Config, nil
+	return result.Config
 }
 
 // LoadWithWarnings reads the configuration from disk and returns any warnings

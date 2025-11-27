@@ -17,7 +17,7 @@ from typing import Any
 
 from .checkpoint import save_checkpoint, update_phase_state
 from .command import run_cmd
-from .git_ops import git_commit, git_has_staged_changes
+from .git_ops import git_add, git_commit, git_has_staged_changes
 from .logging_utils import logger
 from .tracker_generator import (
     generate_tracker,
@@ -242,7 +242,11 @@ class InitializerAgent:
         )
 
     def _commit_tracker(self) -> None:
-        """Commit the tracker to git."""
+        """Commit the tracker to git.
+
+        Uses git_add helper for consistent staging behavior. Checks for
+        pre-existing staged changes to avoid bundling unrelated work.
+        """
         if self.dry_run:
             logger.info("Dry run: skipping tracker commit")
             return
@@ -253,14 +257,26 @@ class InitializerAgent:
             return
 
         try:
-            run_cmd(["git", "add", str(tracker_path)], cwd=self.repo_root)
-            if git_has_staged_changes(self.repo_root):
-                git_commit(
-                    self.repo_root, "chore(aprd): initialize implementation tracker"
+            # Check for pre-existing staged changes to avoid bundling
+            # unrelated work with the tracker commit
+            had_staged_before = git_has_staged_changes(self.repo_root)
+            if had_staged_before:
+                logger.warning(
+                    "Pre-existing staged changes detected; "
+                    "skipping auto-commit of tracker to avoid "
+                    "bundling unrelated work. Tracker file staged "
+                    "but not committed."
                 )
-                logger.info("Committed tracker to git")
+                git_add(self.repo_root, tracker_path)
             else:
-                logger.debug("No tracker changes to commit")
+                git_add(self.repo_root, tracker_path)
+                if git_has_staged_changes(self.repo_root):
+                    git_commit(
+                        self.repo_root, "chore(aprd): initialize implementation tracker"
+                    )
+                    logger.info("Committed tracker to git")
+                else:
+                    logger.debug("No tracker changes to commit")
         except subprocess.CalledProcessError as e:
             details = extract_called_process_error_details(e)
             logger.warning("Failed to commit tracker: %s", details)

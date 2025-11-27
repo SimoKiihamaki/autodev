@@ -19,6 +19,26 @@ import (
 
 const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f toggle follow"
 
+// CleanupFinalModel performs cleanup on the final model returned by p.Run().
+// It handles the type assertion and calls the model's cleanup logic.
+// This is the recommended way to clean up resources after the TUI exits.
+func CleanupFinalModel(finalModel interface{}) {
+	if m, ok := finalModel.(model); ok {
+		m.cleanup()
+	}
+}
+
+// cleanup performs graceful shutdown without modifying the receiver.
+// Called via CleanupFinalModel after the program exits.
+func (m model) cleanup() {
+	// Cancel any running process
+	if m.cancel != nil {
+		m.cancel()
+	}
+	// Close any open log file
+	m.closeLogFile("cleanup")
+}
+
 // Flag name constants to maintain single source of truth
 const (
 	FlagNameLocal    = "local"
@@ -193,12 +213,9 @@ var envFlagNames = []string{
 }
 
 func New() model {
-	cfg, err := config.Load()
-	var loadStatus string
-	if err != nil {
-		cfg = config.Defaults()
-		loadStatus = fmt.Sprintf("Warning: Could not load config (%v), using defaults", err)
-	}
+	// Load config; warnings are logged internally by config.Load().
+	// The function always returns a valid config, falling back to defaults.
+	cfg := config.Load()
 
 	m := model{tabIndex: 0, cfg: cfg}
 	m.defaultConfig = config.Defaults()
@@ -257,10 +274,6 @@ func New() model {
 
 	m.blurAllInputs()
 	m.rescanPRDs()
-
-	if loadStatus != "" {
-		m.status = loadStatus
-	}
 
 	m.resetRunDashboard()
 	m.resolvePythonScript(true)
@@ -552,6 +565,9 @@ func getLastErrorText(m *model) string {
 // - Any running process is cancelled
 // - Log channels are properly closed
 // - File handles are released
+//
+// Deprecated: Use CleanupFinalModel() instead for post-Run() cleanup.
+// This method is retained for internal use and backwards compatibility.
 func (m *model) Cleanup() {
 	// Cancel any running process
 	if m.cancel != nil {
