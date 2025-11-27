@@ -178,7 +178,7 @@ func (m *model) preflightChecks() error {
 		return fmt.Errorf("python executable %q not found on PATH: %w", exeParts[0], err)
 	}
 	if strings.TrimSpace(m.cfg.PythonScript) == "" {
-		return errors.New("set Python script path in Settings")
+		return errors.New("set python script path in settings")
 	}
 	scriptPath := m.cfg.PythonScript
 	if info, err := os.Stat(scriptPath); err != nil || info.IsDir() {
