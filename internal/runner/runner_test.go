@@ -103,6 +103,7 @@ func TestBuildArgsIncludesConfiguredFlags(t *testing.T) {
 }
 
 func TestOptionsRunPassesEnvAndArgs(t *testing.T) {
+	// Serial execution required due to t.Setenv usage (not safe with t.Parallel)
 	t.Setenv(safeScriptDirsEnv, "")
 
 	repo := t.TempDir()

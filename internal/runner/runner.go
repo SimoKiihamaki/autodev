@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -378,14 +377,15 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	// This ensures bundled installations that live outside the repo (the "escape" case)
 	// remain permitted while still forcing the directory onto the allowlist.
 	//
-	// TOCTOU safety note: This order (whitelist update → validation) is intentional and safe:
-	// 1. The whitelist update (Setenv) only affects the CURRENT process' environment.
-	// 2. validatePythonScriptPath reads the environment via resolvedSafeScriptDirs() which
-	//    calls os.Getenv synchronously within the same goroutine.
-	// 3. External processes cannot modify this process' environment variables.
-	// 4. The resolvedScript path was already resolved from symlinks above, so the path
-	//    being whitelisted is the same path being validated.
-	// Therefore, no TOCTOU race exists between the whitelist update and validation.
+	// TOCTOU safety note: The primary protection against TOCTOU (Time-of-Check to Time-of-Use)
+	// vulnerabilities here is that resolveScriptPath (above) already resolves the script path
+	// to its canonical form using filepath.EvalSymlinks. This means the path being whitelisted
+	// and validated is the actual file that will be executed, even if an attacker tries to swap
+	// a symlink between resolution and validation. The environment variable update (Setenv) is
+	// process-local and not the main TOCTOU protection. validatePythonScriptPath reads the
+	// environment synchronously in the same goroutine, and external processes cannot modify
+	// this process' environment variables. Therefore, no TOCTOU race exists between path
+	// resolution, whitelist update, and validation.
 	if scriptDir := filepath.Dir(resolvedScript); scriptDir != "" {
 		if merged, added := mergeSafeScriptDir(os.Getenv(safeScriptDirsEnv), scriptDir); added {
 			if err := os.Setenv(safeScriptDirsEnv, merged); err != nil {
@@ -866,20 +866,25 @@ func setExecutorEnv(env []string, executorVars map[string]string) []string {
 }
 
 // mergeSafeScriptDir merges a script directory into the existing whitelist.
-// Note: This function uses the standard library log package for warnings, consistent
-// with the rest of the codebase. Structured logging could be added in a future refactor.
+// The scriptDir parameter must be absolute; callers (ensureScriptDirWhitelisted, buildScriptArgs)
+// validate this precondition before calling. Empty or relative scriptDir values cause an early
+// return without modification, as this indicates a programming error in the caller.
+//
+// The seen map uses map[string]bool for clarity (true = path is in the set).
 func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 	if scriptDir == "" {
-		log.Printf("[WARN] runner: mergeSafeScriptDir called with empty scriptDir; ignoring")
+		// Empty scriptDir is a no-op; caller should have validated this.
 		return existing, false
 	}
 	if !filepath.IsAbs(scriptDir) {
-		log.Printf("[WARN] runner: mergeSafeScriptDir called with relative path %q; ignoring (must be absolute)", scriptDir)
+		// Relative paths are rejected; caller should have provided absolute path.
+		// Return existing unchanged to preserve idempotency.
 		return existing, false
 	}
 
 	sep := string(os.PathListSeparator)
-	seen := make(map[string]struct{})
+	// Use map[string]bool for readability: true means path is in the set.
+	seen := make(map[string]bool)
 	parts := make([]string, 0, 4)
 	if existing != "" {
 		for _, part := range strings.Split(existing, sep) {
@@ -889,20 +894,21 @@ func mergeSafeScriptDir(existing, scriptDir string) (string, bool) {
 			}
 			clean := filepath.Clean(part)
 			if !filepath.IsAbs(clean) {
-				log.Printf("[WARN] runner: ignoring relative path %q in %s (must be absolute)", part, safeScriptDirsEnv)
+				// Skip relative paths in existing env var; they are configuration errors
+				// that we cannot fix here. The path is not added to the whitelist.
 				continue
 			}
-			if _, ok := seen[clean]; ok {
+			if seen[clean] {
 				continue
 			}
-			seen[clean] = struct{}{}
+			seen[clean] = true
 			parts = append(parts, clean)
 		}
 	}
 
 	cleanDir := filepath.Clean(scriptDir)
-	if _, ok := seen[cleanDir]; !ok {
-		seen[cleanDir] = struct{}{}
+	if !seen[cleanDir] {
+		seen[cleanDir] = true
 		parts = append(parts, cleanDir)
 		return strings.Join(parts, sep), true
 	}

@@ -172,20 +172,32 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
     session_id = checkpoint["session_id"]
     target_path = get_checkpoint_path(session_id)
 
-    # Write to temp file then rename for atomicity
+    # Write to temp file then rename for atomicity.
+    # fd is wrapped in try-finally immediately to prevent fd leak if an exception
+    # occurs before os.fdopen takes ownership of the file descriptor.
     fd, temp_path = tempfile.mkstemp(
         suffix=".json.tmp",
         prefix=f"{session_id}-",
         dir=target_path.parent,
     )
+    fd_closed = False
     try:
         with os.fdopen(fd, "w") as f:
+            fd_closed = (
+                True  # os.fdopen takes ownership; fd will be closed by context manager
+            )
             json.dump(checkpoint, f, indent=2, sort_keys=True)
             f.flush()
             os.fsync(f.fileno())
         os.rename(temp_path, target_path)
         logger.debug("Saved checkpoint to %s", target_path)
     except Exception:
+        # Close fd if os.fdopen was never called (prevents fd leak)
+        if not fd_closed:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         # Clean up temp file on failure
         try:
             os.unlink(temp_path)
@@ -449,16 +461,20 @@ def cleanup_old_sessions(max_age_days: int = 30, keep_completed: int = 10) -> in
     # Sort by age descending (oldest first)
     completed_sessions.sort(key=lambda x: x[1], reverse=True)
 
-    # Delete old sessions, keeping at least keep_completed
-    for checkpoint_file, age_days in completed_sessions[keep_completed:]:
-        if age_days > max_age_days:
-            try:
-                checkpoint_file.unlink()
-                deleted += 1
-            except OSError as e:
-                logger.warning(
-                    "Failed to delete checkpoint file %s: %s", checkpoint_file, e
-                )
+    # Delete old sessions, keeping at least keep_completed newest.
+    # After sorting oldest-first, the newest sessions are at the end.
+    # We delete from the beginning (oldest) up to len - keep_completed.
+    if len(completed_sessions) > keep_completed:
+        to_delete = completed_sessions[: len(completed_sessions) - keep_completed]
+        for checkpoint_file, age_days in to_delete:
+            if age_days > max_age_days:
+                try:
+                    checkpoint_file.unlink()
+                    deleted += 1
+                except OSError as e:
+                    logger.warning(
+                        "Failed to delete checkpoint file %s: %s", checkpoint_file, e
+                    )
 
     if deleted > 0:
         logger.info("Cleaned up %d old checkpoint files", deleted)
