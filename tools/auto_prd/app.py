@@ -38,6 +38,7 @@ from .git_ops import (
 from .local_loop import orchestrate_local_loop
 from .logging_utils import logger, setup_file_logging
 from .executor import resolve_executor_policy
+from .policy import policy_runner
 from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop
@@ -346,9 +347,14 @@ def run(args) -> None:
                 print("Generating implementation tracker from PRD...", flush=True)
                 logger.info("Generating tracker for PRD: %s", prd_path)
 
-                # Resolve executor using the validated policy function
-                resolved_local, _, _ = resolve_executor_policy(args.executor_policy)
-                tracker_executor = resolved_local if resolved_local else "claude"
+                # Resolve executor from policy for tracker generation
+                # Use policy_runner with i=1 (first iteration) to get the actual executor
+                _, executor_label = policy_runner(
+                    args.executor_policy, i=1, phase="implement"
+                )
+                tracker_executor = (
+                    executor_label.lower()
+                )  # "Codex" -> "codex", "Claude" -> "claude"
 
                 try:
                     tracker = generate_tracker(
