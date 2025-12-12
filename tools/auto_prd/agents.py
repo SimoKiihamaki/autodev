@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import errno
-import fcntl
 import os
 import random
 import re
 import select
-import shutil
 import subprocess
 import sys
 import time
@@ -17,9 +15,16 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from .command import run_cmd, verify_unsafe_execution_ready, env_with_zsh
+from .command import run_cmd, verify_unsafe_execution_ready, popen_streaming
 from .logging_utils import logger
-from .utils import extract_called_process_error_details, scrub_cli_text
+from .utils import extract_called_process_error_details
+
+# fcntl is Unix-only; import conditionally to allow module import on Windows.
+# On Windows, fcntl will be None and streaming functions will raise OSError.
+try:
+    import fcntl  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover (Windows)
+    fcntl = None  # type: ignore[assignment]
 
 RATE_LIMIT_JITTER_MIN = -3
 RATE_LIMIT_JITTER_MAX = 3
@@ -342,8 +347,10 @@ def _set_nonblocking(fd: int) -> None:
     """Set a file descriptor to non-blocking mode.
 
     Raises:
-        OSError: If fcntl operations fail, with contextual error message.
+        OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
+    if fcntl is None:
+        raise OSError("Non-blocking I/O requires fcntl (Unix-only).")
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
@@ -422,7 +429,7 @@ def claude_exec_streaming(
         subprocess.TimeoutExpired: If execution exceeds the timeout
     """
     # Platform check - fcntl is Unix-only
-    if sys.platform == "win32":
+    if fcntl is None or sys.platform == "win32":
         raise OSError(
             "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
             "Use claude_exec on Windows systems."
@@ -443,26 +450,9 @@ def claude_exec_streaming(
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN", ""
 
-    if not shutil.which(args[0]):
-        raise FileNotFoundError(f"Command not found: {args[0]}")
-
-    # Sanitize args to prevent shell injection via scrub_cli_text.
-    # This mirrors run_cmd's sanitize_args=True behavior for consistency.
-    sanitized_args = [scrub_cli_text(arg) for arg in args]
-    if args != sanitized_args:
-        logger.debug(
-            "Sanitized %d args before Popen (original vs sanitized): %s -> %s",
-            sum(1 for a, s in zip(args, sanitized_args) if a != s),
-            args,
-            sanitized_args,
-        )
-
     # Resolve timeout - use parameter, then environment variable, then None (no timeout)
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
     start_time = time.monotonic()
-
-    env = env_with_zsh({})
-    env["PYTHONUNBUFFERED"] = "1"
 
     def default_output_handler(line: str) -> None:
         # Simple print for default handler; callers provide their own formatting via on_output
@@ -470,16 +460,9 @@ def claude_exec_streaming(
 
     output_handler = on_output or default_output_handler
 
-    proc = subprocess.Popen(
-        sanitized_args,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=repo_root,
-        env=env,
-        text=True,
-        bufsize=1,
-    )
+    # Use popen_streaming from command.py for policy-compliant subprocess spawning.
+    # This centralizes argument sanitization, validation, and environment setup.
+    proc, sanitized_args = popen_streaming(args, cwd=repo_root)
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []

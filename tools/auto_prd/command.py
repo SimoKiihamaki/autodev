@@ -591,3 +591,69 @@ def run_sh(
         timeout=timeout,
         extra_env=extra_env,
     )
+
+
+def popen_streaming(
+    cmd: Sequence[str],
+    *,
+    cwd: Optional[Path] = None,
+    extra_env: Optional[dict] = None,
+    sanitize: bool = True,
+) -> tuple[subprocess.Popen[str], list[str]]:
+    """Create a Popen for streaming output with validated args and environment.
+
+    This is the policy-compliant wrapper for subprocess.Popen used in streaming
+    contexts (e.g., claude_exec_streaming). All subprocess spawning in
+    tools/auto_prd/** must go through command.py helpers.
+
+    Args:
+        cmd: Command sequence to execute.
+        cwd: Working directory for the command.
+        extra_env: Additional environment variables to merge.
+        sanitize: If True (default), sanitize shell-sensitive characters in args.
+
+    Returns:
+        Tuple of (Popen object, sanitized_args list used for the process).
+
+    Raises:
+        FileNotFoundError: If command executable not found.
+        ValueError: If cmd contains unsafe shell metacharacters.
+        SystemExit: If command is not in allowlist or cwd is outside safe roots.
+    """
+    # Sanitize args via scrub_cli_text when sanitize=True
+    sanitized_cmd: list[str] = (
+        [scrub_cli_text(arg) for arg in cmd] if sanitize else list(cmd)
+    )
+
+    if sanitize and list(cmd) != sanitized_cmd:
+        diffs = [
+            f"arg[{i}]: {orig!r} -> {san!r}"
+            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd, strict=True))
+            if orig != san
+        ]
+        if diffs:
+            logger.debug("Sanitized command arguments before Popen: %s", sanitized_cmd)
+            logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
+
+    validate_command_args(sanitized_cmd)
+    validate_cwd(cwd)
+    validate_extra_env(extra_env)
+
+    exe = shutil.which(sanitized_cmd[0])
+    if not exe:
+        raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
+
+    env = env_with_zsh(extra_env or {})
+    env["PYTHONUNBUFFERED"] = "1"
+
+    proc = subprocess.Popen(
+        sanitized_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        bufsize=1,
+    )
+    return proc, sanitized_cmd
