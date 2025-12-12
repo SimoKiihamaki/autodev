@@ -344,6 +344,27 @@ class PopenStreamingTests(unittest.TestCase):
     @mock.patch("tools.auto_prd.command.shutil.which")
     @mock.patch("tools.auto_prd.command.subprocess.Popen")
     @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_sanitize_true_converts_backticks_to_single_quotes(
+        self, mock_env, mock_popen, mock_which
+    ):
+        """Test that sanitize=True converts backticks to single quotes via scrub_cli_text."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        # With sanitize=True (default), backticks should be converted to single quotes
+        _proc, sanitized_args = popen_streaming(
+            ["echo", "contains `backticks`"], cwd=self.repo_root, sanitize=True
+        )
+
+        # Verify backticks were converted to single quotes
+        self.assertEqual(sanitized_args, ["echo", "contains 'backticks'"])
+        self.assertNotIn("`", sanitized_args[1])
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
     def test_passes_cwd_to_popen(self, mock_env, mock_popen, mock_which):
         """Test that cwd is passed to Popen."""
         mock_which.return_value = "/usr/bin/echo"

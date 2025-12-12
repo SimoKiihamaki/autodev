@@ -490,33 +490,37 @@ class ReviewFixLoopTests(unittest.TestCase):
     ) -> None:
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
-            mock_runner = mock.MagicMock(side_effect=error_class("programming error"))
-            mock_policy_runner.return_value = (mock_runner, "claude")
+            with self.subTest(error_class=error_class):
+                mock_runner = mock.MagicMock(
+                    side_effect=error_class("programming error")
+                )
+                mock_policy_runner.return_value = (mock_runner, "claude")
 
-            with mock.patch(
-                "tools.auto_prd.review_loop.get_unresolved_feedback",
-                return_value=[{"summary": "Fix this", "comment_id": 1}],
-            ):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    with self.assertRaises(
-                        error_class, msg=f"{error_class.__name__} should be re-raised"
-                    ):
-                        review_loop.review_fix_loop(
-                            pr_number=13,
-                            owner_repo="owner/repo",
-                            repo_root=Path(tmpdir),
-                            idle_grace=0,
-                            poll_interval=1,
-                            codex_model="gpt",
-                            allow_unsafe_execution=True,
-                            dry_run=False,
-                        )
+                with mock.patch(
+                    "tools.auto_prd.review_loop.get_unresolved_feedback",
+                    return_value=[{"summary": "Fix this", "comment_id": 1}],
+                ):
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        with self.assertRaises(
+                            error_class,
+                            msg=f"{error_class.__name__} should be re-raised",
+                        ):
+                            review_loop.review_fix_loop(
+                                pr_number=13,
+                                owner_repo="owner/repo",
+                                repo_root=Path(tmpdir),
+                                idle_grace=0,
+                                poll_interval=1,
+                                codex_model="gpt",
+                                allow_unsafe_execution=True,
+                                dry_run=False,
+                            )
 
-            self.assertEqual(
-                mock_runner.call_count,
-                1,
-                f"{error_class.__name__} should not retry",
-            )
+                self.assertEqual(
+                    mock_runner.call_count,
+                    1,
+                    f"{error_class.__name__} should not retry",
+                )
 
 
 if __name__ == "__main__":

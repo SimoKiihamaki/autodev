@@ -37,8 +37,22 @@ RATE_LIMIT_MIN_SLEEP_SECONDS = 5
 RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
 
-# I/O buffer and polling constants for claude_exec_streaming
+# Maximum characters of stderr to include in error messages to prevent
+# excessively long exception messages. Stderr can contain binary data or
+# very long output from crashed processes.
+STDERR_ERROR_MESSAGE_MAX_CHARS = 1000
+
+# I/O buffer and polling constants for claude_exec_streaming.
 # These values can be overridden via environment variables for performance tuning.
+#
+# IMPORTANT: These environment variables are read ONCE at module import time.
+# To configure different values:
+# - Set the environment variable BEFORE importing tools.auto_prd.agents
+# - For tests that need different values, use unittest.mock.patch on the
+#   STREAMING_READ_CHUNK_SIZE or STREAMING_SELECT_TIMEOUT_SECONDS constants
+#
+# This design trades off runtime configurability for startup performance,
+# as these values typically don't need to change during execution.
 
 
 def _get_streaming_chunk_size() -> int:
@@ -533,7 +547,11 @@ def claude_exec_streaming(
         Tuple of (stdout, stderr) containing all accumulated output.
         Note: Unlike claude_exec which preserves exact output formatting,
         this function normalizes line endings by joining lines with single
-        newlines. Trailing newlines from the original output are not preserved.
+        newlines. This means:
+        - Trailing newlines from the original output are not preserved
+        - Empty lines (consecutive newlines) are preserved as empty strings
+          in the lines list and joined back with single newlines, maintaining
+          the visual structure of blank lines in the output
 
     Raises:
         PermissionError: If allow_unsafe_execution is False and dry_run is False
@@ -613,7 +631,16 @@ def claude_exec_streaming(
             # User-facing error message - simple and actionable
             error_msg = "Claude process terminated unexpectedly before reading input"
             if captured_stderr:
-                error_msg = f"{error_msg}. Stderr: {captured_stderr}"
+                # Truncate stderr to prevent excessively long exception messages
+                # and potential encoding issues with binary data
+                if len(captured_stderr) > STDERR_ERROR_MESSAGE_MAX_CHARS:
+                    truncated_stderr = (
+                        captured_stderr[:STDERR_ERROR_MESSAGE_MAX_CHARS]
+                        + "...(truncated)"
+                    )
+                else:
+                    truncated_stderr = captured_stderr
+                error_msg = f"{error_msg}. Stderr: {truncated_stderr}"
             # Determine appropriate return code:
             # - Use actual returncode if process exited normally
             # - Use 141 (SIGPIPE on Unix) if process was killed by pipe closure
@@ -721,6 +748,9 @@ def claude_exec_streaming(
             # ValueError indicates invalid arguments to select() (e.g., negative timeout,
             # invalid fd). This is a programming error, not a signal interrupt, so it
             # cannot be recovered by retry. Log and exit the streaming loop.
+            #
+            # After breaking, the code path calls proc.wait() and checks returncode,
+            # so if the process fails, CalledProcessError will be raised appropriately.
             logger.error(
                 "select() raised ValueError (invalid arguments): %s - "
                 "stream reading terminated early, output may be incomplete",
@@ -736,7 +766,11 @@ def claude_exec_streaming(
             # EINTR can be retried (interrupted by signal)
             if e.errno == errno.EINTR:
                 continue
-            # Other select() failures are serious - log at ERROR level
+            # Other select() failures are serious - log at ERROR level.
+            #
+            # After breaking, the code path calls proc.wait() and checks returncode,
+            # so if the process fails, CalledProcessError will be raised appropriately.
+            # This prevents returning incomplete output with a success (0) returncode.
             logger.error(
                 "select() failed unexpectedly (errno=%s): %s - "
                 "stream reading terminated early, output may be incomplete",

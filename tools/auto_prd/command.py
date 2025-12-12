@@ -626,13 +626,21 @@ def popen_streaming(
     )
 
     if sanitize and list(cmd) != sanitized_cmd:
+        # Redact sensitive arguments before logging to avoid exposing API keys, tokens, etc.
+        # We use sanitize_args() to redact both original and sanitized versions.
+        redacted_cmd = sanitize_args(cmd)
+        redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
-            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd, strict=True))
+            for i, (orig, san) in enumerate(
+                zip(redacted_cmd, redacted_sanitized_cmd, strict=True)
+            )
             if orig != san
         ]
         if diffs:
-            logger.debug("Sanitized command arguments before Popen: %s", sanitized_cmd)
+            logger.debug(
+                "Sanitized command arguments before Popen: %s", redacted_sanitized_cmd
+            )
             logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
 
     validate_command_args(sanitized_cmd)

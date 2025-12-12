@@ -225,7 +225,9 @@ class ClaudeExecStreamingTests(unittest.TestCase):
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_dry_run_returns_dry_run_output(self):
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    def test_dry_run_returns_dry_run_output(self, mock_verify, mock_popen):
         """Test that dry_run=True returns ('DRY_RUN', '') without execution."""
         stdout, stderr = claude_exec_streaming(
             prompt="Test prompt",
@@ -235,6 +237,11 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         )
         self.assertEqual(stdout, "DRY_RUN")
         self.assertEqual(stderr, "")
+        # Verify no subprocess was spawned (the key behavior for dry_run)
+        mock_popen.assert_not_called()
+        # Note: verify_unsafe_execution_ready IS called even in dry_run mode when
+        # allow_unsafe_execution=True, to provide consistent error messaging about
+        # environment configuration. This is intentional behavior.
 
     def test_permission_error_without_allow_unsafe_execution(self):
         """Test that PermissionError is raised when allow_unsafe_execution=False."""

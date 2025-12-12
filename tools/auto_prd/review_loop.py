@@ -41,6 +41,10 @@ STDERR_LOG_TRUNCATE_CHARS = 2000
 # Box-drawing characters for streaming output formatting.
 # These can be overridden via AUTO_PRD_ASCII_OUTPUT=1 for terminal compatibility
 # (e.g., Windows, CI/CD logs, or terminals that don't support Unicode).
+#
+# IMPORTANT: This environment variable is read ONCE at module import time.
+# To use ASCII output, set AUTO_PRD_ASCII_OUTPUT=1 BEFORE importing this module.
+# Changing the environment variable after import will have no effect.
 _USE_ASCII = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in ("1", "true", "yes")
 BOX_HORIZONTAL = "-" if _USE_ASCII else "─"
 BOX_VERTICAL = "|" if _USE_ASCII else "│"
@@ -98,6 +102,9 @@ def _handle_runner_failure(
         )
         print(f"  Error: {brief_detail}", flush=True)
     if stderr_text.strip():
+        # Log stderr at WARNING level for failed executions only. This is acceptable
+        # because: (1) failures need debugging context, (2) stderr typically contains
+        # error messages not model output, (3) we truncate to limit exposure.
         logger.warning(
             "Review runner stderr:\n%s", stderr_text[:STDERR_LOG_TRUNCATE_CHARS]
         )
@@ -149,8 +156,11 @@ def review_fix_loop(
         checkpoint: Optional checkpoint dict for resume support.
 
     Returns:
-        True if the loop completed successfully, False if it terminated due to
-        consecutive failures reaching MAX_CONSECUTIVE_FAILURES.
+        True if the loop exited normally (i.e., did not hit the consecutive failure limit).
+        This includes cases where all feedback was addressed, the review was stopped
+        by user or policy (should_stop_review_after_push), no unresolved feedback was found,
+        or the idle grace period expired. Returns False only if the loop terminated due to
+        reaching MAX_CONSECUTIVE_FAILURES consecutive runner failures.
 
     Raises:
         PermissionError: If a file or directory cannot be accessed due to
@@ -271,8 +281,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
             try:
                 _, stderr = actual_runner(fix_prompt, **runner_kwargs)
+                # Note: Stderr is logged at debug level for diagnostics, but NOT at higher
+                # levels to minimize exposure of potentially sensitive data. Debug logs are
+                # typically disabled in production. Stdout is not logged at all (see
+                # output_handler above) as it contains actual model responses.
                 if stderr and stderr.strip():
-                    logger.debug("Review runner stderr output:\n%s", stderr)
+                    logger.debug("Review runner stderr (debug only): %s", stderr[:500])
                 consecutive_failures = 0
                 if use_streaming:
                     print(f"{BOX_HORIZONTAL * 60}")
