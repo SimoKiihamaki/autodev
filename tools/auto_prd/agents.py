@@ -547,6 +547,12 @@ def claude_exec_streaming(
     io_errors: list[tuple[str, int | None, str]] = []
     select_error_occurred = False
 
+    # Track fds that have reached EOF to avoid infinite loop.
+    # When a process exits, its pipes still exist as file objects (not None),
+    # but select() returns them as "readable" with EOF. Without tracking EOF,
+    # the loop would spin forever: read empty string -> continue -> select -> repeat.
+    eof_fds: set = set()
+
     # Stream output in real-time
     while True:
         # Check timeout
@@ -581,7 +587,13 @@ def claude_exec_streaming(
                 raise exc
 
         ret = proc.poll()
-        readable_fds = [fd for fd in (proc.stdout, proc.stderr) if fd is not None]
+        # Exclude fds that have reached EOF - they would cause select to return
+        # immediately with nothing to read, spinning the loop forever
+        readable_fds = [
+            fd
+            for fd in (proc.stdout, proc.stderr)
+            if fd is not None and fd not in eof_fds
+        ]
 
         if ret is not None and not readable_fds:
             break
@@ -619,6 +631,10 @@ def claude_exec_streaming(
             try:
                 chunk = fd.read(STREAMING_READ_CHUNK_SIZE)
                 if not chunk:
+                    # EOF reached - mark this fd so we don't select on it again.
+                    # This prevents the infinite loop where select returns immediately
+                    # with "readable" fds that only have EOF available.
+                    eof_fds.add(fd)
                     continue
                 if fd == proc.stdout:
                     stdout_buffer += chunk
@@ -647,9 +663,8 @@ def claude_exec_streaming(
                     f"  [WARNING] I/O error on {fd_name} - some output may be missing",
                     flush=True,
                 )
-                # Remove the fd from further reading to avoid repeated errors
-                if fd in readable_fds:
-                    readable_fds.remove(fd)
+                # Mark fd as EOF to prevent repeated errors on subsequent iterations
+                eof_fds.add(fd)
 
         if ret is not None and not readable:
             break
