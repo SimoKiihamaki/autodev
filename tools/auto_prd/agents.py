@@ -783,7 +783,14 @@ def claude_exec_streaming(
                 proc.wait(timeout=wait_timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait(timeout=5.0)
+                try:
+                    proc.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "Process did not terminate after kill() and 5s wait; "
+                        "possible zombie process (pid=%s)",
+                        proc.pid,
+                    )
             # Try to capture any stderr the process wrote before dying.
             # Use select with a short timeout to avoid hanging if stderr is in an
             # unexpected state (e.g., kernel issues, pipe anomalies).
@@ -856,7 +863,13 @@ def claude_exec_streaming(
         # Note: proc.stdin was already closed after writing the prompt,
         # but include defensive cleanup for consistency with other error handlers.
         proc.kill()
-        proc.wait()
+        try:
+            proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Process did not terminate after kill signal within timeout; "
+                "continuing cleanup."
+            )
         if proc.stdin and not proc.stdin.closed:
             proc.stdin.close()
         if proc.stdout:
@@ -991,7 +1004,13 @@ def claude_exec_streaming(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
             proc.kill()
-            proc.wait()
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process did not terminate after kill signal within timeout; "
+                    "continuing cleanup."
+                )
             # Defensive cleanup for stdin - already closed after prompt write,
             # but included for consistency with other error handlers.
             if proc.stdin and not proc.stdin.closed:
@@ -1022,7 +1041,13 @@ def claude_exec_streaming(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
             proc.kill()
-            proc.wait()
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process did not terminate after kill signal within timeout; "
+                    "continuing cleanup."
+                )
             # Defensive cleanup for stdin - already closed after prompt write,
             # but included for consistency with other error handlers.
             if proc.stdin and not proc.stdin.closed:

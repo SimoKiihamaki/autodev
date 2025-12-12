@@ -469,6 +469,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 if _should_stop_after_failure(
                     consecutive_failures,
                     f"SystemExit(code={exit_code})",
+                    stderr_text="",
                     error_type="SystemExit",
                 ):
                     return False
