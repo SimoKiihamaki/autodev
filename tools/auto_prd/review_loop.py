@@ -70,9 +70,11 @@ def _handle_runner_failure(
     """Log failure details and determine if loop should stop.
 
     Args:
-        consecutive_failures: The current count of consecutive failures.
-            This is the number of failures that have occurred without a successful run.
-            For example, 1 for the first failure, 2 for the second, etc.
+        consecutive_failures: The current count of consecutive failures, AFTER
+            incrementing for the latest failure. This is passed in after the caller
+            increments the counter (i.e., 1 for the first failure, 2 for the second,
+            etc.). The counter is compared against MAX_CONSECUTIVE_FAILURES to
+            determine if the loop should terminate.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
@@ -156,13 +158,15 @@ def review_fix_loop(
         checkpoint: Optional checkpoint dict for resume support.
 
     Returns:
-        True if the loop exited normally (i.e., did not hit the consecutive failure limit).
-        This includes cases where all feedback was addressed, the review was stopped
-        by user or policy (should_stop_review_after_push), no unresolved feedback was found,
-        or the idle grace period expired. Returns False only if the loop terminated due to
-        reaching MAX_CONSECUTIVE_FAILURES consecutive runner failures.
+        True if the loop terminated gracefully (i.e., completed work, timed out, no feedback
+        found, or was stopped by policy/user action such as should_stop_review_after_push).
+        False if the loop terminated due to reaching MAX_CONSECUTIVE_FAILURES consecutive
+        runner failures.
 
     Raises:
+        The following exceptions are re-raised immediately if encountered and are considered
+        unrecoverable errors (i.e., not handled by the retry logic):
+
         PermissionError: If a file or directory cannot be accessed due to
             insufficient permissions during subprocess execution.
         FileNotFoundError: If a required file or directory is missing, such as
@@ -179,9 +183,12 @@ def review_fix_loop(
             such as missing fields in API responses or checkpoint data.
 
     Note:
-        Additional exceptions may be raised by underlying subprocess or I/O
-        operations if unrecoverable errors occur. Transient failures are
-        handled internally with retry logic up to MAX_CONSECUTIVE_FAILURES.
+        Transient/recoverable errors (such as subprocess.CalledProcessError,
+        subprocess.TimeoutExpired, and other transient failures) are handled
+        internally with retry logic up to MAX_CONSECUTIVE_FAILURES. Only the
+        unrecoverable errors listed above are re-raised immediately. If the
+        maximum number of consecutive recoverable failures is reached, the
+        function returns False instead of raising an exception.
     """
     if pr_number is None:
         return True
@@ -263,9 +270,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             if review_runner is codex_exec:
                 runner_kwargs["model"] = codex_model
 
-            # Use streaming for claude to show real-time progress
-            use_streaming = review_runner is claude_exec
-            if use_streaming:
+            # Use streaming variant for claude_exec to show real-time progress.
+            # When the policy selects claude_exec, we switch to claude_exec_streaming
+            # which provides line-by-line output via the on_output callback.
+            use_claude_streaming = review_runner is claude_exec
+            if use_claude_streaming:
                 print(f"\n{BOX_HORIZONTAL * 60}")
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
                 print(f"{BOX_HORIZONTAL * 60}", flush=True)
@@ -274,6 +283,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     print(f"  {BOX_VERTICAL} {line}", flush=True)
                     # Note: Intentionally not logging model output to avoid persisting
                     # potentially sensitive data (secrets, PII) to log files.
+                    # If logging is needed for debugging specific issues, callers should
+                    # implement their own output_handler with appropriate sanitization
+                    # and log level controls (e.g., DEBUG with opt-in environment flag).
 
                 runner_kwargs["on_output"] = output_handler
                 actual_runner = claude_exec_streaming
@@ -289,13 +301,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 if stderr and stderr.strip():
                     logger.debug("Review runner stderr (debug only): %s", stderr[:500])
                 consecutive_failures = 0
-                if use_streaming:
+                # Determine completion status message (independent of streaming mode)
+                if not (stderr and stderr.strip()):
+                    status_msg = "Review fix completed successfully"
+                else:
+                    status_msg = "Review fix completed (with warnings)"
+                # Display completion status with appropriate formatting
+                if use_claude_streaming:
                     print(f"{BOX_HORIZONTAL * 60}")
-                    if not (stderr and stderr.strip()):
-                        print("  Review fix completed successfully")
-                    else:
-                        print("  Review fix completed (with warnings)")
+                    print(f"  {status_msg}")
                     print(f"{BOX_HORIZONTAL * 60}\n", flush=True)
+                else:
+                    print(status_msg, flush=True)
             except subprocess.TimeoutExpired as exc:
                 # Timeout - count as failure but provide specific feedback
                 consecutive_failures += 1

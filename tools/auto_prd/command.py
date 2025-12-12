@@ -630,6 +630,11 @@ def popen_streaming(
         # We use sanitize_args() to redact both original and sanitized versions.
         redacted_cmd = sanitize_args(cmd)
         redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
+        # Note: strict=True is safe here because sanitized_cmd is created via list
+        # comprehension over cmd (line 625), guaranteeing identical lengths. The
+        # strict parameter serves as an assertion - if lengths ever differ due to
+        # a future code change, the ValueError will surface the bug immediately
+        # rather than silently producing incorrect diff output.
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
             for i, (orig, san) in enumerate(

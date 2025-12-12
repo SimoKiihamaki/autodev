@@ -336,32 +336,27 @@ class ReviewFixLoopTests(unittest.TestCase):
         _mock_sleep,
     ) -> None:
         """Test that successful execution resets the failure counter."""
-        # First call fails, second succeeds
-        call_count = [0]
-
-        def mock_runner_side_effect(*args, **kwargs):
-            _ = args, kwargs  # Satisfy ARG001
-            call_count[0] += 1
-            if call_count[0] == 1:
-                raise subprocess.CalledProcessError(1, ["claude"], stderr=b"error")
-            return ("output", "")
-
-        mock_runner = mock.MagicMock(side_effect=mock_runner_side_effect)
+        # First call fails, second succeeds. Using MagicMock.side_effect with a list
+        # is cleaner than a closure with mutable state, and avoids ARG001 linting issues.
+        mock_runner = mock.MagicMock(
+            side_effect=[
+                subprocess.CalledProcessError(1, ["claude"], stderr=b"error"),
+                ("output", ""),
+            ]
+        )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        # Return feedback on first call, then stop
-        feedback_calls = [0]
-
-        def get_feedback_side_effect(*args, **kwargs):
-            _ = args, kwargs  # Satisfy ARG001
-            feedback_calls[0] += 1
-            if feedback_calls[0] <= 2:
-                return [{"summary": "Fix this", "comment_id": feedback_calls[0]}]
-            return []
+        # Return feedback on first two calls, then empty to stop the loop.
+        # Using side_effect with a list is the idiomatic mock pattern.
+        feedback_sequence = [
+            [{"summary": "Fix this", "comment_id": 1}],
+            [{"summary": "Fix this", "comment_id": 2}],
+            [],
+        ]
 
         with mock.patch(
             "tools.auto_prd.review_loop.get_unresolved_feedback",
-            side_effect=get_feedback_side_effect,
+            side_effect=feedback_sequence,
         ):
             with tempfile.TemporaryDirectory() as tmpdir:
                 result = review_loop.review_fix_loop(
@@ -491,9 +486,13 @@ class ReviewFixLoopTests(unittest.TestCase):
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
             with self.subTest(error_class=error_class):
+                # Create fresh mock for each subTest iteration to ensure complete test
+                # isolation. While Python's garbage collection handles cleanup, explicit
+                # mock creation per iteration prevents any potential state leakage.
                 mock_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )
+                mock_policy_runner.reset_mock()
                 mock_policy_runner.return_value = (mock_runner, "claude")
 
                 with mock.patch(

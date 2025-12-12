@@ -42,6 +42,58 @@ CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
 # very long output from crashed processes.
 STDERR_ERROR_MESSAGE_MAX_CHARS = 1000
 
+# Patterns for sanitizing sensitive information from stderr before including
+# in exception messages. These patterns catch common credential/token formats.
+_SENSITIVE_STDERR_PATTERNS = [
+    # API keys/tokens with common prefixes
+    (re.compile(r"\b(sk-[a-zA-Z0-9]{20,})\b"), "<REDACTED_API_KEY>"),
+    (re.compile(r"\b(ghp_[a-zA-Z0-9]{36,})\b"), "<REDACTED_GH_TOKEN>"),
+    (re.compile(r"\b(gho_[a-zA-Z0-9]{36,})\b"), "<REDACTED_GH_TOKEN>"),
+    (re.compile(r"\b(github_pat_[a-zA-Z0-9_]{22,})\b"), "<REDACTED_GH_PAT>"),
+    # Bearer tokens
+    (re.compile(r"(Bearer\s+)[a-zA-Z0-9_\-\.]+", re.IGNORECASE), r"\1<REDACTED>"),
+    # Basic auth (base64 encoded credentials)
+    (re.compile(r"(Basic\s+)[a-zA-Z0-9+/=]+", re.IGNORECASE), r"\1<REDACTED>"),
+    # Key=value patterns for sensitive keys
+    (
+        re.compile(
+            r"\b(api[_-]?key|token|secret|password|credential|auth)[=:]\s*['\"]?[^\s'\"]+['\"]?",
+            re.IGNORECASE,
+        ),
+        r"\1=<REDACTED>",
+    ),
+    # File paths that might reveal usernames or directory structure
+    (re.compile(r"/home/[a-zA-Z0-9_\-]+/"), "/home/<USER>/"),
+    (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
+]
+
+
+def _sanitize_stderr_for_exception(stderr: str, max_chars: int) -> str:
+    """Sanitize stderr content before including in exception messages.
+
+    Removes/redacts potentially sensitive information like API keys, tokens,
+    passwords, and user-specific file paths from stderr to prevent accidental
+    exposure in exception messages or logs.
+
+    Args:
+        stderr: Raw stderr content to sanitize.
+        max_chars: Maximum characters to include (truncates if exceeded).
+
+    Returns:
+        Sanitized and potentially truncated stderr string.
+    """
+    if not stderr:
+        return ""
+
+    sanitized = stderr
+    for pattern, replacement in _SENSITIVE_STDERR_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
+
+    if len(sanitized) > max_chars:
+        return sanitized[:max_chars] + "...(truncated)"
+    return sanitized
+
+
 # I/O buffer and polling constants for claude_exec_streaming.
 # These values can be overridden via environment variables for performance tuning.
 #
@@ -367,7 +419,21 @@ def _build_claude_args(
     enable_search: bool,
     extra: Optional[list[str]],
 ) -> list[str]:
-    """Build the CLI arguments for Claude execution."""
+    """Build the CLI arguments for Claude execution.
+
+    Args:
+        allow_flag: Whether to add --dangerously-skip-permissions flag.
+        model: Optional model name to use.
+        enable_search: Whether search is enabled (currently ignored by Claude CLI).
+        extra: Optional list of additional string arguments to pass to Claude.
+            Must be a list or tuple of strings if provided.
+
+    Returns:
+        List of CLI arguments for Claude execution.
+
+    Raises:
+        TypeError: If extra is provided but is not a list/tuple of strings.
+    """
     args: list[str] = ["claude"]
     if allow_flag:
         args.append("--dangerously-skip-permissions")
@@ -378,6 +444,15 @@ def _build_claude_args(
             "Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False"
         )
     if extra:
+        if not isinstance(extra, (list, tuple)):
+            raise TypeError(
+                f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
+            )
+        if not all(isinstance(x, str) for x in extra):
+            invalid_types = [type(x).__name__ for x in extra if not isinstance(x, str)]
+            raise TypeError(
+                f"'extra' must contain only strings, found: {invalid_types}"
+            )
         args.extend(extra)
     args.extend(["-p", "-"])
     return args
@@ -509,6 +584,12 @@ def _drain_fds_best_effort(
                 elif fd == proc_stderr:
                     stderr_buffer += remaining
         except (OSError, IOError, ValueError) as drain_exc:
+            # Expected exceptions during best-effort drain operations:
+            # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
+            # - ValueError: read on closed file (can happen if fd.closed check races)
+            # Any other exceptions (e.g., TypeError, AttributeError) would indicate
+            # a programming error and should propagate up.
+            #
             # Log at WARNING if there was buffered data we might have lost.
             # The buffers passed in represent data we already read but haven't
             # processed yet - losing additional data on top of that is significant.
@@ -600,6 +681,11 @@ def claude_exec_streaming(
         )
     os.environ.setdefault("CI", "1")
     if allow_flag:
+        # Note: verify_unsafe_execution_ready is called even when dry_run=True to ensure
+        # consistent error messaging about environment configuration. This helps users
+        # identify environment setup issues during dry-run testing without having to
+        # actually execute commands. The verification is lightweight (checks env var)
+        # and doesn't modify state, so it's safe to run in dry_run mode.
         verify_unsafe_execution_ready()
 
     args = _build_claude_args(allow_flag, model, enable_search, extra)
@@ -657,16 +743,12 @@ def claude_exec_streaming(
             # User-facing error message - simple and actionable
             error_msg = "Claude process terminated unexpectedly before reading input"
             if captured_stderr:
-                # Truncate stderr to prevent excessively long exception messages
-                # and potential encoding issues with binary data
-                if len(captured_stderr) > STDERR_ERROR_MESSAGE_MAX_CHARS:
-                    truncated_stderr = (
-                        captured_stderr[:STDERR_ERROR_MESSAGE_MAX_CHARS]
-                        + "...(truncated)"
-                    )
-                else:
-                    truncated_stderr = captured_stderr
-                error_msg = f"{error_msg}. Stderr: {truncated_stderr}"
+                # Sanitize stderr to remove sensitive information (API keys, tokens, paths)
+                # and truncate to prevent excessively long exception messages.
+                sanitized_stderr = _sanitize_stderr_for_exception(
+                    captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
+                )
+                error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
             # Determine appropriate return code:
             # - Use actual returncode if process exited normally
             # - Use 141 (SIGPIPE on Unix) if process was killed by pipe closure
@@ -728,21 +810,20 @@ def claude_exec_streaming(
                     all_stderr.append(stderr_buffer)
                 stdout_so_far = "\n".join(all_stdout)
                 stderr_so_far = "\n".join(all_stderr)
+                # Log timeout metadata only - avoid logging actual stdout/stderr content
+                # to prevent persisting potentially sensitive model output (secrets, PII)
+                # in log files. The partial output is preserved in the exception for
+                # immediate inspection but should not be written to persistent logs.
                 logger.error(
                     "Claude execution timed out after %d seconds (limit: %d). "
-                    "Partial stdout (%d lines, %d buffered chars): %s",
+                    "Partial output: %d stdout lines (%d chars), %d stderr lines (%d chars)",
                     int(elapsed),
                     effective_timeout,
                     len(stdout_lines),
-                    len(stdout_buffer),
-                    (
-                        stdout_so_far[:2000]
-                        if len(stdout_so_far) > 2000
-                        else stdout_so_far
-                    ),
+                    len(stdout_so_far),
+                    len(stderr_lines),
+                    len(stderr_so_far),
                 )
-                if stderr_so_far:
-                    logger.error("Partial stderr at timeout: %s", stderr_so_far[:1000])
                 proc.kill()
                 proc.wait()
                 if proc.stdout:
@@ -763,6 +844,10 @@ def claude_exec_streaming(
             if fd is not None and fd not in eof_fds
         ]
 
+        # Termination check #1 (before select):
+        # Exit when the process has finished (ret is not None) AND there are no more
+        # file descriptors to read from (all have reached EOF). This check prevents
+        # calling select() with an empty fd list (which would be a no-op or error).
         if ret is not None and not readable_fds:
             break
 
@@ -856,6 +941,11 @@ def claude_exec_streaming(
                 # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
 
+        # Termination check #2 (after processing readable fds):
+        # Exit when the process has finished AND select() returned no readable fds
+        # (either due to timeout or all fds hitting EOF during this iteration).
+        # This differs from check #1: readable_fds may be non-empty entering select(),
+        # but select() can return empty `readable` if all fds reached EOF during read().
         if ret is not None and not readable:
             break
 

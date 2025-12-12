@@ -89,7 +89,9 @@ COPILOT_REVIEW_LOGINS = {
     }
 }
 
-# OpenAI Codex review bot logins
+# Codex CLI review bot logins (the standalone `codex` CLI tool from OpenAI, distinct
+# from GitHub Copilot which is handled by COPILOT_REVIEW_LOGINS above).
+# These are the GitHub account names used by the Codex CLI when posting PR comments.
 CODEX_REVIEW_LOGINS = {
     login.lower()
     for login in {
