@@ -175,13 +175,12 @@ else:
         STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
 # Clean up module-level temporaries to avoid polluting namespace.
-# Note: _chunk_size_val and _timeout_val are only defined under specific conditions:
-# - The environment variable must be set (not None), AND
-# - The try block's int()/float() parsing must succeed, AND
-# - The parsed value must be positive (entering the if branch that assigns the variable)
-# If any condition fails (env var unset, parse error, non-positive value), the variable
-# won't be defined. We use contextlib.suppress(NameError) to unconditionally attempt
-# deletion, which is cleaner than try/except blocks and handles all cases uniformly.
+# Note: _chunk_size_val and _timeout_val are only defined when:
+# - The environment variable is set (not None), AND
+# - The int()/float() parsing succeeds.
+# If the env var is unset or parsing fails, the variable won't be defined.
+# We use contextlib.suppress(NameError) to unconditionally attempt deletion,
+# which is cleaner than try/except blocks and handles all cases uniformly.
 del _raw_chunk_size, _raw_poll_timeout
 with suppress(NameError):
     del _chunk_size_val
@@ -491,14 +490,12 @@ def _build_claude_args(
     # Early validation ensures clear error messages with caller stack context.
     if extra is not None:
         if not isinstance(extra, (list, tuple)):
-            raise TypeError(
-                f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
-            )
+            msg = f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
+            raise TypeError(msg)  # noqa: TRY003
         if not all(isinstance(x, str) for x in extra):
             invalid_types = [type(x).__name__ for x in extra if not isinstance(x, str)]
-            raise TypeError(
-                f"'extra' must contain only strings, found: {invalid_types}"
-            )
+            msg = f"'extra' must contain only strings, found: {invalid_types}"
+            raise TypeError(msg)  # noqa: TRY003
 
     args: list[str] = ["claude"]
     if allow_flag:
@@ -529,9 +526,8 @@ def claude_exec(
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
     if not allow_flag and not dry_run:
-        raise PermissionError(
-            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
-        )
+        msg = "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+        raise PermissionError(msg)  # noqa: TRY003
     os.environ.setdefault("CI", "1")
     if allow_flag:
         verify_unsafe_execution_ready()
@@ -741,17 +737,17 @@ def claude_exec_streaming(
     # On Windows, fcntl import fails and HAS_FCNTL is False due to the import guard
     # at module top, so checking HAS_FCNTL covers both "fcntl unavailable" and "Windows".
     if not HAS_FCNTL:
-        raise OSError(
+        msg = (
             "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
             "Use claude_exec on Windows systems."
         )
+        raise OSError(msg)  # noqa: TRY003
     allow_flag = _resolve_unsafe_flag(
         allow_unsafe_execution, yolo, "claude_exec_streaming"
     )
     if not allow_flag and not dry_run:
-        raise PermissionError(
-            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
-        )
+        msg = "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+        raise PermissionError(msg)  # noqa: TRY003
     os.environ.setdefault("CI", "1")
     if allow_flag:
         verify_unsafe_execution_ready()
@@ -791,12 +787,19 @@ def claude_exec_streaming(
     # Fail loudly if stdin is missing - this indicates a subprocess configuration bug.
     if not proc.stdin:
         proc.kill()
-        proc.wait()
+        try:
+            proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Process did not terminate after kill signal within timeout; "
+                "continuing cleanup."
+            )
         if proc.stdout:
             proc.stdout.close()
         if proc.stderr:
             proc.stderr.close()
-        raise RuntimeError("Claude streaming requires stdin=PIPE (got no stdin)")
+        msg = "Claude streaming requires stdin=PIPE (got no stdin)"
+        raise RuntimeError(msg)  # noqa: TRY003
     try:
         proc.stdin.write(prompt)
         proc.stdin.close()
@@ -891,12 +894,13 @@ def claude_exec_streaming(
                 getattr(proc, "pid", None),
                 poll_result,
             )
-            raise RuntimeError(
+            msg = (
                 f"UNEXPECTED SUBPROCESS STATE: Process did not terminate after proc.wait(); "
                 f"returncode is None (command: {sanitized_args[0]}, pid: {getattr(proc, 'pid', None)}, "
                 f"poll(): {poll_result}). This indicates a possible bug in the subprocess module or OS. "
                 f"Please report this issue with full diagnostics."
-            ) from None
+            )
+            raise RuntimeError(msg) from None  # noqa: TRY003
         raise subprocess.CalledProcessError(
             proc.returncode,
             sanitized_args,
@@ -1032,9 +1036,15 @@ def claude_exec_streaming(
         ]
 
         # Termination check #1 (before select):
-        # Exit when the process has finished (ret is not None) AND there are no more
-        # file descriptors to read from (all have reached EOF). This check prevents
-        # calling select() with an empty fd list (which would be a no-op or error).
+        # Checks `readable_fds` - the list of fds we *would* pass to select(), built
+        # by filtering out fds that have already reached EOF in previous iterations.
+        # Exit when the process has finished (ret is not None) AND there are no fds
+        # left to poll (all have previously reached EOF). This prevents calling
+        # select() with an empty fd list (which would be a no-op or error).
+        #
+        # Relationship to check #2: This check handles the case where ALL fds reached
+        # EOF in previous loop iterations. Check #2 handles the case where fds reach
+        # EOF during the current iteration (after select() and read() calls).
         if ret is not None and not readable_fds:
             break
 
@@ -1076,7 +1086,8 @@ def claude_exec_streaming(
                 proc.stdout.close()
             if proc.stderr:
                 proc.stderr.close()
-            raise RuntimeError("select() failed (ValueError); streaming aborted") from e
+            msg = "select() failed (ValueError); streaming aborted"
+            raise RuntimeError(msg) from e  # noqa: TRY003
         except OSError as e:
             # EINTR can be retried (interrupted by signal)
             if e.errno == errno.EINTR:
@@ -1113,7 +1124,8 @@ def claude_exec_streaming(
                 proc.stdout.close()
             if proc.stderr:
                 proc.stderr.close()
-            raise RuntimeError("select() failed (OSError); streaming aborted") from e
+            msg = "select() failed (OSError); streaming aborted"
+            raise RuntimeError(msg) from e  # noqa: TRY003
 
         for fd in readable:
             try:
@@ -1174,12 +1186,17 @@ def claude_exec_streaming(
                 # select() returning and read() being called (race condition on abrupt
                 # process termination). The fd.closed attribute is the reliable indicator.
                 #
-                # If fd.closed is False, this is an unexpected ValueError (likely a
-                # programming error) and should propagate to surface the bug.
-                fd_is_closed = getattr(fd, "closed", False)
+                # We check hasattr() first to ensure the fd has a 'closed' attribute
+                # (defensive: all file objects should have it, but edge cases like
+                # custom file-like objects without 'closed' should re-raise rather
+                # than be silently treated as I/O errors).
+                if not hasattr(fd, "closed"):
+                    # Unexpected object type - re-raise to surface the bug.
+                    raise
+                fd_is_closed = fd.closed
                 if not fd_is_closed:
-                    # Unexpected ValueError - not an I/O closure issue. Re-raise to
-                    # surface the bug rather than silently treating it as an I/O error.
+                    # Unexpected ValueError - fd is open so this isn't a closure issue.
+                    # Re-raise to surface the bug rather than silently masking it.
                     raise
                 fd_name = "stdout" if fd == proc.stdout else "stderr"
                 logger.error(
@@ -1199,10 +1216,17 @@ def claude_exec_streaming(
                 eof_fds.add(fd)
 
         # Termination check #2 (after processing readable fds):
-        # Exit when the process has finished AND select() returned no readable fds
-        # (either due to timeout or all fds hitting EOF during this iteration).
-        # This differs from check #1: readable_fds may be non-empty entering select(),
-        # but select() can return empty `readable` if all fds reached EOF during read().
+        # Checks `readable` - the list of fds that select() reported as having data.
+        # Exit when the process has finished AND select() returned no readable fds.
+        #
+        # Why this differs from check #1:
+        # - Check #1 uses `readable_fds` (fds we passed TO select, excluding prior EOFs)
+        # - Check #2 uses `readable` (fds select RETURNED as having data available)
+        #
+        # This check catches the case where readable_fds was non-empty entering select(),
+        # but during this iteration's read() calls, all remaining fds reached EOF
+        # (returning empty strings) and were added to eof_fds. When that happens,
+        # select() returns empty because no fds have data, and we can exit cleanly.
         if ret is not None and not readable:
             break
 

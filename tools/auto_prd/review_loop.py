@@ -41,6 +41,14 @@ MAX_CONSECUTIVE_FAILURES = 3
 # format_unresolved_bullets() for the same persistent API bug or malformed entry.
 # Note: This is intentionally session-scoped (module-level), not call-scoped,
 # to avoid log spam when the same malformed comment appears in every poll cycle.
+#
+# Memory consideration: This set grows unboundedly during the process lifetime.
+# This is acceptable because:
+# 1. The expected number of malformed comments per PR is small (typically <10)
+# 2. Comment IDs are short strings (~20 chars each)
+# 3. The process lifetime for review_fix_loop is bounded (single PR review session)
+# If this tool were repurposed for long-running daemon use, consider adding either
+# a max size limit with LRU eviction, or timestamp-based expiry for old entries.
 _warned_malformed_comment_ids: set[str] = set()
 
 # Truncation limits for error messages to balance detail with readability.
@@ -493,12 +501,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate without retry.
-                    # Note: The consecutive_failures reset below has no observable effect
-                    # since the function immediately raises and terminates. This line is
-                    # retained as defensive/documentary code: if this code path is ever
-                    # refactored to not raise, the counter will correctly reflect that
-                    # a clean exit is not a failure.
-                    consecutive_failures = 0
+                    # The function immediately raises and terminates here, so the
+                    # consecutive_failures counter is not reset.
                     raise
                 # Non-zero exit code: treat as execution failure.
                 consecutive_failures += 1
@@ -518,22 +522,21 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - best-effort resilience  # pragma: no cover
-                # Safety check: re-raise known programming error types that should
-                # have been caught by the earlier explicit except blocks. If they
-                # reach here, it indicates a bug in exception handling logic above.
-                # This prevents the broad Exception handler from masking serious bugs.
-                if isinstance(
-                    exc,
-                    (
-                        AttributeError,
-                        TypeError,
-                        NameError,
-                        KeyError,
-                        RuntimeError,
-                        AssertionError,
-                        ImportError,
-                    ),
-                ):
+                # Defense-in-depth: Re-raise programming errors that should have been
+                # caught by earlier except blocks. These types are explicitly listed
+                # above (AttributeError, TypeError, etc.) but if exception handling
+                # order changes during refactoring, this check prevents silent masking.
+                # Note: This is intentionally duplicating the type list as a safeguard.
+                programming_errors = (
+                    AttributeError,
+                    TypeError,
+                    NameError,
+                    KeyError,
+                    RuntimeError,
+                    AssertionError,
+                    ImportError,
+                )
+                if isinstance(exc, programming_errors):
                     logger.error(
                         "Programming error %s reached fallback handler unexpectedly - "
                         "this indicates a bug in exception handling logic",
