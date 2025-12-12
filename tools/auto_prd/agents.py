@@ -555,7 +555,9 @@ def claude_exec_streaming(
 
     # Stream output in real-time
     while True:
-        # Check timeout
+        # Check timeout only when a timeout is configured.
+        # The time.monotonic() call is inside this conditional to avoid
+        # unnecessary computation on every loop iteration when no timeout is set.
         if effective_timeout is not None:
             elapsed = time.monotonic() - start_time
             if elapsed > effective_timeout:
@@ -602,15 +604,37 @@ def claude_exec_streaming(
             readable, _, _ = select.select(
                 readable_fds, [], [], STREAMING_SELECT_TIMEOUT_SECONDS
             )
-        except (ValueError, OSError) as e:
+        except ValueError as e:
+            # ValueError indicates invalid arguments to select() (e.g., negative timeout,
+            # invalid fd). This is a programming error, not a signal interrupt, so it
+            # cannot be recovered by retry. Log and exit the streaming loop.
+            logger.error(
+                "select() raised ValueError (invalid arguments): %s - "
+                "stream reading terminated early, output may be incomplete",
+                e,
+            )
+            select_error_occurred = True
+            # Attempt to drain any remaining buffered data before breaking
+            for fd in readable_fds:
+                try:
+                    remaining = fd.read()
+                    if remaining:
+                        if fd == proc.stdout:
+                            stdout_buffer += remaining
+                        elif fd == proc.stderr:
+                            stderr_buffer += remaining
+                except Exception:
+                    pass  # Best effort drain
+            break
+        except OSError as e:
             # EINTR can be retried (interrupted by signal)
-            if getattr(e, "errno", None) == errno.EINTR:
+            if e.errno == errno.EINTR:
                 continue
             # Other select() failures are serious - log at ERROR level
             logger.error(
                 "select() failed unexpectedly (errno=%s): %s - "
                 "stream reading terminated early, output may be incomplete",
-                getattr(e, "errno", None),
+                e.errno,
                 e,
             )
             select_error_occurred = True
@@ -663,17 +687,27 @@ def claude_exec_streaming(
                     f"  [WARNING] I/O error on {fd_name} - some output may be missing",
                     flush=True,
                 )
-                # Mark fd as EOF to prevent repeated errors on subsequent iterations
+                # Mark fd as EOF to exclude it from subsequent select() calls.
+                # This prevents repeated errors from the same fd - once a non-transient
+                # I/O error occurs, continuing to read from that fd is unlikely to succeed.
+                # The fd is excluded from readable_fds on the next loop iteration via the
+                # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
 
         if ret is not None and not readable:
             break
 
-    # Flush remaining buffers
+    # Flush remaining buffers.
+    # Note: If the process output did not end with a newline, the final line
+    # is incomplete (i.e., the process ended mid-line or the final line was
+    # intentionally unterminated). We treat this as complete for final output
+    # purposes since the process has exited and no more data will arrive.
     if stdout_buffer:
+        # Final line - may be incomplete if buffer didn't end with newline
         stdout_lines.append(stdout_buffer)
         output_handler(stdout_buffer)
     if stderr_buffer:
+        # Final line - may be incomplete if buffer didn't end with newline
         stderr_lines.append(stderr_buffer)
 
     proc.wait()

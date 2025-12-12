@@ -475,6 +475,8 @@ def run(args) -> None:
                     )
 
         # Review/fix phase
+        # Track whether review phase succeeded for session completion decision
+        review_succeeded = True  # Default for skipped phase
         if include("review_fix"):
             mark_phase_started(checkpoint, "review_fix")
             save_checkpoint(checkpoint)
@@ -500,7 +502,7 @@ def run(args) -> None:
                 )
                 update_phase_state(checkpoint, "review_fix", {"terminated_early": True})
                 save_checkpoint(checkpoint)
-                # Continue to post final comment but don't mark as complete
+                # Continue to post final comment but don't mark session as complete
             else:
                 mark_phase_complete(checkpoint, "review_fix")
                 save_checkpoint(checkpoint)
@@ -513,11 +515,25 @@ def run(args) -> None:
             dry_run=args.dry_run,
         )
 
-        # Mark session complete
-        mark_session_complete(checkpoint)
-        save_checkpoint(checkpoint)
-        print(f"Session {session_id} completed successfully.")
-        logger.info("Session %s completed", session_id)
+        # Mark session complete only if all phases succeeded.
+        # When review_succeeded is False, the session terminated early due to
+        # consecutive failures, so we mark it with partial_completion instead.
+        if review_succeeded:
+            mark_session_complete(checkpoint)
+            save_checkpoint(checkpoint)
+            print(f"Session {session_id} completed successfully.")
+            logger.info("Session %s completed", session_id)
+        else:
+            update_phase_state(checkpoint, "session", {"partial_completion": True})
+            save_checkpoint(checkpoint)
+            print(
+                f"Session {session_id} completed with partial success "
+                "(review phase terminated early)."
+            )
+            logger.warning(
+                "Session %s completed with partial success (review terminated early)",
+                session_id,
+            )
 
         if appears_complete:
             print(f"Final TASKS_LEFT={tasks_left}", flush=True)
