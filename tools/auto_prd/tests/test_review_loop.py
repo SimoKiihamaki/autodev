@@ -249,9 +249,10 @@ class ReviewFixLoopTests(unittest.TestCase):
     ) -> None:
         """Test that TimeoutExpired exception handling increments failure counter.
 
-        Note: This test verifies the error handling path for TimeoutExpired exceptions,
-        not actual timeout behavior during execution. The mock_runner is configured to
-        raise TimeoutExpired immediately on every call.
+        This test exercises the error-handling path for TimeoutExpired exceptions
+        by configuring mock_runner to immediately raise TimeoutExpired on every
+        call. It does not test actual timeout behavior or real time delays; it
+        only verifies the code responds correctly when such an exception occurs.
         """
         # Mock runner that always times out
         mock_runner = mock.MagicMock(
@@ -507,11 +508,7 @@ class ReviewFixLoopTests(unittest.TestCase):
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
             with self.subTest(error_class=error_class):
-                # Create a fresh mock_runner for each error_class subTest iteration.
-                # This is necessary because each subTest needs its own side_effect,
-                # and the mock's call_count must be isolated per error type.
-                # The outer mock_policy_runner patch is reused across iterations
-                # with reset_mock() to clear any prior call state.
+                # Fresh mock_runner per error type for isolated call counts and side_effects.
                 mock_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )

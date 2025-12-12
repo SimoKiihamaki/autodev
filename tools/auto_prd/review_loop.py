@@ -44,8 +44,9 @@ STDERR_USER_TRUNCATE_CHARS = 500
 STDERR_LOG_TRUNCATE_CHARS = 2000
 
 # Box-drawing characters for streaming output formatting.
-# These are lazy-loaded via _get_box_chars() to avoid reading environment variables
-# at module import time when streaming may not be used.
+# Cached at module level after first access for performance. The environment
+# variable is read once on first call, similar to STREAMING_READ_CHUNK_SIZE.
+_BOX_CHARS_CACHE: tuple[str, str] | None = None
 
 
 def _get_box_chars() -> tuple[str, str]:
@@ -54,10 +55,19 @@ def _get_box_chars() -> tuple[str, str]:
     Uses ASCII characters if AUTO_PRD_ASCII_OUTPUT is set to a truthy value
     (1, true, yes), otherwise uses Unicode box-drawing characters.
 
-    The environment variable is read at call time, allowing runtime configuration.
+    The environment variable is read once on first call and cached for the
+    session. This matches the behavior of other streaming constants (e.g.,
+    STREAMING_READ_CHUNK_SIZE) which are read at module import time.
     """
-    use_ascii = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in ("1", "true", "yes")
-    return ("-", "|") if use_ascii else ("─", "│")
+    global _BOX_CHARS_CACHE
+    if _BOX_CHARS_CACHE is None:
+        use_ascii = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        _BOX_CHARS_CACHE = ("-", "|") if use_ascii else ("─", "│")
+    return _BOX_CHARS_CACHE
 
 
 _JITTER_RNG = random.Random()

@@ -67,8 +67,12 @@ _SENSITIVE_STDERR_PATTERNS = [
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
     # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
     # Handles both backslash and forward slash path separators.
-    # Uses forward slash in replacement for consistency, as forward slashes work
-    # in both Windows and Unix contexts and avoid escaping issues in output.
+    # Output uses forward slashes for consistency because:
+    # 1. Forward slashes work in Windows, Unix, and cross-platform contexts
+    # 2. Avoids escaping issues in logs/output (backslashes need escaping)
+    # 3. Provides consistent output format regardless of original separator
+    # Trade-off: Windows users may see unfamiliar path style, but redacted paths
+    # are for debugging/logs, not for direct filesystem use.
     (
         re.compile(r"[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
         r"<DRIVE>:/Users/<USER>/",
@@ -122,9 +126,9 @@ if _raw_chunk_size is None:
     STREAMING_READ_CHUNK_SIZE = 4096
 else:
     try:
-        _val = int(_raw_chunk_size)
-        if _val > 0:
-            STREAMING_READ_CHUNK_SIZE = _val
+        _chunk_size_val = int(_raw_chunk_size)
+        if _chunk_size_val > 0:
+            STREAMING_READ_CHUNK_SIZE = _chunk_size_val
         else:
             logger.warning(
                 "AUTO_PRD_STREAMING_CHUNK_SIZE must be > 0, got %r; using default 4096",
@@ -146,9 +150,9 @@ if _raw_poll_timeout is None:
     STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 else:
     try:
-        _val = float(_raw_poll_timeout)
-        if _val > 0:
-            STREAMING_SELECT_TIMEOUT_SECONDS = _val
+        _timeout_val = float(_raw_poll_timeout)
+        if _timeout_val > 0:
+            STREAMING_SELECT_TIMEOUT_SECONDS = _timeout_val
         else:
             logger.warning(
                 "AUTO_PRD_STREAMING_POLL_TIMEOUT must be > 0, got %r; using default 0.1",
@@ -809,7 +813,7 @@ def claude_exec_streaming(
             _set_nonblocking(proc.stderr.fileno())
     except OSError:
         # Clean up process resources before re-raising.
-        # Note: proc.stdin was already closed after writing the prompt (line 730),
+        # Note: proc.stdin was already closed after writing the prompt,
         # but include defensive cleanup for consistency with other error handlers.
         proc.kill()
         proc.wait()
@@ -847,8 +851,9 @@ def claude_exec_streaming(
     # Stream output in real-time
     while True:
         # Check timeout only when a timeout is configured.
-        # The time.monotonic() call is inside this conditional to avoid
-        # unnecessary computation on every loop iteration when no timeout is set.
+        # This conditional avoids unnecessary elapsed time calculation
+        # (time.monotonic() call, subtraction, and comparison) on every loop
+        # iteration when no timeout is set.
         if effective_timeout is not None:
             elapsed = time.monotonic() - start_time
             if elapsed >= effective_timeout:
@@ -1020,7 +1025,8 @@ def claude_exec_streaming(
                 # Write to stderr explicitly since stdout may be the problematic fd,
                 # and we want this warning to be visible regardless.
                 print(
-                    f"  [WARNING] I/O error on {fd_name} - some output may be missing",
+                    f"  [WARNING] I/O error on {fd_name} - some output may be missing. "
+                    "Results may be incomplete; consider retrying if critical.",
                     file=sys.stderr,
                     flush=True,
                 )
