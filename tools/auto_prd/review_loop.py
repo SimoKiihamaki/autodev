@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import random
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Optional
 
-from .agents import codex_exec
+from .agents import codex_exec, claude_exec, claude_exec_streaming
+from .utils import extract_called_process_error_details
 from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
 from .gh_ops import (
@@ -22,7 +24,77 @@ from .policy import policy_runner
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
-_JITTER_RNG = random.Random()
+# Maximum consecutive runner failures before terminating the review loop.
+# This prevents infinite retry loops on persistent errors (e.g., auth failures,
+# rate limits, or process crashes). The counter resets on any successful execution.
+MAX_CONSECUTIVE_FAILURES = 3
+_JITTER_RNG: random.Random = random.Random()
+
+
+def _decode_stderr(stderr: bytes | str | None) -> str:
+    """Decode stderr from CalledProcessError to string."""
+    if not stderr:
+        return ""
+    if isinstance(stderr, bytes):
+        return stderr.decode("utf-8", errors="replace")
+    return str(stderr)
+
+
+def _handle_runner_failure(
+    consecutive_failures: int,
+    error_detail: str,
+    stderr_text: str = "",
+    error_type: str = "",
+) -> bool:
+    """Log failure details and determine if loop should stop.
+
+    Args:
+        consecutive_failures: Current count of consecutive failures
+        error_detail: Description of the error
+        stderr_text: Optional stderr output from the process
+        error_type: Optional error type name for user feedback
+
+    Returns:
+        True if loop should stop due to max failures reached.
+    """
+    logger.warning(
+        "Review runner failed (attempt %d/%d): %s",
+        consecutive_failures,
+        MAX_CONSECUTIVE_FAILURES,
+        error_detail,
+    )
+    # Provide user-facing feedback with error type if available
+    type_suffix = f" ({error_type})" if error_type else ""
+    print(
+        f"\nReview runner failed{type_suffix} "
+        f"(attempt {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES})",
+        flush=True,
+    )
+    # Show truncated error detail to user
+    if error_detail:
+        brief_detail = (
+            error_detail[:200] + "..." if len(error_detail) > 200 else error_detail
+        )
+        print(f"  Error: {brief_detail}", flush=True)
+    if stderr_text.strip():
+        logger.warning("Review runner stderr:\n%s", stderr_text[:2000])
+        truncated_stderr = stderr_text[:500]
+        if len(stderr_text) > 500:
+            truncated_stderr += "..."
+        print(f"  Stderr: {truncated_stderr}", flush=True)
+
+    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+        logger.error(
+            "Stopping review loop after %d consecutive failures",
+            consecutive_failures,
+        )
+        print(
+            f"\nStopping: {consecutive_failures} consecutive failures. "
+            f"Last error: {error_type or 'unknown'}",
+            flush=True,
+        )
+        return True
+    return False
 
 
 def review_fix_loop(
@@ -37,7 +109,7 @@ def review_fix_loop(
     initial_wait_minutes: int = 0,
     infinite_reviews: bool = False,
     checkpoint: Optional[dict[str, Any]] = None,
-) -> None:
+) -> bool:
     """Run the review/fix loop for a PR.
 
     Args:
@@ -52,12 +124,16 @@ def review_fix_loop(
         initial_wait_minutes: Initial wait for bot reviews.
         infinite_reviews: Continue indefinitely while feedback exists.
         checkpoint: Optional checkpoint dict for resume support.
+
+    Returns:
+        True if the loop completed successfully, False if it terminated due to
+        consecutive failures reaching MAX_CONSECUTIVE_FAILURES.
     """
     if pr_number is None:
-        return
+        return True
     if dry_run:
         logger.info("Dry run enabled; skipping review loop for PR #%s.", pr_number)
-        return
+        return True
 
     trigger_copilot(owner_repo, pr_number, repo_root)
     initial_wait_seconds = max(0, initial_wait_minutes * 60)
@@ -93,6 +169,8 @@ def review_fix_loop(
         duration = max(1.0, base + jitter)
         time.sleep(duration)
 
+    consecutive_failures = 0
+
     while True:
         current_head = git_head_sha(repo_root)
         unresolved_raw = get_unresolved_feedback(owner_repo, pr_number, current_head)
@@ -119,7 +197,7 @@ Unresolved review items:
 
 After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
-            review_runner, _ = policy_runner(None, phase="review_fix")
+            review_runner, runner_name = policy_runner(None, phase="review_fix")
 
             runner_kwargs = {
                 "repo_root": repo_root,
@@ -130,15 +208,105 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             if review_runner is codex_exec:
                 runner_kwargs["model"] = codex_model
 
+            # Use streaming for claude to show real-time progress
+            use_streaming = review_runner is claude_exec
+            if use_streaming:
+                print(f"\n{'─' * 60}")
+                print(f"  Running {runner_name or 'claude'} (streaming output)...")
+                print(f"{'─' * 60}", flush=True)
+
+                def output_handler(line: str) -> None:
+                    print(f"  │ {line}", flush=True)
+                    logger.info("claude: %s", line[:200])
+
+                runner_kwargs["on_output"] = output_handler
+                actual_runner = claude_exec_streaming
+            else:
+                actual_runner = review_runner
+
             try:
-                _, stderr = review_runner(
-                    fix_prompt, **runner_kwargs
-                )  # returns tuple[str, str]
-                # Log stderr at debug level for diagnostic purposes
+                _, stderr = actual_runner(fix_prompt, **runner_kwargs)
                 if stderr and stderr.strip():
                     logger.debug("Review runner stderr output:\n%s", stderr)
-            except Exception:  # pragma: no cover - best-effort resilience
-                logger.exception("Review runner failed")
+                consecutive_failures = 0
+                if use_streaming:
+                    print(f"{'─' * 60}")
+                    print("  Review fix completed successfully")
+                    print(f"{'─' * 60}\n", flush=True)
+            except subprocess.TimeoutExpired as exc:
+                # Timeout - count as failure but provide specific feedback
+                consecutive_failures += 1
+                timeout_secs = getattr(exc, "timeout", "unknown")
+                error_detail = f"Execution timed out after {timeout_secs} seconds"
+                stderr_text = _decode_stderr(getattr(exc, "stderr", None))
+                if _handle_runner_failure(
+                    consecutive_failures,
+                    error_detail,
+                    stderr_text,
+                    error_type="TimeoutExpired",
+                ):
+                    return False
+                sleep_with_jitter(float(poll))
+                continue
+            except subprocess.CalledProcessError as exc:
+                consecutive_failures += 1
+                error_detail = extract_called_process_error_details(exc)
+                stderr_text = _decode_stderr(exc.stderr)
+                if _handle_runner_failure(
+                    consecutive_failures,
+                    error_detail,
+                    stderr_text,
+                    error_type="CalledProcessError",
+                ):
+                    return False
+                sleep_with_jitter(float(poll))
+                continue
+            except (PermissionError, FileNotFoundError) as exc:
+                # Configuration/environment errors - don't retry, fail immediately
+                error_type = type(exc).__name__
+                logger.error(
+                    "Review runner failed with unrecoverable error (%s): %s",
+                    error_type,
+                    exc,
+                )
+                print(f"\nFatal error ({error_type}): {exc}", flush=True)
+                print(
+                    "This error cannot be resolved by retrying. "
+                    "Please check your configuration.",
+                    flush=True,
+                )
+                raise
+            except MemoryError as exc:
+                # System resource exhaustion - don't retry
+                logger.error("Review runner failed due to memory exhaustion: %s", exc)
+                print("\nFatal error: Out of memory", flush=True)
+                raise
+            except (AttributeError, TypeError, NameError, KeyError) as exc:
+                # Programming errors - fail immediately, don't retry
+                error_type = type(exc).__name__
+                logger.error(
+                    "Review runner failed with programming error (%s): %s - not retrying",
+                    error_type,
+                    exc,
+                )
+                print(f"\nProgramming error ({error_type}): {exc}", flush=True)
+                print(
+                    "This appears to be a bug in the code. Please report this issue.",
+                    flush=True,
+                )
+                raise
+            except Exception as exc:  # pragma: no cover - best-effort resilience
+                consecutive_failures += 1
+                error_type = type(exc).__name__
+                logger.exception(
+                    "Review runner failed with unexpected error (%s)", error_type
+                )
+                if _handle_runner_failure(
+                    consecutive_failures,
+                    str(exc),
+                    error_type=error_type,
+                ):
+                    return False
                 sleep_with_jitter(float(poll))
                 continue
             trigger_copilot(owner_repo, pr_number, repo_root)
@@ -173,19 +341,24 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             owner_repo, pr_number, current_head, repo_root
         ):
             print("Automatic reviewers report no new findings; stopping.")
-            break
+            print("Review loop complete.")
+            return True
 
         if idle_grace_seconds == 0:
             print("No unresolved feedback; stopping.")
-            break
+            print("Review loop complete.")
+            return True
         elapsed = time.monotonic() - last_activity
         if elapsed >= idle_grace_seconds:
             minutes = "∞" if infinite_reviews else idle_grace
             print(f"No unresolved feedback for {minutes} minutes; finishing.")
-            break
+            print("Review loop complete.")
+            return True
         print("No unresolved feedback right now; waiting for potential new comments...")
         sleep_with_jitter(float(poll))
+    # This point is reached if we break out of the loop due to failures
     print("Review loop complete.")
+    return True
 
 
 def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:

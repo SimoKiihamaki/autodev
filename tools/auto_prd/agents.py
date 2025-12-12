@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import os
 import random
 import re
+import select
+import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
-from .command import run_cmd, verify_unsafe_execution_ready
+from .command import run_cmd, verify_unsafe_execution_ready, env_with_zsh
 from .logging_utils import logger
 from .utils import extract_called_process_error_details
 
@@ -245,34 +250,29 @@ def coderabbit_has_findings(text: str) -> bool:
     return False
 
 
-def claude_exec(
-    prompt: str,
-    repo_root: Path,
-    model: str | None = None,
-    enable_search: bool = True,
-    yolo: Optional[bool] = None,
-    allow_unsafe_execution: Optional[bool] = None,
-    dry_run: bool = False,
-    extra: Optional[list[str]] = None,
-) -> tuple[str, str]:
-    """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
+def _resolve_unsafe_flag(
+    allow_unsafe_execution: Optional[bool],
+    yolo: Optional[bool],
+    caller: str,
+) -> bool:
+    """Resolve the allow_unsafe_execution flag, handling deprecated yolo parameter."""
     allow_flag = allow_unsafe_execution
     if yolo is not None:
-        logger.warning(
-            "claude_exec: 'yolo' is deprecated; use allow_unsafe_execution instead"
-        )
+        logger.warning("%s: 'yolo' is deprecated; use allow_unsafe_execution", caller)
         if allow_flag is None:
             allow_flag = yolo
         else:
             allow_flag = allow_flag or yolo
-    allow_flag = bool(allow_flag)
-    if not allow_flag and not dry_run:
-        raise PermissionError(
-            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
-        )
-    os.environ.setdefault("CI", "1")
-    if allow_flag:
-        verify_unsafe_execution_ready()
+    return bool(allow_flag)
+
+
+def _build_claude_args(
+    allow_flag: bool,
+    model: str | None,
+    enable_search: bool,
+    extra: Optional[list[str]],
+) -> list[str]:
+    """Build the CLI arguments for Claude execution."""
     args: list[str] = ["claude"]
     if allow_flag:
         args.append("--dangerously-skip-permissions")
@@ -285,9 +285,34 @@ def claude_exec(
     if extra:
         args.extend(extra)
     args.extend(["-p", "-"])
+    return args
+
+
+def claude_exec(
+    prompt: str,
+    repo_root: Path,
+    model: str | None = None,
+    enable_search: bool = True,
+    yolo: Optional[bool] = None,
+    allow_unsafe_execution: Optional[bool] = None,
+    dry_run: bool = False,
+    extra: Optional[list[str]] = None,
+) -> tuple[str, str]:
+    """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
+    allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
+    if not allow_flag and not dry_run:
+        raise PermissionError(
+            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+        )
+    os.environ.setdefault("CI", "1")
+    if allow_flag:
+        verify_unsafe_execution_ready()
+
+    args = _build_claude_args(allow_flag, model, enable_search, extra)
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN", ""
+
     out, stderr, _ = run_cmd(
         args,
         cwd=repo_root,
@@ -296,7 +321,6 @@ def claude_exec(
         timeout=get_claude_exec_timeout(),
     )
 
-    # Log warning if stdout is empty but stderr has content (may indicate rate limiting)
     if not out.strip() and stderr.strip():
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
@@ -304,3 +328,336 @@ def claude_exec(
         )
 
     return out, stderr
+
+
+def _set_nonblocking(fd: int) -> None:
+    """Set a file descriptor to non-blocking mode.
+
+    Raises:
+        OSError: If fcntl operations fail, with contextual error message.
+    """
+    try:
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    except (OSError, ValueError) as e:
+        logger.error("Failed to set non-blocking mode on fd %d: %s", fd, e)
+        raise OSError(
+            f"Failed to configure non-blocking I/O for Claude streaming (fd={fd}): {e}"
+        ) from e
+
+
+def _process_buffer(
+    buffer: str,
+    lines: list[str],
+    output_handler: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Process complete lines from buffer, returning remainder."""
+    while "\n" in buffer:
+        line, buffer = buffer.split("\n", 1)
+        lines.append(line)
+        if output_handler:
+            output_handler(line)
+    return buffer
+
+
+def claude_exec_streaming(
+    prompt: str,
+    repo_root: Path,
+    model: str | None = None,
+    enable_search: bool = True,
+    yolo: Optional[bool] = None,
+    allow_unsafe_execution: Optional[bool] = None,
+    dry_run: bool = False,
+    extra: Optional[list[str]] = None,
+    on_output: Optional[Callable[[str], None]] = None,
+    timeout: Optional[int] = None,
+) -> tuple[str, str]:
+    """Execute Claude with real-time output streaming.
+
+    Like claude_exec but streams stdout in real-time for visibility.
+    Note: This function uses fcntl for non-blocking I/O and is Unix-only.
+
+    Args:
+        prompt: The prompt to send to Claude
+        repo_root: Repository root directory
+        model: Optional model name override
+        enable_search: Enable search (not currently used by Claude CLI)
+        yolo: Deprecated alias for allow_unsafe_execution
+        allow_unsafe_execution: Must be True for actual (non-dry-run) execution
+        dry_run: If True, skip actual execution and return ("DRY_RUN", "")
+        extra: Additional CLI arguments passed directly to claude
+        on_output: Callback for each stdout line (stderr is not streamed)
+        timeout: Optional timeout in seconds (defaults to AUTO_PRD_CLAUDE_TIMEOUT_SECONDS)
+
+    Returns:
+        Tuple of (stdout, stderr) containing all accumulated output
+
+    Raises:
+        PermissionError: If allow_unsafe_execution is False and dry_run is False
+        FileNotFoundError: If the claude executable is not found in PATH
+        OSError: If running on Windows (fcntl not available)
+        subprocess.CalledProcessError: If claude returns a non-zero exit code
+        subprocess.TimeoutExpired: If execution exceeds the timeout
+    """
+    # Platform check - fcntl is Unix-only
+    if sys.platform == "win32":
+        raise OSError(
+            "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
+            "Use claude_exec on Windows systems."
+        )
+    allow_flag = _resolve_unsafe_flag(
+        allow_unsafe_execution, yolo, "claude_exec_streaming"
+    )
+    if not allow_flag and not dry_run:
+        raise PermissionError(
+            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+        )
+    os.environ.setdefault("CI", "1")
+    if allow_flag:
+        verify_unsafe_execution_ready()
+
+    args = _build_claude_args(allow_flag, model, enable_search, extra)
+    if dry_run:
+        logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
+        return "DRY_RUN", ""
+
+    if not shutil.which(args[0]):
+        raise FileNotFoundError(f"Command not found: {args[0]}")
+
+    # Resolve timeout - use parameter, then environment variable, then None (no timeout)
+    effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
+    start_time = time.monotonic()
+
+    env = env_with_zsh({})
+    env["PYTHONUNBUFFERED"] = "1"
+
+    def default_output_handler(line: str) -> None:
+        print(f"  │ {line}", flush=True)
+
+    output_handler = on_output or default_output_handler
+
+    proc = subprocess.Popen(
+        args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=repo_root,
+        env=env,
+        text=True,
+        bufsize=1,
+    )
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    # Send prompt and close stdin
+    if proc.stdin:
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except BrokenPipeError:
+            # Process terminated before reading input - this is an error condition
+            logger.error(
+                "BrokenPipeError: Claude process terminated before reading input "
+                "(prompt_length=%d, args=%s)",
+                len(prompt),
+                args,
+            )
+            proc.wait()
+            # Try to capture any stderr the process wrote before dying
+            captured_stderr = ""
+            if proc.stderr:
+                try:
+                    captured_stderr = proc.stderr.read() or ""
+                except Exception as stderr_exc:
+                    logger.warning(
+                        "Failed to capture stderr after BrokenPipeError: %s (%s)",
+                        stderr_exc,
+                        type(stderr_exc).__name__,
+                    )
+                proc.stderr.close()
+            if proc.stdout:
+                proc.stdout.close()
+            error_msg = (
+                f"Process terminated before reading input (BrokenPipeError). "
+                f"Stderr: {captured_stderr}"
+                if captured_stderr
+                else "Process terminated before reading input (BrokenPipeError)"
+            )
+            raise subprocess.CalledProcessError(
+                proc.returncode or -1,
+                args,
+                output="".encode(),
+                stderr=error_msg.encode(),
+            )
+
+    # Set up non-blocking I/O
+    try:
+        if proc.stdout:
+            _set_nonblocking(proc.stdout.fileno())
+        if proc.stderr:
+            _set_nonblocking(proc.stderr.fileno())
+    except OSError:
+        # Clean up process resources before re-raising
+        proc.kill()
+        proc.wait()
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+        raise
+
+    stdout_buffer = ""
+    stderr_buffer = ""
+
+    # Track I/O errors for surfacing at the end
+    io_errors: list[tuple[str, int | None, str]] = []
+    select_error_occurred = False
+
+    # Stream output in real-time
+    while True:
+        # Check timeout
+        if effective_timeout is not None:
+            elapsed = time.monotonic() - start_time
+            if elapsed > effective_timeout:
+                stdout_so_far = "\n".join(stdout_lines)
+                stderr_so_far = "\n".join(stderr_lines)
+                logger.error(
+                    "Claude execution timed out after %d seconds (limit: %d). "
+                    "Partial stdout (%d lines): %s",
+                    int(elapsed),
+                    effective_timeout,
+                    len(stdout_lines),
+                    (
+                        stdout_so_far[:2000]
+                        if len(stdout_so_far) > 2000
+                        else stdout_so_far
+                    ),
+                )
+                if stderr_so_far:
+                    logger.error("Partial stderr at timeout: %s", stderr_so_far[:1000])
+                proc.kill()
+                proc.wait()
+                if proc.stdout:
+                    proc.stdout.close()
+                if proc.stderr:
+                    proc.stderr.close()
+                exc = subprocess.TimeoutExpired(args, effective_timeout)
+                exc.stdout = stdout_so_far.encode()
+                exc.stderr = stderr_so_far.encode()
+                raise exc
+
+        ret = proc.poll()
+        readable_fds = [fd for fd in (proc.stdout, proc.stderr) if fd is not None]
+
+        if ret is not None and not readable_fds:
+            break
+
+        try:
+            readable, _, _ = select.select(readable_fds, [], [], 0.1)
+        except (ValueError, OSError) as e:
+            # EINTR can be retried (interrupted by signal)
+            if getattr(e, "errno", None) == errno.EINTR:
+                continue
+            # Other select() failures are serious - log at ERROR level
+            logger.error(
+                "select() failed unexpectedly (errno=%s): %s - "
+                "stream reading terminated early, output may be incomplete",
+                getattr(e, "errno", None),
+                e,
+            )
+            select_error_occurred = True
+            # Attempt to drain any remaining buffered data before breaking
+            for fd in readable_fds:
+                try:
+                    remaining = fd.read()
+                    if remaining:
+                        if fd == proc.stdout:
+                            stdout_buffer += remaining
+                        elif fd == proc.stderr:
+                            stderr_buffer += remaining
+                except Exception:
+                    pass  # Best effort drain
+            break
+
+        for fd in readable:
+            try:
+                chunk = fd.read(4096)
+                if not chunk:
+                    continue
+                if fd == proc.stdout:
+                    stdout_buffer += chunk
+                    stdout_buffer = _process_buffer(
+                        stdout_buffer, stdout_lines, output_handler
+                    )
+                elif fd == proc.stderr:
+                    stderr_buffer += chunk
+                    stderr_buffer = _process_buffer(stderr_buffer, stderr_lines)
+            except (IOError, OSError) as e:
+                # EAGAIN/EWOULDBLOCK are expected with non-blocking I/O
+                if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                    continue
+                # Other errors are unexpected - log and track for later surfacing
+                fd_name = "stdout" if fd == proc.stdout else "stderr"
+                logger.error(
+                    "I/O error reading from Claude process (fd=%s, errno=%s): %s - "
+                    "OUTPUT MAY BE INCOMPLETE",
+                    fd_name,
+                    e.errno,
+                    e,
+                )
+                io_errors.append((fd_name, e.errno, str(e)))
+                # Notify user immediately of potential data loss
+                print(
+                    f"  [WARNING] I/O error on {fd_name} - some output may be missing",
+                    flush=True,
+                )
+
+        if ret is not None and not readable:
+            break
+
+    # Flush remaining buffers
+    if stdout_buffer:
+        stdout_lines.append(stdout_buffer)
+        output_handler(stdout_buffer)
+    if stderr_buffer:
+        stderr_lines.append(stderr_buffer)
+
+    proc.wait()
+
+    # Explicitly close file descriptors
+    if proc.stdout:
+        proc.stdout.close()
+    if proc.stderr:
+        proc.stderr.close()
+
+    stdout_text = "\n".join(stdout_lines)
+    stderr_text = "\n".join(stderr_lines)
+
+    # Surface any I/O or select errors that occurred during streaming
+    if io_errors:
+        logger.error(
+            "Claude execution completed with %d I/O errors - output may be incomplete: %s",
+            len(io_errors),
+            io_errors,
+        )
+    if select_error_occurred:
+        logger.error(
+            "Claude execution completed after select() failure - output may be incomplete"
+        )
+
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode,
+            args,
+            output=stdout_text.encode(),
+            stderr=stderr_text.encode(),
+        )
+
+    if not stdout_text.strip() and stderr_text.strip():
+        logger.warning(
+            "Claude returned empty stdout. Stderr content: %s",
+            stderr_text[:500] if len(stderr_text) > 500 else stderr_text,
+        )
+
+    return stdout_text, stderr_text
