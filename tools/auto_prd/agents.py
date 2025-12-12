@@ -769,7 +769,16 @@ def claude_exec_streaming(
                 proc.stdin.close()
             except OSError:
                 pass  # Stdin may already be closed or in an error state
-            proc.wait()
+            # Don't wait forever: stdin can break even if the process is still running.
+            # Use a bounded wait with kill fallback to prevent indefinite hangs.
+            wait_timeout = (
+                5.0 if effective_timeout is None else float(min(5, effective_timeout))
+            )
+            try:
+                proc.wait(timeout=wait_timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5.0)
             # Try to capture any stderr the process wrote before dying.
             # Use select with a short timeout to avoid hanging if stderr is in an
             # unexpected state (e.g., kernel issues, pipe anomalies).
@@ -929,9 +938,8 @@ def claude_exec_streaming(
                     proc.stdout.close()
                 if proc.stderr:
                     proc.stderr.close()
-                # Use TimeoutExpired constructor parameters (output=, stderr=) which set
-                # the .stdout and .stderr attributes on the exception, as per the standard
-                # Python subprocess.TimeoutExpired API.
+                # Use TimeoutExpired constructor parameters (output=, stderr=), which populate
+                # the exception's standard `output` and `stderr` attributes.
                 raise subprocess.TimeoutExpired(
                     sanitized_args,
                     effective_timeout,
