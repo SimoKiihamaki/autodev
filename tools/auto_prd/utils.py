@@ -131,8 +131,23 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str
 
 
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
-    stdout, stderr = _extract_stdout_stderr(exc)
-    text = (stderr or stdout or "").strip()
+    """Extract error details from CalledProcessError using stderr only.
+
+    SECURITY: This function intentionally does NOT fall back to stdout.
+    Stdout may contain model output which could include sensitive data
+    (secrets, PII, tokens) that should not be logged or displayed to users,
+    even after sanitization. Using stderr-only ensures error messages come
+    from the process's error stream, not from potentially sensitive output.
+
+    Args:
+        exc: The CalledProcessError exception to extract details from.
+
+    Returns:
+        A string containing stderr content if available, otherwise a simple
+        "exit code N" fallback. Never includes stdout content.
+    """
+    _, stderr = _extract_stdout_stderr(exc)
+    text = (stderr or "").strip()
     return text or f"exit code {exc.returncode}"
 
 

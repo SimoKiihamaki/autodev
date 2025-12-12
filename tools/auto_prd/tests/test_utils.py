@@ -20,16 +20,36 @@ scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text"
 
 
 class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
-    def test_decodes_byte_outputs(self) -> None:
+    def test_uses_stderr_only_not_stdout(self) -> None:
+        """Verify function uses stderr only, ignoring stdout for security reasons.
+
+        Stdout may contain model output with sensitive data (secrets, PII, tokens)
+        that should not be logged or displayed, even after sanitization.
+        """
         exc = subprocess.CalledProcessError(
             1,
             ["coderabbit", "--prompt-only"],
-            output=b"try again after 1 minutes and 5 seconds",
+            output=b"sensitive model output that should be ignored",
             stderr=None,
         )
         details = extract_called_process_error_details(exc)
         self.assertIsInstance(details, str)
-        self.assertIn("try again after 1 minutes", details)
+        # Should NOT contain stdout content
+        self.assertNotIn("sensitive", details)
+        # Should fall back to exit code when stderr is empty
+        self.assertEqual(details, "exit code 1")
+
+    def test_returns_stderr_when_available(self) -> None:
+        """Verify function returns stderr content when available."""
+        exc = subprocess.CalledProcessError(
+            1,
+            ["cmd"],
+            output=b"stdout content to ignore",
+            stderr=b"actual error message from stderr",
+        )
+        details = extract_called_process_error_details(exc)
+        self.assertEqual(details, "actual error message from stderr")
+        self.assertNotIn("stdout", details)
 
     def test_falls_back_to_exit_code(self) -> None:
         exc = subprocess.CalledProcessError(2, ["cmd"])
