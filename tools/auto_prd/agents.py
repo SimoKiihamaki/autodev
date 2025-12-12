@@ -716,62 +716,76 @@ def claude_exec_streaming(
 
     # Send prompt and close stdin. start_time is set AFTER writing the prompt
     # so the timeout measures actual Claude execution time, not prompt transmission.
-    if proc.stdin:
+    # Fail loudly if stdin is missing - this indicates a subprocess configuration bug.
+    if not proc.stdin:
+        proc.kill()
+        proc.wait()
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+        raise RuntimeError("Claude streaming requires stdin=PIPE (got no stdin)")
+    try:
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+    except BrokenPipeError:
+        # Process terminated before reading input - this is an error condition.
+        # Log detailed diagnostic info for debugging, but keep user message simple.
+        logger.error(
+            "BrokenPipeError: Claude process terminated before reading input "
+            "(prompt_length=%d, command=%s)",
+            len(prompt),
+            sanitized_args[0],  # Log only executable name, not full args
+        )
+        # Close stdin to release the file descriptor - even though write failed,
+        # the pipe may still be open and needs explicit cleanup.
         try:
-            proc.stdin.write(prompt)
             proc.stdin.close()
-        except BrokenPipeError:
-            # Process terminated before reading input - this is an error condition.
-            # Log detailed diagnostic info for debugging, but keep user message simple.
-            logger.error(
-                "BrokenPipeError: Claude process terminated before reading input "
-                "(prompt_length=%d, command=%s)",
-                len(prompt),
-                sanitized_args[0],  # Log only executable name, not full args
+        except OSError:
+            pass  # Stdin may already be closed or in an error state
+        proc.wait()
+        # Try to capture any stderr the process wrote before dying
+        captured_stderr = ""
+        if proc.stderr:
+            try:
+                captured_stderr = proc.stderr.read() or ""
+            except (OSError, IOError) as stderr_exc:
+                # OSError/IOError: fd already closed, pipe broken, or other I/O failures
+                logger.warning(
+                    "Failed to capture stderr after BrokenPipeError: %s (%s)",
+                    stderr_exc,
+                    type(stderr_exc).__name__,
+                )
+            finally:
+                proc.stderr.close()
+        if proc.stdout:
+            proc.stdout.close()
+        # User-facing error message - simple and actionable
+        error_msg = "Claude process terminated unexpectedly before reading input"
+        if captured_stderr:
+            # Sanitize stderr to remove sensitive information (API keys, tokens, paths)
+            # and truncate to prevent excessively long exception messages.
+            sanitized_stderr = _sanitize_stderr_for_exception(
+                captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
             )
-            proc.wait()
-            # Try to capture any stderr the process wrote before dying
-            captured_stderr = ""
-            if proc.stderr:
-                try:
-                    captured_stderr = proc.stderr.read() or ""
-                except (OSError, IOError) as stderr_exc:
-                    # OSError/IOError: fd already closed, pipe broken, or other I/O failures
-                    logger.warning(
-                        "Failed to capture stderr after BrokenPipeError: %s (%s)",
-                        stderr_exc,
-                        type(stderr_exc).__name__,
-                    )
-                finally:
-                    proc.stderr.close()
-            if proc.stdout:
-                proc.stdout.close()
-            # User-facing error message - simple and actionable
-            error_msg = "Claude process terminated unexpectedly before reading input"
-            if captured_stderr:
-                # Sanitize stderr to remove sensitive information (API keys, tokens, paths)
-                # and truncate to prevent excessively long exception messages.
-                sanitized_stderr = _sanitize_stderr_for_exception(
-                    captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
-                )
-                error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
-            # Determine appropriate return code - proc.wait() was called above so
-            # returncode should be set. If still None, something is very wrong.
-            if proc.returncode is None:
-                logger.error(
-                    "Process returncode is None after proc.wait() - this indicates "
-                    "the process did not terminate as expected. Command: %s",
-                    sanitized_args[0],
-                )
-                raise RuntimeError(
-                    "Process did not terminate after proc.wait(); returncode is None"
-                )
-            raise subprocess.CalledProcessError(
-                proc.returncode,
-                sanitized_args,
-                output=b"",
-                stderr=error_msg.encode(),
-            ) from None
+            error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
+        # Determine appropriate return code - proc.wait() was called above so
+        # returncode should be set. If still None, something is very wrong.
+        if proc.returncode is None:
+            logger.error(
+                "Process returncode is None after proc.wait() - this indicates "
+                "the process did not terminate as expected. Command: %s",
+                sanitized_args[0],
+            )
+            raise RuntimeError(
+                "Process did not terminate after proc.wait(); returncode is None"
+            )
+        raise subprocess.CalledProcessError(
+            proc.returncode,
+            sanitized_args,
+            output=b"",
+            stderr=error_msg.encode(),
+        ) from None
 
     # Set up non-blocking I/O
     try:
@@ -780,9 +794,13 @@ def claude_exec_streaming(
         if proc.stderr:
             _set_nonblocking(proc.stderr.fileno())
     except OSError:
-        # Clean up process resources before re-raising
+        # Clean up process resources before re-raising.
+        # Note: proc.stdin was already closed after writing the prompt (line 730),
+        # but include defensive cleanup for consistency with other error handlers.
         proc.kill()
         proc.wait()
+        if proc.stdin and not proc.stdin.closed:
+            proc.stdin.close()
         if proc.stdout:
             proc.stdout.close()
         if proc.stderr:
@@ -828,9 +846,9 @@ def claude_exec_streaming(
                 # in log files. The partial output is preserved in the exception for
                 # immediate inspection but should not be written to persistent logs.
                 logger.error(
-                    "Claude execution timed out after %d seconds (limit: %d). "
+                    "Claude execution timed out after %.1f seconds (limit: %d). "
                     "Partial output: %d stdout lines (%d chars), %d stderr lines (%d chars)",
-                    int(elapsed),
+                    elapsed,
                     effective_timeout,
                     len(stdout_lines),
                     len(stdout_so_far),
@@ -839,6 +857,10 @@ def claude_exec_streaming(
                 )
                 proc.kill()
                 proc.wait()
+                # Defensive cleanup for stdin - already closed after prompt write,
+                # but included for consistency with other error handlers.
+                if proc.stdin and not proc.stdin.closed:
+                    proc.stdin.close()
                 if proc.stdout:
                     proc.stdout.close()
                 if proc.stderr:
@@ -893,6 +915,10 @@ def claude_exec_streaming(
             )
             proc.kill()
             proc.wait()
+            # Defensive cleanup for stdin - already closed after prompt write,
+            # but included for consistency with other error handlers.
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
             if proc.stdout:
                 proc.stdout.close()
             if proc.stderr:
@@ -920,6 +946,10 @@ def claude_exec_streaming(
             )
             proc.kill()
             proc.wait()
+            # Defensive cleanup for stdin - already closed after prompt write,
+            # but included for consistency with other error handlers.
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
             if proc.stdout:
                 proc.stdout.close()
             if proc.stderr:

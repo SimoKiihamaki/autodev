@@ -97,11 +97,18 @@ def _handle_runner_failure(
     Returns:
         True if loop should stop due to max failures reached.
     """
+    # Sanitize error_detail to redact potentially sensitive information (tokens, secrets,
+    # credentials, user paths) before logging. error_detail may come from stderr/stdout
+    # (e.g., via extract_called_process_error_details) and can contain echoed config
+    # values, auth tokens, or file paths that reveal PII.
+    sanitized_error_detail = _sanitize_stderr_for_exception(
+        error_detail or "", ERROR_DETAIL_TRUNCATE_CHARS
+    )
     logger.warning(
         "Review runner failed (attempt %d/%d): %s",
         failure_count,
         MAX_CONSECUTIVE_FAILURES,
-        error_detail,
+        sanitized_error_detail,
     )
     # Provide user-facing feedback with error type if available
     type_suffix = f" ({error_type})" if error_type else ""
@@ -110,14 +117,12 @@ def _handle_runner_failure(
         f"(attempt {failure_count}/{MAX_CONSECUTIVE_FAILURES})",
         flush=True,
     )
-    # Show truncated error detail to user
+    # Show sanitized and truncated error detail to user
     if error_detail:
-        brief_detail = (
-            error_detail[:ERROR_DETAIL_TRUNCATE_CHARS] + "..."
-            if len(error_detail) > ERROR_DETAIL_TRUNCATE_CHARS
-            else error_detail
+        sanitized_user_error_detail = _sanitize_stderr_for_exception(
+            error_detail, ERROR_DETAIL_TRUNCATE_CHARS
         )
-        print(f"  Error: {brief_detail}", flush=True)
+        print(f"  Error: {sanitized_user_error_detail}", flush=True)
     if stderr_text.strip():
         # Sanitize stderr to redact potentially sensitive information (tokens, secrets,
         # credentials, user paths) before logging. This is critical because stderr can
