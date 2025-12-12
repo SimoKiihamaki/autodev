@@ -358,9 +358,11 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 )
                 time.sleep(sleep_for)
                 continue
-            # Log at ERROR level since this could mask security vulnerabilities
-            logger.error(
-                "CodeRabbit prompt-only run failed after %d attempts: %s",
+            # Log at WARNING since we continue execution without CodeRabbit findings.
+            # ERROR would imply we're halting, but we gracefully degrade here.
+            logger.warning(
+                "CodeRabbit prompt-only run failed after %d attempts: %s. "
+                "Continuing without CodeRabbit findings - manual security review recommended.",
                 attempts,
                 msg or exc,
             )
@@ -472,7 +474,7 @@ def claude_exec(
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
     if not allow_flag and not dry_run:
         raise PermissionError(
-            "claude_exec: requires allow_unsafe_execution=True to bypass permissions."
+            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
         )
     os.environ.setdefault("CI", "1")
     if allow_flag:
@@ -583,28 +585,19 @@ def _drain_fds_best_effort(
                     stdout_buffer += remaining
                 elif fd == proc_stderr:
                     stderr_buffer += remaining
-        except (OSError, IOError, ValueError) as drain_exc:
+        except (OSError, IOError) as drain_exc:
             # Expected exceptions during best-effort drain operations:
             # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
-            # - ValueError: read on closed file (can happen if fd.closed check races)
             # Any other exceptions (e.g., TypeError, AttributeError) would indicate
             # a programming error and should propagate up.
             #
-            # Log at WARNING if there was buffered data we might have lost.
-            # The buffers passed in represent data we already read but haven't
-            # processed yet - losing additional data on top of that is significant.
-            if stdout_buffer or stderr_buffer:
-                logger.warning(
-                    "Best-effort drain failed for fd - some output may be lost: %s (%s)",
-                    drain_exc,
-                    type(drain_exc).__name__,
-                )
-            else:
-                # Log at debug if no buffered data - less concerning
-                logger.debug(
-                    "Best-effort drain failed for fd (expected during error recovery): %s",
-                    drain_exc,
-                )
+            # Always log at WARNING since we attempted to read from this fd and failed,
+            # meaning we may have lost data that was available in the pipe.
+            logger.warning(
+                "Best-effort drain failed for fd - some output may be lost: %s (%s)",
+                drain_exc,
+                type(drain_exc).__name__,
+            )
     return stdout_buffer, stderr_buffer
 
 
@@ -677,15 +670,10 @@ def claude_exec_streaming(
     )
     if not allow_flag and not dry_run:
         raise PermissionError(
-            "claude_exec_streaming: requires allow_unsafe_execution=True to bypass permissions."
+            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
         )
     os.environ.setdefault("CI", "1")
     if allow_flag:
-        # Note: verify_unsafe_execution_ready is called even when dry_run=True to ensure
-        # consistent error messaging about environment configuration. This helps users
-        # identify environment setup issues during dry-run testing without having to
-        # actually execute commands. The verification is lightweight (checks env var)
-        # and doesn't modify state, so it's safe to run in dry_run mode.
         verify_unsafe_execution_ready()
 
     args = _build_claude_args(allow_flag, model, enable_search, extra)
@@ -699,7 +687,6 @@ def claude_exec_streaming(
 
     # Resolve timeout - use parameter, then environment variable, then None (no timeout)
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
-    start_time = time.monotonic()
 
     output_handler = on_output
 
@@ -710,7 +697,8 @@ def claude_exec_streaming(
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
 
-    # Send prompt and close stdin
+    # Send prompt and close stdin. start_time is set AFTER writing the prompt
+    # so the timeout measures actual Claude execution time, not prompt transmission.
     if proc.stdin:
         try:
             proc.stdin.write(prompt)
@@ -730,8 +718,8 @@ def claude_exec_streaming(
             if proc.stderr:
                 try:
                     captured_stderr = proc.stderr.read() or ""
-                except (OSError, IOError, ValueError) as stderr_exc:
-                    # Catch specific I/O exceptions - avoid catching SystemExit, KeyboardInterrupt
+                except (OSError, IOError) as stderr_exc:
+                    # OSError/IOError: fd already closed, pipe broken, or other I/O failures
                     logger.warning(
                         "Failed to capture stderr after BrokenPipeError: %s (%s)",
                         stderr_exc,
@@ -749,15 +737,19 @@ def claude_exec_streaming(
                     captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
                 )
                 error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
-            # Determine appropriate return code:
-            # - Use actual returncode if process exited normally
-            # - Use 141 (SIGPIPE on Unix) if process was killed by pipe closure
+            # Determine appropriate return code - proc.wait() was called above so
+            # returncode should be set. If still None, something is very wrong.
             if proc.returncode is None:
-                returncode = 141  # SIGPIPE on Unix
-            else:
-                returncode = proc.returncode
+                logger.error(
+                    "Process returncode is None after proc.wait() - this indicates "
+                    "the process did not terminate as expected. Command: %s",
+                    sanitized_args[0],
+                )
+                raise RuntimeError(
+                    "Process did not terminate after proc.wait(); returncode is None"
+                )
             raise subprocess.CalledProcessError(
-                returncode,
+                proc.returncode,
                 sanitized_args,
                 output=b"",
                 stderr=error_msg.encode(),
@@ -778,6 +770,10 @@ def claude_exec_streaming(
         if proc.stderr:
             proc.stderr.close()
         raise
+
+    # Start timeout measurement AFTER process setup and prompt transmission.
+    # This ensures the timeout measures actual Claude execution time only.
+    start_time = time.monotonic()
 
     stdout_buffer = ""
     stderr_buffer = ""

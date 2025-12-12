@@ -62,7 +62,7 @@ def _decode_stderr(stderr: bytes | str | None) -> str:
 
 
 def _handle_runner_failure(
-    consecutive_failures: int,
+    failure_count: int,
     error_detail: str,
     stderr_text: str = "",
     error_type: str = "",
@@ -70,11 +70,11 @@ def _handle_runner_failure(
     """Log failure details and determine if loop should stop.
 
     Args:
-        consecutive_failures: The current count of consecutive failures, AFTER
-            incrementing for the latest failure. This is passed in after the caller
-            increments the counter (i.e., 1 for the first failure, 2 for the second,
-            etc.). The counter is compared against MAX_CONSECUTIVE_FAILURES to
-            determine if the loop should terminate.
+        failure_count: Current count of consecutive failures (1 for first failure,
+            2 for second, etc.). The caller increments the counter before calling
+            this function, so this represents the total failures including the
+            current one. Compared against MAX_CONSECUTIVE_FAILURES to determine
+            if the loop should terminate.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
@@ -84,7 +84,7 @@ def _handle_runner_failure(
     """
     logger.warning(
         "Review runner failed (attempt %d/%d): %s",
-        consecutive_failures,
+        failure_count,
         MAX_CONSECUTIVE_FAILURES,
         error_detail,
     )
@@ -92,7 +92,7 @@ def _handle_runner_failure(
     type_suffix = f" ({error_type})" if error_type else ""
     print(
         f"\nReview runner failed{type_suffix} "
-        f"(attempt {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES})",
+        f"(attempt {failure_count}/{MAX_CONSECUTIVE_FAILURES})",
         flush=True,
     )
     # Show truncated error detail to user
@@ -115,13 +115,13 @@ def _handle_runner_failure(
             truncated_stderr += "..."
         print(f"  Stderr: {truncated_stderr}", flush=True)
 
-    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+    if failure_count >= MAX_CONSECUTIVE_FAILURES:
         logger.error(
             "Stopping review loop after %d consecutive failures",
-            consecutive_failures,
+            failure_count,
         )
         print(
-            f"\nStopping: {consecutive_failures} consecutive failures. "
+            f"\nStopping: {failure_count} consecutive failures. "
             f"Last error: {error_type or 'unknown'}",
             flush=True,
         )
@@ -406,8 +406,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     {
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
-                        # Use time.time() for checkpoint persistence - monotonic() is not
-                        # meaningful across process restarts since it's relative to process start
+                        # Use time.time() for checkpoint persistence: provides wall-clock time
+                        # suitable for cross-process timestamps. time.monotonic() is relative
+                        # to an arbitrary epoch (often system boot) and cannot be compared
+                        # across process restarts.
                         "last_activity_time": time.time(),
                     },
                 )
@@ -445,11 +447,15 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
 def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     lines: list[str] = []
+    malformed_count = 0
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
-            # Log skipped entries for debugging malformed API responses
-            logger.debug(
+            malformed_count += 1
+            # Log first malformed entry at WARNING to surface potential API issues,
+            # subsequent entries at DEBUG to avoid log spam
+            log_level = logger.warning if malformed_count == 1 else logger.debug
+            log_level(
                 "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
                 entry.get("comment_id", "unknown"),
                 type(summary).__name__,

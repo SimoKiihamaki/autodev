@@ -336,8 +336,6 @@ class ReviewFixLoopTests(unittest.TestCase):
         _mock_sleep,
     ) -> None:
         """Test that successful execution resets the failure counter."""
-        # First call fails, second succeeds. Using MagicMock.side_effect with a list
-        # is cleaner than a closure with mutable state, and avoids ARG001 linting issues.
         mock_runner = mock.MagicMock(
             side_effect=[
                 subprocess.CalledProcessError(1, ["claude"], stderr=b"error"),
@@ -346,8 +344,6 @@ class ReviewFixLoopTests(unittest.TestCase):
         )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        # Return feedback on first two calls, then empty to stop the loop.
-        # Using side_effect with a list is the idiomatic mock pattern.
         feedback_sequence = [
             [{"summary": "Fix this", "comment_id": 1}],
             [{"summary": "Fix this", "comment_id": 2}],
@@ -486,9 +482,8 @@ class ReviewFixLoopTests(unittest.TestCase):
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
             with self.subTest(error_class=error_class):
-                # Create fresh mock for each subTest iteration to ensure complete test
-                # isolation. While Python's garbage collection handles cleanup, explicit
-                # mock creation per iteration prevents any potential state leakage.
+                # Create fresh mock_runner per iteration. mock_policy_runner is reused
+                # with reset state (reset_mock + new return_value) across iterations.
                 mock_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )
