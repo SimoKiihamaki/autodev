@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import IO, Any, Callable, Optional
 
 from .command import (
     run_cmd,
@@ -426,7 +426,7 @@ def _process_buffer(
     """Process complete lines from buffer, returning remainder.
 
     This function extracts complete lines (terminated by newlines) from the buffer,
-    appending each line to the `lines` list in place and optionally calling
+    appends each line to the `lines` list in place and optionally calls
     `output_handler` for each line. The remaining incomplete line (if any) is
     returned for subsequent buffering.
 
@@ -447,9 +447,9 @@ def _process_buffer(
 
 
 def _drain_fds_best_effort(
-    fds: list,
-    proc_stdout,
-    proc_stderr,
+    fds: list[Any],
+    proc_stdout: IO[str] | None,
+    proc_stderr: IO[str] | None,
     stdout_buffer: str,
     stderr_buffer: str,
 ) -> tuple[str, str]:
@@ -572,7 +572,7 @@ def claude_exec_streaming(
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
     start_time = time.monotonic()
 
-    output_handler = on_output or (lambda line: print(line, flush=True))
+    output_handler = on_output
 
     # Use popen_streaming from command.py for policy-compliant subprocess spawning.
     # This centralizes argument sanitization, validation, and environment setup.
@@ -664,7 +664,7 @@ def claude_exec_streaming(
         # unnecessary computation on every loop iteration when no timeout is set.
         if effective_timeout is not None:
             elapsed = time.monotonic() - start_time
-            if elapsed > effective_timeout:
+            if elapsed >= effective_timeout:
                 # Include any partial data still in buffers (unterminated lines)
                 # to preserve output that arrived before timeout
                 all_stdout = stdout_lines.copy()
@@ -801,7 +801,8 @@ def claude_exec_streaming(
     # complete final line since the process has exited and no more data will arrive.
     if stdout_buffer:
         stdout_lines.append(stdout_buffer)
-        output_handler(stdout_buffer)
+        if output_handler:
+            output_handler(stdout_buffer)
     if stderr_buffer:
         stderr_lines.append(stderr_buffer)
 

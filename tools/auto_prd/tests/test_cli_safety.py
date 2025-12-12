@@ -227,7 +227,7 @@ class PopenStreamingTests(unittest.TestCase):
         mock_proc = mock.MagicMock()
         mock_popen.return_value = mock_proc
 
-        proc, sanitized_args = popen_streaming(
+        _proc, sanitized_args = popen_streaming(
             ["echo", "contains `backticks`"], cwd=self.repo_root
         )
 
@@ -334,7 +334,7 @@ class PopenStreamingTests(unittest.TestCase):
         mock_popen.return_value = mock_proc
 
         # Backticks are allowed (special case in validate_command_args)
-        proc, sanitized_args = popen_streaming(
+        _proc, sanitized_args = popen_streaming(
             ["echo", "contains `backticks`"], cwd=self.repo_root, sanitize=False
         )
 

@@ -262,7 +262,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
 
     @patch("tools.auto_prd.agents.popen_streaming")
     @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    def test_broken_pipe_error_handling(self, mock_verify, mock_popen):
+    def test_broken_pipe_error_handling(self, _mock_verify, mock_popen):
         """Test that BrokenPipeError during stdin write raises CalledProcessError."""
         mock_proc = MagicMock()
         mock_proc.stdin = MagicMock()
@@ -291,7 +291,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
     @patch("tools.auto_prd.agents._set_nonblocking")
     @patch("tools.auto_prd.agents.select.select")
     def test_timeout_handling(
-        self, mock_select, mock_nonblock, mock_verify, mock_popen
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
         """Test that timeout raises TimeoutExpired with partial output."""
         mock_proc = MagicMock()
@@ -336,7 +336,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
     @patch("tools.auto_prd.agents._set_nonblocking")
     @patch("tools.auto_prd.agents.select.select")
     def test_successful_streaming_execution(
-        self, mock_select, mock_nonblock, mock_verify, mock_popen
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
         """Test successful streaming execution with output callback."""
         mock_proc = MagicMock()
@@ -366,7 +366,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         def output_handler(line):
             output_lines.append(line)
 
-        stdout, stderr = claude_exec_streaming(
+        stdout, _stderr = claude_exec_streaming(
             prompt="Test prompt",
             repo_root=self.repo_root,
             allow_unsafe_execution=True,
@@ -381,7 +381,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
     @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
     @patch("tools.auto_prd.agents._set_nonblocking")
     def test_io_error_handling_during_nonblocking_setup(
-        self, mock_nonblock, mock_verify, mock_popen
+        self, mock_nonblock, _mock_verify, mock_popen
     ):
         """Test that OSError during non-blocking setup is properly propagated."""
         mock_proc = MagicMock()
@@ -416,7 +416,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
     @patch("tools.auto_prd.agents._set_nonblocking")
     @patch("tools.auto_prd.agents.select.select")
     def test_nonzero_exit_code_raises_called_process_error(
-        self, mock_select, mock_nonblock, mock_verify, mock_popen
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
         """Test that non-zero exit code raises CalledProcessError."""
         mock_proc = MagicMock()
