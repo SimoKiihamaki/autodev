@@ -237,7 +237,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
 
     @patch("tools.auto_prd.agents.popen_streaming")
     @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    def test_dry_run_returns_dry_run_output(self, mock_verify, mock_popen):
+    def test_dry_run_returns_dry_run_output(self, _mock_verify, mock_popen):
         """Test that dry_run=True returns ('DRY_RUN', '') without execution."""
         stdout, stderr = claude_exec_streaming(
             prompt="Test prompt",

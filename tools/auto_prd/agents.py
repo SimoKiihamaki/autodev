@@ -938,6 +938,26 @@ def claude_exec_streaming(
                 # The fd is excluded from readable_fds on the next loop iteration via the
                 # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
+            except ValueError as e:
+                # TextIOWrapper.read() can raise ValueError if fd is closed/invalid
+                # between select() returning and read() being called. This race condition
+                # can occur if the subprocess terminates abruptly. Handle it the same as
+                # non-transient I/O errors: log, track, and exclude from subsequent reads.
+                fd_name = "stdout" if fd == proc.stdout else "stderr"
+                logger.error(
+                    "ValueError reading from Claude process (fd=%s): %s - "
+                    "fd may be closed/invalid, OUTPUT MAY BE INCOMPLETE",
+                    fd_name,
+                    e,
+                )
+                io_errors.append((fd_name, getattr(e, "errno", None), str(e)))
+                print(
+                    f"  [WARNING] Read error on {fd_name} (fd closed/invalid) - "
+                    "some output may be missing",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                eof_fds.add(fd)
 
         # Termination check #2 (after processing readable fds):
         # Exit when the process has finished AND select() returned no readable fds

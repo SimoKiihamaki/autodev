@@ -9,7 +9,12 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from .agents import codex_exec, claude_exec, claude_exec_streaming
+from .agents import (
+    codex_exec,
+    claude_exec,
+    claude_exec_streaming,
+    _sanitize_stderr_for_exception,
+)
 from .utils import extract_called_process_error_details
 from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
@@ -110,16 +115,21 @@ def _handle_runner_failure(
         )
         print(f"  Error: {brief_detail}", flush=True)
     if stderr_text.strip():
-        # Log stderr at WARNING level for failed executions only. This is acceptable
-        # because: (1) failures need debugging context, (2) stderr typically contains
-        # error messages not model output, (3) we truncate to limit exposure.
-        logger.warning(
-            "Review runner stderr:\n%s", stderr_text[:STDERR_LOG_TRUNCATE_CHARS]
+        # Sanitize stderr to redact potentially sensitive information (tokens, secrets,
+        # credentials, user paths) before logging. This is critical because stderr can
+        # contain echoed config values, auth tokens, or file paths that reveal PII.
+        sanitized_stderr = _sanitize_stderr_for_exception(
+            stderr_text, STDERR_LOG_TRUNCATE_CHARS
         )
-        truncated_stderr = stderr_text[:STDERR_USER_TRUNCATE_CHARS]
-        if len(stderr_text) > STDERR_USER_TRUNCATE_CHARS:
-            truncated_stderr += "..."
-        print(f"  Stderr: {truncated_stderr}", flush=True)
+        # Log sanitized stderr at WARNING level for failed executions only. This is
+        # acceptable because: (1) failures need debugging context, (2) stderr typically
+        # contains error messages not model output, (3) content is now sanitized.
+        logger.warning("Review runner stderr:\n%s", sanitized_stderr)
+        # For user-facing output, also sanitize and apply shorter truncation limit
+        sanitized_user_stderr = _sanitize_stderr_for_exception(
+            stderr_text, STDERR_USER_TRUNCATE_CHARS
+        )
+        print(f"  Stderr: {sanitized_user_stderr}", flush=True)
 
     if failure_count >= MAX_CONSECUTIVE_FAILURES:
         logger.error(
