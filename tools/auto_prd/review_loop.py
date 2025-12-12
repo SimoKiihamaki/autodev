@@ -105,7 +105,9 @@ def _get_box_chars() -> tuple[str, str]:
     return _BOX_CHARS_CACHE
 
 
-_JITTER_RNG = random.Random()  # noqa: S311 - jitter timing is not security-sensitive
+_JITTER_RNG = random.Random(
+    os.urandom(16)
+)  # noqa: S311 - jitter timing is not security-sensitive, seeded for variability
 
 
 def _decode_stderr(stderr: bytes | str | None) -> str:
@@ -445,6 +447,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     status_msg = "Review fix completed (with warnings)"
                 # Display completion status with appropriate formatting
                 if use_claude_streaming:
+                    box_h, box_v = _get_box_chars()
                     print(f"{box_h * 60}")
                     print(f"  {status_msg}")
                     print(f"{box_h * 60}\n", flush=True)
