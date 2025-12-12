@@ -151,6 +151,27 @@ def review_fix_loop(
     Returns:
         True if the loop completed successfully, False if it terminated due to
         consecutive failures reaching MAX_CONSECUTIVE_FAILURES.
+
+    Raises:
+        PermissionError: If a file or directory cannot be accessed due to
+            insufficient permissions during subprocess execution.
+        FileNotFoundError: If a required file or directory is missing, such as
+            missing executables or repository paths.
+        MemoryError: If the process runs out of memory during execution of
+            subprocess commands or large data processing.
+        AttributeError: If an expected attribute is missing from an object,
+            typically from malformed API responses or configuration.
+        TypeError: If an operation or function is applied to an object of
+            inappropriate type, such as invalid argument types.
+        NameError: If a variable or function name is not found, typically
+            indicating a configuration or import issue.
+        KeyError: If a required key is missing from a dictionary or mapping,
+            such as missing fields in API responses or checkpoint data.
+
+    Note:
+        Additional exceptions may be raised by underlying subprocess or I/O
+        operations if unrecoverable errors occur. Transient failures are
+        handled internally with retry logic up to MAX_CONSECUTIVE_FAILURES.
     """
     if pr_number is None:
         return True

@@ -572,7 +572,7 @@ def claude_exec_streaming(
                 sanitized_args,
                 output=b"",
                 stderr=error_msg.encode(),
-            )
+            ) from None
 
     # Set up non-blocking I/O
     try:

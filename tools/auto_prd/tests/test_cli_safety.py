@@ -27,9 +27,11 @@ run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
 validate_command_args = safe_import(
     "tools.auto_prd.command", "..command", "validate_command_args"
 )
+validate_cwd = safe_import("tools.auto_prd.command", "..command", "validate_cwd")
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "..command", "register_safe_cwd"
 )
+popen_streaming = safe_import("tools.auto_prd.command", "..command", "popen_streaming")
 scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
 open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
 
@@ -198,6 +200,178 @@ class OpenOrGetPrTests(unittest.TestCase):
 
             self.assertEqual(pr_number, 101)
             self.assertTrue(any(cmd[:2] == ["gh", "pr"] for cmd in call_sequence))
+
+
+class PopenStreamingTests(unittest.TestCase):
+    """Test suite for popen_streaming function."""
+
+    def setUp(self):
+        """Set up test environment."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_root = Path(self.temp_dir)
+        register_safe_cwd(self.repo_root)
+
+    def tearDown(self):
+        """Clean up test environment."""
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_sanitizes_command_arguments(self, mock_env, mock_popen, mock_which):
+        """Test that command arguments are sanitized via scrub_cli_text."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        proc, sanitized_args = popen_streaming(
+            ["echo", "contains `backticks`"], cwd=self.repo_root
+        )
+
+        # Verify backticks were sanitized to single quotes
+        self.assertEqual(sanitized_args, ["echo", "contains 'backticks'"])
+        self.assertNotIn("`", sanitized_args[1])
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    def test_raises_file_not_found_for_missing_command(self, mock_which):
+        """Test that FileNotFoundError is raised when command not found."""
+        mock_which.return_value = None
+
+        with self.assertRaises(FileNotFoundError) as context:
+            popen_streaming(["nonexistent_command"], cwd=self.repo_root)
+        self.assertIn("nonexistent_command", str(context.exception))
+
+    def test_raises_value_error_for_unsafe_arguments(self):
+        """Test that ValueError is raised for unsafe shell metacharacters."""
+        with self.assertRaises(ValueError) as context:
+            popen_streaming(
+                ["echo", "contains | pipe"], cwd=self.repo_root, sanitize=False
+            )
+        self.assertIn("unsafe shell metacharacters", str(context.exception))
+
+    def test_raises_system_exit_for_disallowed_command(self):
+        """Test that SystemExit is raised for commands not in allowlist."""
+        with self.assertRaises(SystemExit) as context:
+            popen_streaming(["rm", "-rf", "/"], cwd=self.repo_root)
+        self.assertIn("Command not allowed", str(context.exception.code))
+
+    def test_raises_system_exit_for_unsafe_cwd(self):
+        """Test that SystemExit is raised when cwd is outside safe roots."""
+        # Create a temp directory that is not registered as safe
+        unsafe_dir = Path(tempfile.mkdtemp())
+        try:
+            with self.assertRaises(SystemExit) as context:
+                popen_streaming(["echo", "test"], cwd=unsafe_dir)
+            self.assertIn("outside registered safe roots", str(context.exception.code))
+        finally:
+            import shutil
+
+            shutil.rmtree(unsafe_dir, ignore_errors=True)
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_sets_pythonunbuffered_environment(self, mock_env, mock_popen, mock_which):
+        """Test that PYTHONUNBUFFERED=1 is set in environment."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        popen_streaming(["echo", "test"], cwd=self.repo_root)
+
+        # Verify Popen was called with PYTHONUNBUFFERED set
+        call_kwargs = mock_popen.call_args[1]
+        self.assertEqual(call_kwargs["env"]["PYTHONUNBUFFERED"], "1")
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_returns_popen_and_sanitized_args(self, mock_env, mock_popen, mock_which):
+        """Test that popen_streaming returns (Popen, sanitized_args) tuple."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        proc, sanitized_args = popen_streaming(["echo", "test"], cwd=self.repo_root)
+
+        self.assertIs(proc, mock_proc)
+        self.assertEqual(sanitized_args, ["echo", "test"])
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_configures_popen_with_pipes(self, mock_env, mock_popen, mock_which):
+        """Test that Popen is configured with stdin/stdout/stderr pipes."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        popen_streaming(["echo", "test"], cwd=self.repo_root)
+
+        call_kwargs = mock_popen.call_args[1]
+        self.assertEqual(call_kwargs["stdin"], subprocess.PIPE)
+        self.assertEqual(call_kwargs["stdout"], subprocess.PIPE)
+        self.assertEqual(call_kwargs["stderr"], subprocess.PIPE)
+        self.assertTrue(call_kwargs["text"])
+        self.assertEqual(call_kwargs["bufsize"], 1)
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_sanitize_false_preserves_special_characters(
+        self, mock_env, mock_popen, mock_which
+    ):
+        """Test that sanitize=False preserves special characters when allowed."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        # Backticks are allowed (special case in validate_command_args)
+        proc, sanitized_args = popen_streaming(
+            ["echo", "contains `backticks`"], cwd=self.repo_root, sanitize=False
+        )
+
+        # With sanitize=False, backticks should be preserved
+        self.assertEqual(sanitized_args, ["echo", "contains `backticks`"])
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_passes_cwd_to_popen(self, mock_env, mock_popen, mock_which):
+        """Test that cwd is passed to Popen."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        popen_streaming(["echo", "test"], cwd=self.repo_root)
+
+        call_kwargs = mock_popen.call_args[1]
+        self.assertEqual(call_kwargs["cwd"], str(self.repo_root))
+
+    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("tools.auto_prd.command.subprocess.Popen")
+    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    def test_merges_extra_env(self, mock_env, mock_popen, mock_which):
+        """Test that extra_env is merged into environment."""
+        mock_which.return_value = "/usr/bin/echo"
+        mock_env.return_value = {"SHELL": "/bin/zsh", "CUSTOM_VAR": "value"}
+        mock_proc = mock.MagicMock()
+        mock_popen.return_value = mock_proc
+
+        popen_streaming(
+            ["echo", "test"], cwd=self.repo_root, extra_env={"CUSTOM_VAR": "value"}
+        )
+
+        # Verify env_with_zsh was called with extra_env
+        mock_env.assert_called_once_with({"CUSTOM_VAR": "value"})
 
 
 if __name__ == "__main__":
