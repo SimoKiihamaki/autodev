@@ -155,9 +155,20 @@ def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> 
         A string containing stderr content if available, otherwise a simple
         "exit code N" fallback. Never includes stdout content.
     """
-    _, stderr = _extract_stdout_stderr(exc)
+    stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or "").strip()
-    return text or f"exit code {exc.returncode}"
+    if not text:
+        # Log at DEBUG level when falling back to exit code - this helps identify
+        # cases where callers might have previously relied on stdout content.
+        # The stdout length is logged (not content) to indicate if data was available.
+        if stdout and stdout.strip():
+            logger.debug(
+                "extract_called_process_error_details: stderr empty, stdout has %d chars "
+                "(not used for security; returning exit code fallback)",
+                len(stdout),
+            )
+        return f"exit code {exc.returncode}"
+    return text
 
 
 def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> Any:

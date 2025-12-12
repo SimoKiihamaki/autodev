@@ -74,15 +74,16 @@ _SENSITIVE_STDERR_PATTERNS = [
     # Handles both backslash and forward slash path separators via [\\/]+ pattern.
     # The trailing separator is optional ([\\/]*) to match paths like "C:\Users\username"
     # without a trailing slash, which commonly appear in error messages.
-    # The replacement NORMALIZES all separators to forward slashes because:
-    # 1. Forward slashes work in Windows, Unix, and cross-platform contexts
-    # 2. Avoids escaping issues in logs/output (backslashes need escaping)
-    # 3. Provides consistent sanitized output regardless of original separator style
-    # Trade-off: Windows users may see unfamiliar path style in sanitized output,
-    # but redacted paths are for debugging/logs, not for direct filesystem use.
+    # The replacement uses BACKSLASHES to match Windows conventions because:
+    # 1. Windows users expect backslashes in path output and will find it clearer
+    # 2. Sanitized paths appear in error messages/logs meant for user debugging
+    # 3. Consistency with how Windows displays paths natively
+    # Note: The regex matches both slash styles (forward and back) but the replacement
+    # always uses backslashes for familiarity. This is a minor normalization trade-off
+    # but improves readability for the primary use case (Windows error debugging).
     (
         re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]*", re.IGNORECASE),
-        r"<DRIVE>:/Users/<USER>/",
+        r"<DRIVE>:\\Users\\<USER>\\",
     ),
 ]
 
@@ -212,12 +213,32 @@ def _timeout_from_env(env_key: str, default: int | None) -> int | None:
 
 
 def get_codex_exec_timeout() -> int | None:
-    """Get the Codex execution timeout from environment variables."""
+    """Get the Codex execution timeout from environment variables.
+
+    Returns:
+        The timeout in seconds from AUTO_PRD_CODEX_TIMEOUT_SECONDS, or None if:
+        - The environment variable is not set (default: no timeout)
+        - The value is explicitly "none", "no", "off", "disable", or "disabled"
+        - The value is <= 0 (treated as "no timeout")
+    """
     return _timeout_from_env("AUTO_PRD_CODEX_TIMEOUT_SECONDS", None)
 
 
 def get_claude_exec_timeout() -> int | None:
-    """Get the Claude execution timeout from environment variables."""
+    """Get the Claude execution timeout from environment variables.
+
+    Returns:
+        The timeout in seconds from AUTO_PRD_CLAUDE_TIMEOUT_SECONDS, or None if:
+        - The environment variable is not set (default: no timeout)
+        - The value is explicitly "none", "no", "off", "disable", or "disabled"
+        - The value is <= 0 (treated as "no timeout")
+
+    Note:
+        When this function returns None, claude_exec and claude_exec_streaming
+        will run without any time limit. This is intentional for long-running
+        operations where timeout is not desired. Callers who need guaranteed
+        timeout enforcement should pass an explicit timeout parameter.
+    """
     return _timeout_from_env("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", None)
 
 
@@ -442,33 +463,33 @@ def _build_claude_args(
     allow_flag: bool,
     model: str | None,
     enable_search: bool,
-    extra: Optional[list[str]],
+    extra: list[str] | tuple[str, ...] | None,
 ) -> list[str]:
     """Build the CLI arguments for Claude execution.
+
+    This is the centralized location for argument construction and validation.
+    All callers (claude_exec, claude_exec_streaming) delegate argument building
+    here to ensure consistent validation and construction.
 
     Args:
         allow_flag: Whether to add --dangerously-skip-permissions flag.
         model: Optional model name to use.
         enable_search: Whether search is enabled (currently ignored by Claude CLI).
         extra: Optional list of additional string arguments to pass to Claude.
-            Must be a list or tuple of strings if provided.
+            Must be a list or tuple of strings if provided. Validated here
+            before any arguments are constructed to fail fast with clear errors.
 
     Returns:
         List of CLI arguments for Claude execution.
 
     Raises:
         TypeError: If extra is provided but is not a list/tuple of strings.
+            This is raised immediately upon entry, before any other processing,
+            to provide clear error messages with full caller context.
     """
-    args: list[str] = ["claude"]
-    if allow_flag:
-        args.append("--dangerously-skip-permissions")
-    if model:
-        args.extend(["--model", model])
-    if not enable_search:
-        logger.info(
-            "Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False"
-        )
-    if extra:
+    # Validate 'extra' first, before any argument construction.
+    # Early validation ensures clear error messages with caller stack context.
+    if extra is not None:
         if not isinstance(extra, (list, tuple)):
             raise TypeError(
                 f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
@@ -478,6 +499,18 @@ def _build_claude_args(
             raise TypeError(
                 f"'extra' must contain only strings, found: {invalid_types}"
             )
+
+    args: list[str] = ["claude"]
+    if allow_flag:
+        args.append("--dangerously-skip-permissions")
+    if model:
+        args.extend(["--model", model])
+    if not enable_search:
+        logger.info(
+            "Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False"
+        )
+    # 'extra' was already validated at function entry; just extend if present
+    if extra:
         args.extend(extra)
     args.extend(["-p", "-"])
     return args
@@ -673,8 +706,15 @@ def claude_exec_streaming(
         allow_unsafe_execution: Must be True for actual (non-dry-run) execution
         dry_run: If True, skip actual execution and return ("DRY_RUN", "")
         extra: Additional CLI arguments passed directly to claude
-        on_output: Callback for each stdout line (stderr is not streamed)
-        timeout: Optional timeout in seconds (defaults to AUTO_PRD_CLAUDE_TIMEOUT_SECONDS)
+        on_output: Callback for each stdout line (stderr is not streamed).
+            SECURITY WARNING: The line passed to this callback is raw, unsanitized
+            model output that may contain sensitive data (API keys, tokens, PII,
+            secrets). Callers that log or persist callback output MUST implement
+            their own sanitization (e.g., using _sanitize_stderr_for_exception
+            or equivalent) to prevent sensitive data exposure in logs/files.
+        timeout: Optional timeout in seconds. If None, falls back to the
+            AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable. If that is
+            also unset or explicitly disabled, no timeout is applied.
 
     Returns:
         Tuple of (stdout, stderr) containing all accumulated output.
@@ -1123,15 +1163,21 @@ def claude_exec_streaming(
                 # (e.g., from bugs in our code like invalid read() arguments) should
                 # propagate as they indicate programming errors, not I/O issues.
                 #
-                # NOTE: This pattern matching approach is inherently fragile since error
-                # messages can vary across Python versions. The patterns below cover known
-                # messages from Python 3.9-3.13. If a new Python version changes the
-                # wording, the unknown ValueError will propagate and surface the issue
-                # rather than silently failing. This is intentional - we prefer explicit
-                # failure over silent incorrect handling.
+                # DETECTION STRATEGY:
+                # Rather than relying solely on fragile error message pattern matching
+                # (which can vary across Python versions), we use a two-pronged approach:
+                # 1. Check if the file object is actually closed - this is the most
+                #    reliable indicator that we hit the expected race condition.
+                # 2. Fall back to error message pattern matching for other I/O-related
+                #    ValueErrors (e.g., buffer detached) that don't set fd.closed=True.
                 #
-                # Patterns are intentionally specific to avoid matching unrelated ValueErrors.
-                # Known Python I/O ValueError messages:
+                # This approach is more robust because:
+                # - fd.closed is a documented, stable file object attribute
+                # - We still handle edge cases via pattern matching as a fallback
+                # - Unknown ValueErrors propagate to surface programming bugs
+                fd_is_closed = getattr(fd, "closed", False)
+
+                # Known Python I/O ValueError messages (fallback patterns):
                 # - "I/O operation on closed file" (most common)
                 # - "read of closed file" (alternative wording)
                 # - "underlying buffer has been detached"
@@ -1142,16 +1188,21 @@ def claude_exec_streaming(
                     "buffer has been detached",  # "underlying buffer has been detached"
                     "invalid mode",  # "invalid mode" or "invalid file mode"
                 )
-                if not any(pattern in error_msg for pattern in expected_patterns):
+                is_io_related = fd_is_closed or any(
+                    pattern in error_msg for pattern in expected_patterns
+                )
+
+                if not is_io_related:
                     # Unexpected ValueError - this is likely a programming error, not
                     # an I/O issue. Re-raise to surface the bug rather than silently
                     # treating it as an I/O error.
                     raise
                 fd_name = "stdout" if fd == proc.stdout else "stderr"
                 logger.error(
-                    "ValueError reading from Claude process (fd=%s): %s - "
+                    "ValueError reading from Claude process (fd=%s, closed=%s): %s - "
                     "fd may be closed/invalid, OUTPUT MAY BE INCOMPLETE",
                     fd_name,
+                    fd_is_closed,
                     e,
                 )
                 io_errors.append((fd_name, getattr(e, "errno", None), str(e)))

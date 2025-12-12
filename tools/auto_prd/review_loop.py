@@ -36,6 +36,13 @@ JITTER_MAX_SECONDS = 3.0
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
 
+# Module-level set to track comment_ids that have already been warned about for
+# malformed data. This prevents duplicate warnings across multiple invocations of
+# format_unresolved_bullets() for the same persistent API bug or malformed entry.
+# Note: This is intentionally session-scoped (module-level), not call-scoped,
+# to avoid log spam when the same malformed comment appears in every poll cycle.
+_warned_malformed_comment_ids: set[str] = set()
+
 # Truncation limits for error messages to balance detail with readability.
 # ERROR_DETAIL_TRUNCATE_CHARS: Max chars for error detail shown to user (brief summary)
 ERROR_DETAIL_TRUNCATE_CHARS = 200
@@ -242,14 +249,21 @@ def review_fix_loop(
             indicating a configuration or import issue.
         KeyError: If a required key is missing from a dictionary or mapping,
             such as missing fields in API responses or checkpoint data.
+        RuntimeError: If an internal error occurs that cannot be resolved by
+            retrying (e.g., subprocess configuration failures, invariant violations).
+        AssertionError: If an assertion fails, indicating a violated invariant
+            or unexpected program state that requires code investigation.
+        ImportError: If a required module cannot be imported, indicating
+            missing dependencies or configuration issues.
 
     Note:
         Transient/recoverable errors (such as subprocess.CalledProcessError,
-        subprocess.TimeoutExpired, and other transient failures) are handled
-        internally with retry logic up to MAX_CONSECUTIVE_FAILURES. Only the
-        unrecoverable errors listed above are re-raised immediately. If the
-        maximum number of consecutive recoverable failures is reached, the
-        function returns False instead of raising an exception.
+        subprocess.TimeoutExpired, and other transient failures) are retried
+        internally up to MAX_CONSECUTIVE_FAILURES times. Each occurrence of these
+        exceptions increments a retry counter. If the maximum number of consecutive
+        recoverable failures is reached (including repeated TimeoutExpired exceptions),
+        the function returns False instead of raising an exception. Only the
+        unrecoverable errors listed above are re-raised immediately.
     """
     if pr_number is None:
         return True
@@ -385,7 +399,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 else:
                     print(status_msg, flush=True)
             except subprocess.TimeoutExpired as exc:
-                # Timeout - count as failure but provide specific feedback
+                # Timeout - count as failure but provide specific feedback.
+                # Increment counter BEFORE calling _should_stop_after_failure() as
+                # per the documented pattern (see _should_stop_after_failure docstring).
                 consecutive_failures += 1
                 timeout_secs = getattr(exc, "timeout", None)
                 if timeout_secs is None or timeout_secs == "unknown":
@@ -403,6 +419,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 sleep_with_jitter(float(poll))
                 continue
             except subprocess.CalledProcessError as exc:
+                # Increment counter BEFORE calling _should_stop_after_failure()
                 consecutive_failures += 1
                 error_detail = extract_called_process_error_details(exc)
                 stderr_text = _decode_stderr(exc.stderr)
@@ -435,8 +452,22 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 logger.error("Review runner failed due to memory exhaustion: %s", exc)
                 print("\nFatal error: Out of memory", flush=True)
                 raise
-            except (AttributeError, TypeError, NameError, KeyError) as exc:
-                # Programming errors - fail immediately, don't retry
+            except (
+                AttributeError,
+                TypeError,
+                NameError,
+                KeyError,
+                RuntimeError,
+                AssertionError,
+                ImportError,
+            ) as exc:
+                # Programming errors - fail immediately, don't retry.
+                # These exceptions indicate bugs in the code rather than transient failures:
+                # - AttributeError, TypeError, NameError: Classic programming mistakes
+                # - KeyError: Missing dict keys often indicate API changes or data bugs
+                # - RuntimeError: Indicates internal errors that won't resolve via retry
+                # - AssertionError: Assertion failures indicate violated invariants
+                # - ImportError: Module import issues require configuration fixes
                 error_type = type(exc).__name__
                 logger.error(
                     "Review runner failed with programming error (%s): %s - not retrying",
@@ -459,6 +490,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate without retry.
+                    # Reset consecutive_failures before raising to maintain clean state,
+                    # even though this function terminates immediately. This is defensive:
+                    # if this code path is ever refactored to not raise, the counter will
+                    # correctly reflect that this was not a failure.
+                    consecutive_failures = 0
                     raise
                 # Non-zero exit code: treat as execution failure.
                 consecutive_failures += 1
@@ -546,25 +582,27 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
 def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     lines: list[str] = []
-    # Track malformed entries within this single function call to limit log spam.
-    # Note: This counter is per-call, so each invocation of format_unresolved_bullets()
-    # resets the counter and will emit one WARNING for the first malformed entry
-    # encountered in that call. This is intentional: if the same malformed data
-    # persists across multiple calls (e.g., in a loop), the WARNING helps surface
-    # the issue repeatedly rather than suppressing it across the session.
-    malformed_count = 0
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
-            malformed_count += 1
-            # Log first malformed entry at WARNING to surface potential API issues,
-            # subsequent entries at DEBUG to avoid log spam within this call
-            log_level = logger.warning if malformed_count == 1 else logger.debug
-            log_level(
-                "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
-                entry.get("comment_id", "unknown"),
-                type(summary).__name__,
-            )
+            # Use module-level set to track which comment_ids have been warned about.
+            # This prevents duplicate warnings when the same malformed entry appears
+            # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
+            comment_id = str(entry.get("comment_id", "unknown"))
+            if comment_id not in _warned_malformed_comment_ids:
+                _warned_malformed_comment_ids.add(comment_id)
+                logger.warning(
+                    "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
+                    comment_id,
+                    type(summary).__name__,
+                )
+            else:
+                # Already warned about this comment_id; log at DEBUG to avoid spam
+                logger.debug(
+                    "Skipping previously-warned malformed entry: comment_id=%s, type=%s",
+                    comment_id,
+                    type(summary).__name__,
+                )
             continue
         lines.append(f"* {summary.strip()}")
     text = "\n".join(lines)
