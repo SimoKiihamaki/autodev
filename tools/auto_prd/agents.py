@@ -583,13 +583,13 @@ def _set_nonblocking(fd: int) -> None:
         OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
     if not HAS_FCNTL:
-        raise OSError("Non-blocking I/O requires fcntl.")
+        raise OSError("Non-blocking I/O requires fcntl.")  # noqa: TRY003
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
     except (OSError, ValueError) as e:
         logger.error("Failed to set non-blocking mode on fd %d: %s", fd, e)
-        raise OSError("Failed to configure non-blocking I/O.") from e
+        raise OSError("Failed to configure non-blocking I/O.") from e  # noqa: TRY003
 
 
 def _process_buffer(

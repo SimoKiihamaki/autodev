@@ -110,7 +110,7 @@ def _get_box_chars() -> tuple[str, str]:
     return _BOX_CHARS_CACHE
 
 
-_JITTER_RNG = random.Random()
+_JITTER_RNG = random.Random()  # noqa: S311 - jitter timing is not security-sensitive
 
 
 def _decode_stderr(stderr: bytes | str | None) -> str:
