@@ -742,7 +742,8 @@ def claude_exec_streaming(
                         stderr_exc,
                         type(stderr_exc).__name__,
                     )
-                proc.stderr.close()
+                finally:
+                    proc.stderr.close()
             if proc.stdout:
                 proc.stdout.close()
             # User-facing error message - simple and actionable
@@ -842,9 +843,9 @@ def claude_exec_streaming(
                     proc.stdout.close()
                 if proc.stderr:
                     proc.stderr.close()
-                # Use TimeoutExpired constructor parameters (output=, stderr=) instead
-                # of setting .stdout/.stderr attributes post-construction. The standard
-                # attribute is .output (bytes), not .stdout, so callers expect .output.
+                # Use TimeoutExpired constructor parameters (output=, stderr=) which set
+                # the .stdout and .stderr attributes on the exception, as per the standard
+                # Python subprocess.TimeoutExpired API.
                 raise subprocess.TimeoutExpired(
                     sanitized_args,
                     effective_timeout,
@@ -885,8 +886,9 @@ def claude_exec_streaming(
                 "terminating process and aborting streaming",
                 e,
             )
-            # Attempt to drain any remaining buffered data before terminating
-            stdout_buffer, stderr_buffer = _drain_fds_best_effort(
+            # Attempt to drain any remaining buffered data before terminating.
+            # Return values are intentionally discarded since we're raising immediately.
+            _drain_fds_best_effort(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
             proc.kill()
@@ -911,8 +913,9 @@ def claude_exec_streaming(
                 e.errno,
                 e,
             )
-            # Attempt to drain any remaining buffered data before terminating
-            stdout_buffer, stderr_buffer = _drain_fds_best_effort(
+            # Attempt to drain any remaining buffered data before terminating.
+            # Return values are intentionally discarded since we're raising immediately.
+            _drain_fds_best_effort(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
             proc.kill()

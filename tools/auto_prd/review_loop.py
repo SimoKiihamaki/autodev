@@ -301,8 +301,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
                 print(f"{box_h * 60}", flush=True)
 
-                def output_handler(line: str, vert: str = box_v) -> None:
-                    print(f"  {vert} {line}", flush=True)
+                def output_handler(line: str) -> None:
+                    print(f"  {box_v} {line}", flush=True)
                     # Note: Intentionally not logging model output to avoid persisting
                     # potentially sensitive data (secrets, PII) to log files.
                     # If logging is needed for debugging specific issues, callers should
@@ -429,9 +429,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
                         # Use time.time() for checkpoint persistence: provides wall-clock time
-                        # suitable for cross-process timestamps. time.monotonic() is relative
-                        # to an arbitrary epoch (often system boot) and cannot be compared
-                        # across process restarts.
+                        # suitable for informational/audit purposes (e.g., "last activity was
+                        # at 2:30 PM"). This value is NOT used for idle timeout computation;
+                        # the in-process 'last_activity' variable (time.monotonic()) handles
+                        # that and is reset fresh on each run. time.monotonic() cannot be
+                        # persisted across process restarts since it's relative to an
+                        # arbitrary epoch (often system boot).
                         "last_activity_time": time.time(),
                     },
                 )
