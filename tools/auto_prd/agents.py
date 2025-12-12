@@ -587,13 +587,13 @@ def _set_nonblocking(fd: int) -> None:
         OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
     if not HAS_FCNTL:
-        raise OSError("Non-blocking I/O requires fcntl.")  # noqa: TRY003
+        raise OSError("Non-blocking I/O requires fcntl.")
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
     except (OSError, ValueError) as e:
         logger.error("Failed to set non-blocking mode on fd %d: %s", fd, e)
-        raise OSError("Failed to configure non-blocking I/O.") from e  # noqa: TRY003
+        raise OSError("Failed to configure non-blocking I/O.") from e
 
 
 def _process_buffer(
@@ -978,9 +978,7 @@ def claude_exec_streaming(
                 poll_result,
             )
             # User-facing message is simple; detailed diagnostics are in the log above
-            raise RuntimeError(
-                "Subprocess did not terminate as expected. Please try again or contact support."
-            ) from None
+            raise RuntimeError("Subprocess did not terminate as expected.") from None
         raise subprocess.CalledProcessError(
             proc.returncode,
             sanitized_args,

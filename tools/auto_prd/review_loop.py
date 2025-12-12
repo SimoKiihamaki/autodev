@@ -38,15 +38,17 @@ JITTER_MAX_SECONDS = 3.0
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
 
-# Module-level LRU cache to track comment_ids that have already been warned about
-# for malformed data. This prevents duplicate warnings across multiple invocations
+# Module-level bounded FIFO cache to track comment_ids that have already been warned
+# about for malformed data. This prevents duplicate warnings across multiple invocations
 # of format_unresolved_bullets() for the same persistent API bug or malformed entry.
 # Note: This is intentionally session-scoped (module-level), not call-scoped,
 # to avoid log spam when the same malformed comment appears in every poll cycle.
 #
-# Uses OrderedDict as a bounded LRU cache: when max size is reached, oldest entries
-# are evicted to make room for new ones. This maintains deduplication behavior while
-# preventing unbounded memory growth in long-running processes.
+# Uses OrderedDict as a bounded FIFO cache: when max size is reached, oldest entries
+# (by insertion order) are evicted to make room for new ones. Keys are NOT refreshed
+# on access, so eviction is strictly insertion-order FIFO, not LRU. This is intentional:
+# for deduplication purposes, we only care whether a key exists, not how recently it
+# was accessed. FIFO eviction is simpler and sufficient for this use case.
 #
 # Thread safety: Protected by _WARNED_MALFORMED_LOCK to prevent race conditions
 # during concurrent access from multiple threads (e.g., parallel format_unresolved_bullets calls).
@@ -664,15 +666,15 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
-            # Use module-level LRU cache to track which comment_ids have been warned about.
-            # This prevents duplicate warnings when the same malformed entry appears
+            # Use module-level bounded FIFO cache to track which comment_ids have been warned
+            # about. This prevents duplicate warnings when the same malformed entry appears
             # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
             comment_id = str(entry.get("comment_id", "unknown"))
             # Thread-safe access to the shared cache. The lock protects the check-then-act
             # sequence (membership test, eviction, insertion) from race conditions.
             with _WARNED_MALFORMED_LOCK:
                 if comment_id not in _warned_malformed_comment_ids:
-                    # Add to LRU cache with eviction if at capacity.
+                    # Add to FIFO cache with eviction if at capacity.
                     # This maintains deduplication while preventing unbounded growth.
                     #
                     # Eviction order: We evict the OLDEST entry (FIFO via popitem(last=False))

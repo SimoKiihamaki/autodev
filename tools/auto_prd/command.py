@@ -647,16 +647,15 @@ def popen_streaming(
         # We use sanitize_args() to redact both original and sanitized versions.
         redacted_cmd = sanitize_args(cmd)
         redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
-        # Defensive assertion: sanitize_args should always produce a list of the same
-        # length as input. A list comprehension over a sequence always produces a
-        # same-length result. If this ever fails, it indicates a bug in sanitize_args
-        # or its usage (e.g., a future code change that breaks this invariant).
-        assert len(redacted_cmd) == len(
-            redacted_sanitized_cmd
-        ), f"Sanitization length mismatch: {len(redacted_cmd)} != {len(redacted_sanitized_cmd)}"
+        # Compare original vs sanitized args to show what changed. Using strict=True
+        # enforces the invariant that sanitize_args produces same-length output (a list
+        # comprehension over a sequence always preserves length). If lengths ever differ,
+        # zip raises ValueError immediately, catching any future bug in sanitize_args.
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
-            for i, (orig, san) in enumerate(zip(redacted_cmd, redacted_sanitized_cmd))
+            for i, (orig, san) in enumerate(
+                zip(redacted_cmd, redacted_sanitized_cmd, strict=True)
+            )
             if orig != san
         ]
         if diffs:
@@ -690,7 +689,7 @@ def popen_streaming(
     # the fallback cwd was deleted between find_repo_root() and this check.
     repo_root_path = find_repo_root()
     if not repo_root_path.exists():
-        raise FileNotFoundError(
+        raise FileNotFoundError(  # noqa: TRY003
             f"Repository root directory does not exist: {repo_root_path}. "
             "This may indicate the repository was deleted or moved. "
             "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
