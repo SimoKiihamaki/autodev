@@ -426,13 +426,13 @@ def _process_buffer(
     """Process complete lines from buffer, returning remainder.
 
     This function extracts complete lines (terminated by newlines) from the buffer,
-    appending each line to the `lines` list IN-PLACE and optionally calling
+    appending each line to the `lines` list in place and optionally calling
     `output_handler` for each line. The remaining incomplete line (if any) is
     returned for subsequent buffering.
 
     Args:
         buffer: Input buffer potentially containing newline-terminated lines.
-        lines: List to append complete lines to (in/out parameter, modified in-place).
+        lines: List to append complete lines to (in/out parameter, modified in place).
         output_handler: Optional callback invoked for each complete line.
 
     Returns:
@@ -530,7 +530,10 @@ def claude_exec_streaming(
         timeout: Optional timeout in seconds (defaults to AUTO_PRD_CLAUDE_TIMEOUT_SECONDS)
 
     Returns:
-        Tuple of (stdout, stderr) containing all accumulated output
+        Tuple of (stdout, stderr) containing all accumulated output.
+        Note: Unlike claude_exec which preserves exact output formatting,
+        this function normalizes line endings by joining lines with single
+        newlines. Trailing newlines from the original output are not preserved.
 
     Raises:
         PermissionError: If allow_unsafe_execution is False and dry_run is False
