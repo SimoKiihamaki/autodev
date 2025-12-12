@@ -882,9 +882,17 @@ def claude_exec_streaming(
     # 1. Use the explicit timeout parameter if provided (not None)
     # 2. Otherwise, check AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable
     # 3. If both are unset/None, effective_timeout will be None (meaning no timeout)
+    #
     # Note: get_claude_exec_timeout() can also return None, so effective_timeout
-    # may be None after this line, which is intentional for unlimited execution.
-    effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
+    # may be None after this block, which is intentional for unlimited execution.
+    # When effective_timeout is None, the timeout check at line ~1079 is skipped.
+    effective_timeout: int | None = None
+    if timeout is not None:
+        effective_timeout = timeout
+    else:
+        env_timeout = get_claude_exec_timeout()
+        if env_timeout is not None:
+            effective_timeout = env_timeout
 
     # Use popen_streaming from command.py for policy-compliant subprocess spawning.
     # This centralizes argument sanitization, validation, and environment setup.
@@ -1135,13 +1143,20 @@ def claude_exec_streaming(
                         stderr=stderr_so_far.encode(),
                     )
                 else:
-                    # Process completed naturally just as timeout was reached - return success
-                    # rather than raising TimeoutExpired, since the operation did complete.
-                    # This prevents confusing callers who would see a timeout error despite
-                    # the process having finished successfully.
+                    # Process exited naturally just as timeout was reached.
+                    #
+                    # Behavior depends on exit code:
+                    # - Exit code 0: Return success (no TimeoutExpired raised)
+                    # - Non-zero exit code: Raise CalledProcessError (not TimeoutExpired)
+                    #
+                    # Rationale: The process DID finish executing before we killed it. Raising
+                    # TimeoutExpired would be misleading since the command completed. The exit
+                    # code tells us whether the command succeeded (0) or failed (non-zero).
+                    # For non-zero exits, CalledProcessError is more accurate than TimeoutExpired
+                    # because the process wasn't interrupted - it ran to completion and failed.
                     logger.debug(
                         "Process exited naturally (code=%d) just as timeout was reached; "
-                        "returning output since process completed successfully",
+                        "using exit code to determine success/failure (not raising TimeoutExpired)",
                         proc.returncode,
                     )
                     # Defensive cleanup for stdin - already closed after prompt write,
@@ -1312,38 +1327,37 @@ def claude_exec_streaming(
                 # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
             except ValueError as e:
-                # TextIOWrapper.read() raises ValueError when the fd is closed between
-                # select() returning and read() being called (race condition on abrupt
-                # process termination). The fd.closed attribute is the reliable indicator.
+                # Handle the specific case where the file descriptor was closed during read.
+                # This can happen if the process terminates abruptly between select() and read().
                 #
-                # We check hasattr() first to ensure the fd has a 'closed' attribute
-                # (defensive: all file objects should have it, but edge cases like
-                # custom file-like objects without 'closed' should re-raise rather
-                # than be silently treated as I/O errors).
-                if not hasattr(fd, "closed"):
-                    # Unexpected object type - re-raise to surface the bug.
+                # Decision logic:
+                # 1. If fd lacks 'closed' attribute: unexpected object type, re-raise
+                # 2. If fd.closed is False: unexpected ValueError (not a closure issue), re-raise
+                # 3. If fd.closed is True: handle as I/O error from closed fd
+                #
+                # Only case (3) is handled; cases (1) and (2) re-raise to surface bugs.
+                if hasattr(fd, "closed") and fd.closed:
+                    fd_name = "stdout" if fd == proc.stdout else "stderr"
+                    logger.error(
+                        "ValueError reading from Claude process (fd=%s, closed=%s): %s - "
+                        "fd closed during read, OUTPUT MAY BE INCOMPLETE",
+                        fd_name,
+                        fd.closed,
+                        e,
+                    )
+                    io_errors.append((fd_name, getattr(e, "errno", None), str(e)))
+                    print(
+                        f"  [WARNING] Read error on {fd_name} (fd closed) - "
+                        "some output may be missing",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    eof_fds.add(fd)
+                else:
+                    # Unexpected ValueError: either fd lacks 'closed' attribute (unusual
+                    # file-like object) or fd.closed is False (ValueError for other reason).
+                    # Re-raise to surface the issue rather than silently masking it.
                     raise
-                fd_is_closed = fd.closed
-                if not fd_is_closed:
-                    # Unexpected ValueError - fd is open so this isn't a closure issue.
-                    # Re-raise to surface the bug rather than silently masking it.
-                    raise
-                fd_name = "stdout" if fd == proc.stdout else "stderr"
-                logger.error(
-                    "ValueError reading from Claude process (fd=%s, closed=%s): %s - "
-                    "fd closed during read, OUTPUT MAY BE INCOMPLETE",
-                    fd_name,
-                    fd_is_closed,
-                    e,
-                )
-                io_errors.append((fd_name, getattr(e, "errno", None), str(e)))
-                print(
-                    f"  [WARNING] Read error on {fd_name} (fd closed) - "
-                    "some output may be missing",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                eof_fds.add(fd)
 
         # Termination check #2 (after processing readable fds): Exit if process finished
         # and select() returned no readable fds. See _should_exit_streaming_loop for details.

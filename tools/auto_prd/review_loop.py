@@ -162,10 +162,12 @@ def _should_stop_after_failure(
     Returns:
         True if loop should stop (max failures reached), False to continue retrying.
     """
-    # Sanitize error_detail to redact potentially sensitive information (tokens, secrets,
-    # credentials, user paths) before logging. error_detail may come from stderr/stdout
-    # (e.g., via extract_called_process_error_details) and can contain echoed config
-    # values, auth tokens, or file paths that reveal PII.
+    # Sanitize error_detail ONCE to redact potentially sensitive information (tokens,
+    # secrets, credentials, user paths) before logging or displaying. error_detail may
+    # come from stderr/stdout (e.g., via extract_called_process_error_details) and can
+    # contain echoed config values, auth tokens, or file paths that reveal PII.
+    # The same sanitized value is reused for both logging and user display to avoid
+    # duplicate regex processing.
     sanitized_error_detail = _sanitize_stderr_for_exception(
         error_detail or "", ERROR_DETAIL_TRUNCATE_CHARS
     )
@@ -182,12 +184,9 @@ def _should_stop_after_failure(
         f"(attempt {failure_count}/{MAX_CONSECUTIVE_FAILURES})",
         flush=True,
     )
-    # Show sanitized and truncated error detail to user
-    if error_detail:
-        sanitized_user_error_detail = _sanitize_stderr_for_exception(
-            error_detail, ERROR_DETAIL_TRUNCATE_CHARS
-        )
-        print(f"  Error: {sanitized_user_error_detail}", flush=True)
+    # Reuse already-sanitized error_detail for user display (same truncation limit)
+    if sanitized_error_detail:
+        print(f"  Error: {sanitized_error_detail}", flush=True)
     if stderr_text.strip():
         # Sanitize stderr ONCE with the larger log truncation limit, then truncate
         # the already-sanitized output for user display. This avoids duplicate regex
@@ -533,14 +532,29 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # User cancellation - always propagate immediately without retry.
                 raise
             except SystemExit as exc:
-                # SystemExit handling: non-zero codes are treated as failures.
+                # SystemExit handling: Distinguishes between clean exits and execution failures.
+                #
                 # SystemExit(0) or SystemExit(None) = clean exit, propagate immediately.
-                # Non-zero = error (e.g., from safety utilities in command.py), treat as failure.
+                # This represents intentional program termination (not an error).
+                #
+                # SystemExit(non-zero) = execution failure, treat as recoverable.
+                # This differs from PermissionError/FileNotFoundError/MemoryError (which are
+                # re-raised immediately) because:
+                # 1. SystemExit(non-zero) typically comes from safety utilities in command.py
+                #    that abort on transient conditions (e.g., resource checks, rate limits)
+                # 2. These conditions may clear on retry (unlike permission issues or missing
+                #    files which require user intervention)
+                # 3. subprocess.CalledProcessError (non-zero exit from child process) is also
+                #    treated as recoverable, and SystemExit(non-zero) is semantically similar
+                #    when it indicates "this run failed" rather than "this is misconfigured"
+                #
+                # If this heuristic proves wrong for specific exit codes, consider adding
+                # an explicit list of "fatal" exit codes that should re-raise immediately.
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate immediately without retry.
                     raise
-                # Non-zero exit code: treat as execution failure.
+                # Non-zero exit code: treat as execution failure (potentially recoverable).
                 consecutive_failures += 1
                 logger.error(
                     "Review runner received SystemExit with code %s - treating as failure",
@@ -644,6 +658,13 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
             if comment_id not in _warned_malformed_comment_ids:
                 # Add to LRU cache with eviction if at capacity.
                 # This maintains deduplication while preventing unbounded growth.
+                #
+                # Eviction order: We evict the OLDEST entry (FIFO via popitem(last=False))
+                # BEFORE inserting the new entry. This ensures the cache never exceeds
+                # _WARNED_MALFORMED_MAX_SIZE entries. The sequence is:
+                #   1. If at capacity (len >= max), remove oldest (popitem)
+                #   2. Add new entry (dict assignment)
+                # After this sequence, len == max (not max + 1) because eviction precedes insertion.
                 if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
                     # Evict oldest entry (FIFO order in OrderedDict)
                     _warned_malformed_comment_ids.popitem(last=False)
