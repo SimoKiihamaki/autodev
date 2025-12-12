@@ -267,10 +267,10 @@ class ClaudeExecStreamingTests(unittest.TestCase):
     def test_os_error_when_fcntl_unavailable(self):
         """Test that OSError is raised when fcntl is not available.
 
-        This test verifies the error handling path when fcntl is None, which occurs
-        on Windows or any platform where fcntl is unavailable. We patch fcntl to None
-        to test this code path on all platforms (including Unix where fcntl is normally
-        available).
+        This test simulates the missing-fcntl code path on Unix-like platforms
+        by patching fcntl to None. Since this test class is skipped on Windows,
+        we're testing that Unix systems correctly raise OSError when fcntl is
+        unavailable (a scenario that would require explicit patching to trigger).
         """
         with patch("tools.auto_prd.agents.fcntl", None):
             with self.assertRaises(OSError) as context:
@@ -561,7 +561,7 @@ class DrainFdsBestEffortTests(unittest.TestCase):
         mock_fd = MagicMock()
         mock_fd.closed = True
 
-        stdout_buf, stderr_buf = _drain_fds_best_effort(
+        stdout_buf, _stderr_buf = _drain_fds_best_effort(
             [mock_fd], None, None, "original", ""
         )
         self.assertEqual(stdout_buf, "original")

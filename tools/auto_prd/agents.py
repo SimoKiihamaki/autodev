@@ -561,7 +561,7 @@ def _drain_fds_best_effort(
     """Best-effort drain of file descriptors into buffers.
 
     Used during error recovery to capture any remaining data before breaking
-    out of the streaming loop. Errors are logged at debug level since this
+    out of the streaming loop. Errors are logged at warning level since this
     is a best-effort operation during abnormal termination.
 
     Args:
