@@ -81,11 +81,15 @@ def _handle_runner_failure(
     """Log failure details and determine if loop should stop.
 
     Args:
-        failure_count: Current count of consecutive failures (1 for first failure,
-            2 for second, etc.). The caller increments the counter before calling
-            this function, so this represents the total failures including the
-            current one. Compared against MAX_CONSECUTIVE_FAILURES to determine
-            if the loop should terminate.
+        failure_count: Current count of consecutive failures, already incremented
+            by the caller to include the current failure. Value semantics:
+            - 1 means this is the first failure
+            - 2 means this is the second consecutive failure
+            - N means this is the Nth consecutive failure
+
+            The function returns True when failure_count >= MAX_CONSECUTIVE_FAILURES,
+            meaning: if MAX_CONSECUTIVE_FAILURES is 3, the loop stops after exactly
+            3 failed attempts (the call where failure_count=3).
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback

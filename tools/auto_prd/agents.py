@@ -481,7 +481,13 @@ def claude_exec(
 
     args = _build_claude_args(allow_flag, model, enable_search, extra)
     if dry_run:
-        logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
+        # Log command name and arg count only - avoid full arg dump to prevent
+        # potential secret/PII leakage via `extra` arguments
+        logger.info(
+            "Dry run enabled; skipping Claude execution. Command=%s args=%d",
+            args[0] if args else "<empty>",
+            len(args),
+        )
         return "DRY_RUN", ""
 
     out, stderr, _ = run_cmd(
@@ -659,6 +665,9 @@ def claude_exec_streaming(
         OSError: If running on Windows (fcntl not available)
         subprocess.CalledProcessError: If claude returns a non-zero exit code
         subprocess.TimeoutExpired: If execution exceeds the timeout
+        SystemExit: If validate_stdin rejects the prompt (e.g., size limits,
+            control character filtering) or if safety utilities abort execution
+        RuntimeError: If select() fails unrecoverably during streaming
     """
     # Platform check - fcntl is Unix-only
     # Note: We only check fcntl is None, not sys.platform == "win32" separately.
@@ -682,7 +691,13 @@ def claude_exec_streaming(
 
     args = _build_claude_args(allow_flag, model, enable_search, extra)
     if dry_run:
-        logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
+        # Log command name and arg count only - avoid full arg dump to prevent
+        # potential secret/PII leakage via `extra` arguments
+        logger.info(
+            "Dry run enabled; skipping Claude execution. Command=%s args=%d",
+            args[0] if args else "<empty>",
+            len(args),
+        )
         return "DRY_RUN", ""
 
     # Validate stdin before spawning subprocess - applies same safety checks as run_cmd
@@ -782,7 +797,6 @@ def claude_exec_streaming(
 
     # Track I/O errors for surfacing at the end
     io_errors: list[tuple[str, int | None, str]] = []
-    select_error_occurred = False
 
     # Track fds that have reached EOF to avoid infinite loop.
     # When a process exits, its pipes still exist as file objects (not None),
@@ -828,10 +842,15 @@ def claude_exec_streaming(
                     proc.stdout.close()
                 if proc.stderr:
                     proc.stderr.close()
-                exc = subprocess.TimeoutExpired(sanitized_args, effective_timeout)
-                exc.stdout = stdout_so_far.encode()
-                exc.stderr = stderr_so_far.encode()
-                raise exc
+                # Use TimeoutExpired constructor parameters (output=, stderr=) instead
+                # of setting .stdout/.stderr attributes post-construction. The standard
+                # attribute is .output (bytes), not .stdout, so callers expect .output.
+                raise subprocess.TimeoutExpired(
+                    sanitized_args,
+                    effective_timeout,
+                    output=stdout_so_far.encode(),
+                    stderr=stderr_so_far.encode(),
+                )
 
         ret = proc.poll()
         # Exclude fds that have reached EOF - they would cause select to return
@@ -856,42 +875,53 @@ def claude_exec_streaming(
         except ValueError as e:
             # ValueError indicates invalid arguments to select() (e.g., negative timeout,
             # invalid fd). This is a programming error, not a signal interrupt, so it
-            # cannot be recovered by retry. Log and exit the streaming loop.
+            # cannot be recovered by retry.
             #
-            # After breaking, the code path calls proc.wait() and checks returncode,
-            # so if the process fails, CalledProcessError will be raised appropriately.
+            # IMPORTANT: Don't just break and rely on proc.wait() - if the process is
+            # still running, proc.wait() could block indefinitely (no timeout). Instead,
+            # terminate the process explicitly and raise an error to signal the failure.
             logger.error(
                 "select() raised ValueError (invalid arguments): %s - "
-                "stream reading terminated early, output may be incomplete",
+                "terminating process and aborting streaming",
                 e,
             )
-            select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking
+            # Attempt to drain any remaining buffered data before terminating
             stdout_buffer, stderr_buffer = _drain_fds_best_effort(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
-            break
+            proc.kill()
+            proc.wait()
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
+            raise RuntimeError("select() failed (ValueError); streaming aborted") from e
         except OSError as e:
             # EINTR can be retried (interrupted by signal)
             if e.errno == errno.EINTR:
                 continue
-            # Other select() failures are serious - log at ERROR level.
+            # Other select() failures are serious and non-recoverable.
             #
-            # After breaking, the code path calls proc.wait() and checks returncode,
-            # so if the process fails, CalledProcessError will be raised appropriately.
-            # This prevents returning incomplete output with a success (0) returncode.
+            # IMPORTANT: Don't just break and rely on proc.wait() - if the process is
+            # still running, proc.wait() could block indefinitely (no timeout). Instead,
+            # terminate the process explicitly and raise an error to signal the failure.
             logger.error(
                 "select() failed unexpectedly (errno=%s): %s - "
-                "stream reading terminated early, output may be incomplete",
+                "terminating process and aborting streaming",
                 e.errno,
                 e,
             )
-            select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking
+            # Attempt to drain any remaining buffered data before terminating
             stdout_buffer, stderr_buffer = _drain_fds_best_effort(
                 readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
             )
-            break
+            proc.kill()
+            proc.wait()
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
+            raise RuntimeError("select() failed (OSError); streaming aborted") from e
 
         for fd in readable:
             try:
@@ -900,6 +930,12 @@ def claude_exec_streaming(
                     # EOF reached - mark this fd so we don't select on it again.
                     # This prevents the infinite loop where select returns immediately
                     # with "readable" fds that only have EOF available.
+                    #
+                    # Note on race condition: One might worry about data arriving on an fd
+                    # AFTER it returns empty (EOF) but BEFORE it's added to eof_fds.
+                    # However, this race is impossible: once a pipe's write end is closed
+                    # (which causes EOF), the subprocess cannot write more data to that
+                    # same closed pipe. EOF on a pipe is a terminal state.
                     eof_fds.add(fd)
                     continue
                 if fd == proc.stdout:
@@ -1002,11 +1038,6 @@ def claude_exec_streaming(
             len(io_errors),
             "\n".join(formatted_errors),
         )
-    if select_error_occurred:
-        logger.error(
-            "Claude execution completed after select() failure - output may be incomplete"
-        )
-
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
             proc.returncode,
