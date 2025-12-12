@@ -28,7 +28,16 @@ JITTER_MAX_SECONDS = 3.0
 # This prevents infinite retry loops on persistent errors (e.g., auth failures,
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
-_JITTER_RNG: random.Random = random.Random()
+
+# Truncation limits for error messages to balance detail with readability.
+# ERROR_DETAIL_TRUNCATE_CHARS: Max chars for error detail shown to user (brief summary)
+ERROR_DETAIL_TRUNCATE_CHARS = 200
+# STDERR_USER_TRUNCATE_CHARS: Max chars of stderr shown in user-facing output
+STDERR_USER_TRUNCATE_CHARS = 500
+# STDERR_LOG_TRUNCATE_CHARS: Max chars of stderr written to log files (more verbose)
+STDERR_LOG_TRUNCATE_CHARS = 2000
+
+_JITTER_RNG = random.Random()
 
 
 def _decode_stderr(stderr: bytes | str | None) -> str:
@@ -49,7 +58,9 @@ def _handle_runner_failure(
     """Log failure details and determine if loop should stop.
 
     Args:
-        consecutive_failures: Current count of consecutive failures
+        consecutive_failures: Current count of consecutive failures (1-indexed).
+            This should be the count AFTER incrementing for the current failure.
+            For example, pass 1 for the first failure, 2 for the second, etc.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
@@ -73,13 +84,17 @@ def _handle_runner_failure(
     # Show truncated error detail to user
     if error_detail:
         brief_detail = (
-            error_detail[:200] + "..." if len(error_detail) > 200 else error_detail
+            error_detail[:ERROR_DETAIL_TRUNCATE_CHARS] + "..."
+            if len(error_detail) > ERROR_DETAIL_TRUNCATE_CHARS
+            else error_detail
         )
         print(f"  Error: {brief_detail}", flush=True)
     if stderr_text.strip():
-        logger.warning("Review runner stderr:\n%s", stderr_text[:2000])
-        truncated_stderr = stderr_text[:500]
-        if len(stderr_text) > 500:
+        logger.warning(
+            "Review runner stderr:\n%s", stderr_text[:STDERR_LOG_TRUNCATE_CHARS]
+        )
+        truncated_stderr = stderr_text[:STDERR_USER_TRUNCATE_CHARS]
+        if len(stderr_text) > STDERR_USER_TRUNCATE_CHARS:
             truncated_stderr += "..."
         print(f"  Stderr: {truncated_stderr}", flush=True)
 
@@ -356,9 +371,6 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             return True
         print("No unresolved feedback right now; waiting for potential new comments...")
         sleep_with_jitter(float(poll))
-    # This point is reached if we break out of the loop due to failures
-    print("Review loop complete.")
-    return True
 
 
 def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:

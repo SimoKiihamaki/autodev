@@ -479,7 +479,7 @@ def run(args) -> None:
             mark_phase_started(checkpoint, "review_fix")
             save_checkpoint(checkpoint)
 
-            review_fix_loop(
+            review_succeeded = review_fix_loop(
                 pr_number=pr_number,
                 owner_repo=owner_repo,
                 repo_root=repo_root,
@@ -493,8 +493,17 @@ def run(args) -> None:
                 checkpoint=checkpoint,  # Pass checkpoint for comment tracking
             )
 
-            mark_phase_complete(checkpoint, "review_fix")
-            save_checkpoint(checkpoint)
+            if not review_succeeded:
+                logger.warning(
+                    "Review loop terminated due to consecutive failures; "
+                    "marking phase as incomplete"
+                )
+                update_phase_state(checkpoint, "review_fix", {"terminated_early": True})
+                save_checkpoint(checkpoint)
+                # Continue to post final comment but don't mark as complete
+            else:
+                mark_phase_complete(checkpoint, "review_fix")
+                save_checkpoint(checkpoint)
 
         post_final_comment(
             pr_number=pr_number,

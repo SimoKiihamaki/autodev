@@ -19,13 +19,21 @@ from typing import Callable, Optional
 
 from .command import run_cmd, verify_unsafe_execution_ready, env_with_zsh
 from .logging_utils import logger
-from .utils import extract_called_process_error_details
+from .utils import extract_called_process_error_details, scrub_cli_text
 
 RATE_LIMIT_JITTER_MIN = -3
 RATE_LIMIT_JITTER_MAX = 3
 RATE_LIMIT_MIN_SLEEP_SECONDS = 5
 RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
+
+# I/O buffer and polling constants for claude_exec_streaming
+# Read chunk size: 4KB is a reasonable default for buffered I/O, balancing
+# memory usage with system call overhead.
+STREAMING_READ_CHUNK_SIZE = 4096
+# Select poll timeout: 100ms provides a balance between responsive streaming
+# and CPU efficiency. Lower values increase responsiveness but consume more CPU.
+STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -351,7 +359,21 @@ def _process_buffer(
     lines: list[str],
     output_handler: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Process complete lines from buffer, returning remainder."""
+    """Process complete lines from buffer, returning remainder.
+
+    This function extracts complete lines (terminated by newlines) from the buffer,
+    appending each line to the `lines` list IN-PLACE and optionally calling
+    `output_handler` for each line. The remaining incomplete line (if any) is
+    returned for subsequent buffering.
+
+    Args:
+        buffer: Input buffer potentially containing newline-terminated lines.
+        lines: List to append complete lines to (modified in-place).
+        output_handler: Optional callback invoked for each complete line.
+
+    Returns:
+        Remaining buffer content after the last newline (may be empty string).
+    """
     while "\n" in buffer:
         line, buffer = buffer.split("\n", 1)
         lines.append(line)
@@ -424,6 +446,17 @@ def claude_exec_streaming(
     if not shutil.which(args[0]):
         raise FileNotFoundError(f"Command not found: {args[0]}")
 
+    # Sanitize args to prevent shell injection via scrub_cli_text.
+    # This mirrors run_cmd's sanitize_args=True behavior for consistency.
+    sanitized_args = [scrub_cli_text(arg) for arg in args]
+    if args != sanitized_args:
+        logger.debug(
+            "Sanitized %d args before Popen (original vs sanitized): %s -> %s",
+            sum(1 for a, s in zip(args, sanitized_args) if a != s),
+            args,
+            sanitized_args,
+        )
+
     # Resolve timeout - use parameter, then environment variable, then None (no timeout)
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
     start_time = time.monotonic()
@@ -432,12 +465,13 @@ def claude_exec_streaming(
     env["PYTHONUNBUFFERED"] = "1"
 
     def default_output_handler(line: str) -> None:
-        print(f"  │ {line}", flush=True)
+        # Simple print for default handler; callers provide their own formatting via on_output
+        print(line, flush=True)
 
     output_handler = on_output or default_output_handler
 
     proc = subprocess.Popen(
-        args,
+        sanitized_args,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -456,12 +490,13 @@ def claude_exec_streaming(
             proc.stdin.write(prompt)
             proc.stdin.close()
         except BrokenPipeError:
-            # Process terminated before reading input - this is an error condition
+            # Process terminated before reading input - this is an error condition.
+            # Log detailed diagnostic info for debugging, but keep user message simple.
             logger.error(
                 "BrokenPipeError: Claude process terminated before reading input "
-                "(prompt_length=%d, args=%s)",
+                "(prompt_length=%d, command=%s)",
                 len(prompt),
-                args,
+                sanitized_args[0],  # Log only executable name, not full args
             )
             proc.wait()
             # Try to capture any stderr the process wrote before dying
@@ -478,15 +513,13 @@ def claude_exec_streaming(
                 proc.stderr.close()
             if proc.stdout:
                 proc.stdout.close()
-            error_msg = (
-                f"Process terminated before reading input (BrokenPipeError). "
-                f"Stderr: {captured_stderr}"
-                if captured_stderr
-                else "Process terminated before reading input (BrokenPipeError)"
-            )
+            # User-facing error message - simple and actionable
+            error_msg = "Claude process terminated unexpectedly before reading input"
+            if captured_stderr:
+                error_msg = f"{error_msg}. Stderr: {captured_stderr}"
             raise subprocess.CalledProcessError(
                 proc.returncode or -1,
-                args,
+                sanitized_args,
                 output="".encode(),
                 stderr=error_msg.encode(),
             )
@@ -542,7 +575,7 @@ def claude_exec_streaming(
                     proc.stdout.close()
                 if proc.stderr:
                     proc.stderr.close()
-                exc = subprocess.TimeoutExpired(args, effective_timeout)
+                exc = subprocess.TimeoutExpired(sanitized_args, effective_timeout)
                 exc.stdout = stdout_so_far.encode()
                 exc.stderr = stderr_so_far.encode()
                 raise exc
@@ -554,7 +587,9 @@ def claude_exec_streaming(
             break
 
         try:
-            readable, _, _ = select.select(readable_fds, [], [], 0.1)
+            readable, _, _ = select.select(
+                readable_fds, [], [], STREAMING_SELECT_TIMEOUT_SECONDS
+            )
         except (ValueError, OSError) as e:
             # EINTR can be retried (interrupted by signal)
             if getattr(e, "errno", None) == errno.EINTR:
@@ -582,7 +617,7 @@ def claude_exec_streaming(
 
         for fd in readable:
             try:
-                chunk = fd.read(4096)
+                chunk = fd.read(STREAMING_READ_CHUNK_SIZE)
                 if not chunk:
                     continue
                 if fd == proc.stdout:
@@ -612,6 +647,9 @@ def claude_exec_streaming(
                     f"  [WARNING] I/O error on {fd_name} - some output may be missing",
                     flush=True,
                 )
+                # Remove the fd from further reading to avoid repeated errors
+                if fd in readable_fds:
+                    readable_fds.remove(fd)
 
         if ret is not None and not readable:
             break
@@ -649,7 +687,7 @@ def claude_exec_streaming(
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
             proc.returncode,
-            args,
+            sanitized_args,
             output=stdout_text.encode(),
             stderr=stderr_text.encode(),
         )
