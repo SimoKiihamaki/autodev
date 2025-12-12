@@ -133,25 +133,17 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
     """Extract error details from CalledProcessError using stderr only.
 
-    BREAKING CHANGE: This function intentionally does NOT fall back to stdout
-    when stderr is empty. This design decision prevents sensitive model output
-    (secrets, PII, tokens) from appearing in error messages and logs.
+    Returns stderr content if available; otherwise returns "exit code N".
+    Stdout is never included to prevent sensitive model output from appearing
+    in error messages.
 
-    Previous implementations in this codebase fell back to stdout when stderr
-    was empty. The change to stderr-only ensures error messages come from the
-    process's error stream, not from potentially sensitive output.
-
-    Code that previously received stdout content in error details will now
-    receive "exit code N" instead. Callers who need stdout content should access
-    the exception's `output` or `stdout` attribute directly after appropriate
-    sanitization.
+    For migration notes on the stderr-only behavior change, see CHANGELOG.md.
 
     Args:
         exc: The CalledProcessError exception to extract details from.
 
     Returns:
-        A string containing stderr content if available, otherwise a simple
-        "exit code N" fallback. Never includes stdout content.
+        A string containing stderr content if available, otherwise "exit code N".
     """
     stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or "").strip()

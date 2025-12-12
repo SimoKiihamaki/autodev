@@ -10,7 +10,6 @@ import select
 import subprocess
 import sys
 import time
-from contextlib import suppress
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -41,6 +40,12 @@ RATE_LIMIT_JITTER_MAX = 3
 RATE_LIMIT_MIN_SLEEP_SECONDS = 5
 RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
+
+# Timeout for process cleanup operations (waiting after kill(), draining stderr).
+# Used throughout the streaming implementation to prevent indefinite hangs during
+# error recovery. This is distinct from execution timeout (how long to let the
+# command run) - cleanup timeout bounds how long we wait for graceful termination.
+PROCESS_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 # Maximum characters of stderr to include in error messages to prevent
 # excessively long exception messages. Stderr can contain binary data or
@@ -139,6 +144,7 @@ def _sanitize_stderr_for_exception(stderr: str, max_chars: int) -> str:
 # The default 4KB chunk size balances memory usage with system call overhead
 # for typical streaming scenarios.
 _raw_chunk_size = os.getenv("AUTO_PRD_STREAMING_CHUNK_SIZE")
+_chunk_size_val: int | None = None  # Initialize before try block for clean deletion
 if _raw_chunk_size is None:
     STREAMING_READ_CHUNK_SIZE = 4096
 else:
@@ -163,6 +169,7 @@ else:
 # The default 100ms timeout provides a balance between responsive streaming
 # and CPU efficiency. Lower values increase responsiveness but consume more CPU.
 _raw_poll_timeout = os.getenv("AUTO_PRD_STREAMING_POLL_TIMEOUT")
+_timeout_val: float | None = None  # Initialize before try block for clean deletion
 if _raw_poll_timeout is None:
     STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 else:
@@ -184,17 +191,8 @@ else:
         STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
 # Clean up module-level temporaries to avoid polluting namespace.
-# Note: _chunk_size_val and _timeout_val are only defined when:
-# - The environment variable is set (not None), AND
-# - The int()/float() parsing succeeds.
-# If the env var is unset or parsing fails, the variable won't be defined.
-# We use contextlib.suppress(NameError) to unconditionally attempt deletion,
-# which is cleaner than try/except blocks and handles all cases uniformly.
-del _raw_chunk_size, _raw_poll_timeout
-with suppress(NameError):
-    del _chunk_size_val
-with suppress(NameError):
-    del _timeout_val
+# Variables are initialized to None above so they always exist for deletion.
+del _raw_chunk_size, _raw_poll_timeout, _chunk_size_val, _timeout_val
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -620,6 +618,33 @@ def _process_buffer(
     return buffer
 
 
+def _should_exit_streaming_loop(process_exited: bool, fds_to_check: list[Any]) -> bool:
+    """Determine if the streaming loop should exit.
+
+    The streaming loop should exit when BOTH conditions are met:
+    1. The subprocess has exited (process_exited is True)
+    2. There are no more file descriptors with potential data (fds_to_check is empty)
+
+    This helper consolidates the termination logic that appears twice in the
+    streaming loop:
+    - Check #1 (before select): Uses readable_fds (fds to pass to select)
+    - Check #2 (after select): Uses readable (fds that select reported as ready)
+
+    Both checks use the same logic but operate on different fd lists because:
+    - Check #1 catches when ALL fds reached EOF in previous iterations
+    - Check #2 catches when remaining fds reach EOF in the current iteration
+
+    Args:
+        process_exited: True if proc.poll() returned a non-None value.
+        fds_to_check: List of file descriptors to check. Empty list triggers exit
+            when combined with process_exited=True.
+
+    Returns:
+        True if the loop should exit, False to continue.
+    """
+    return process_exited and not fds_to_check
+
+
 def _drain_fds_best_effort(
     fds: list[Any],
     proc_stdout: IO[str] | None,
@@ -673,7 +698,7 @@ def _drain_fds_best_effort(
 
 def _cleanup_failed_process(
     proc: subprocess.Popen[str],
-    wait_timeout: float = 5.0,
+    wait_timeout: float = PROCESS_CLEANUP_TIMEOUT_SECONDS,
     capture_stderr: bool = True,
 ) -> str:
     """Clean up a failed subprocess and optionally capture stderr.
@@ -710,7 +735,7 @@ def _cleanup_failed_process(
         except subprocess.TimeoutExpired:
             proc.kill()
             try:
-                proc.wait(timeout=5.0)
+                proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Process did not terminate after kill() and 5s wait; "
@@ -874,7 +899,7 @@ def claude_exec_streaming(
     if not proc.stdin:
         proc.kill()
         try:
-            proc.wait(timeout=5.0)
+            proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Process did not terminate after kill signal within timeout; "
@@ -922,7 +947,7 @@ def claude_exec_streaming(
             except subprocess.TimeoutExpired:
                 proc.kill()
                 try:
-                    proc.wait(timeout=5.0)
+                    proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
                 except subprocess.TimeoutExpired:
                     logger.warning(
                         "Process did not terminate after kill() and 5s wait; "
@@ -976,6 +1001,8 @@ def claude_exec_streaming(
         # the subprocess module or OS (e.g., zombie process, kernel bug).
         if proc.returncode is None:
             poll_result = proc.poll()
+            # Log detailed diagnostics for debugging - these help diagnose the issue
+            # but are too technical for end users
             logger.error(
                 "UNEXPECTED SUBPROCESS STATE: returncode is None after proc.wait(). "
                 "This suggests a deeper issue with the subprocess module or OS. "
@@ -984,15 +1011,10 @@ def claude_exec_streaming(
                 getattr(proc, "pid", None),
                 poll_result,
             )
-            msg = (
-                f"UNEXPECTED SUBPROCESS STATE: Process did not terminate after proc.wait(); "
-                f"returncode is None (command: {sanitized_args[0]}, pid: {getattr(proc, 'pid', None)}, "
-                f"poll(): {poll_result}). This indicates a possible bug in the subprocess module or OS. "
-                f"Please report this issue at https://github.com/SimoKiihamaki/autodev/issues with: "
-                f"1) This error message, 2) OS name and version, 3) Python version (`python --version`), "
-                f"4) Any antivirus/security software running."
-            )
-            raise RuntimeError(msg) from None
+            # User-facing message is simple; detailed diagnostics are in the log above
+            raise RuntimeError(
+                "Subprocess did not terminate as expected. Please try again or contact support."
+            ) from None
         raise subprocess.CalledProcessError(
             proc.returncode,
             sanitized_args,
@@ -1012,7 +1034,7 @@ def claude_exec_streaming(
         # but include defensive cleanup for consistency with other error handlers.
         proc.kill()
         try:
-            proc.wait(timeout=5.0)
+            proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Process did not terminate after kill signal within timeout; "
@@ -1067,27 +1089,30 @@ def claude_exec_streaming(
                     all_stderr.append(stderr_buffer)
                 stdout_so_far = "\n".join(all_stdout)
                 stderr_so_far = "\n".join(all_stderr)
-                # Log timeout metadata only - avoid logging actual stdout/stderr content
-                # to prevent persisting potentially sensitive model output (secrets, PII)
-                # in log files. The partial output is preserved in the exception for
-                # immediate inspection but should not be written to persistent logs.
-                logger.error(
-                    "Claude execution timed out after %.1f seconds (limit: %d). "
-                    "Partial output: %d stdout lines (%d chars), %d stderr lines (%d chars)",
-                    elapsed,
-                    effective_timeout,
-                    len(stdout_lines),
-                    len(stdout_so_far),
-                    len(stderr_lines),
-                    len(stderr_so_far),
-                )
                 # Check if process already exited between timeout check and kill.
                 # This handles a subtle race condition: the process may have completed
                 # naturally in the time between checking elapsed >= timeout and now.
+                # We check this BEFORE logging the error to avoid misleading error
+                # messages when the process completes naturally just as timeout is reached.
                 if proc.poll() is None:
+                    # Process is still running - log timeout error and terminate it.
+                    # Log timeout metadata only - avoid logging actual stdout/stderr content
+                    # to prevent persisting potentially sensitive model output (secrets, PII)
+                    # in log files. The partial output is preserved in the exception for
+                    # immediate inspection but should not be written to persistent logs.
+                    logger.error(
+                        "Claude execution timed out after %.1f seconds (limit: %d). "
+                        "Partial output: %d stdout lines (%d chars), %d stderr lines (%d chars)",
+                        elapsed,
+                        effective_timeout,
+                        len(stdout_lines),
+                        len(stdout_so_far),
+                        len(stderr_lines),
+                        len(stderr_so_far),
+                    )
                     proc.kill()
                     try:
-                        proc.wait(timeout=5.0)
+                        proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
                     except subprocess.TimeoutExpired:
                         logger.warning(
                             "Process did not terminate after kill signal within timeout; "
@@ -1139,6 +1164,7 @@ def claude_exec_streaming(
                     return stdout_so_far, stderr_so_far
 
         ret = proc.poll()
+        process_exited = ret is not None
         # Exclude fds that have reached EOF - they would cause select to return
         # immediately with nothing to read, spinning the loop forever
         readable_fds = [
@@ -1147,17 +1173,9 @@ def claude_exec_streaming(
             if fd is not None and fd not in eof_fds
         ]
 
-        # Termination check #1 (before select):
-        # Checks `readable_fds` - the list of fds we *would* pass to select(), built
-        # by filtering out fds that have already reached EOF in previous iterations.
-        # Exit when the process has finished (ret is not None) AND there are no fds
-        # left to poll (all have previously reached EOF). This prevents calling
-        # select() with an empty fd list (which would be a no-op or error).
-        #
-        # Relationship to check #2: This check handles the case where ALL fds reached
-        # EOF in previous loop iterations. Check #2 handles the case where fds reach
-        # EOF during the current iteration (after select() and read() calls).
-        if ret is not None and not readable_fds:
+        # Termination check #1 (before select): Exit if process finished and all fds
+        # reached EOF in previous iterations. See _should_exit_streaming_loop for details.
+        if _should_exit_streaming_loop(process_exited, readable_fds):
             break
 
         try:
@@ -1184,7 +1202,7 @@ def claude_exec_streaming(
             )
             proc.kill()
             try:
-                proc.wait(timeout=5.0)
+                proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Process did not terminate after kill signal within timeout; "
@@ -1222,7 +1240,7 @@ def claude_exec_streaming(
             )
             proc.kill()
             try:
-                proc.wait(timeout=5.0)
+                proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Process did not terminate after kill signal within timeout; "
@@ -1327,19 +1345,9 @@ def claude_exec_streaming(
                 )
                 eof_fds.add(fd)
 
-        # Termination check #2 (after processing readable fds):
-        # Checks `readable` - the list of fds that select() reported as having data.
-        # Exit when the process has finished AND select() returned no readable fds.
-        #
-        # Why this differs from check #1:
-        # - Check #1 uses `readable_fds` (fds we passed TO select, excluding prior EOFs)
-        # - Check #2 uses `readable` (fds select RETURNED as having data available)
-        #
-        # This check catches the case where readable_fds was non-empty entering select(),
-        # but during this iteration's read() calls, all remaining fds reached EOF
-        # (returning empty strings) and were added to eof_fds. When that happens,
-        # select() returns empty because no fds have data, and we can exit cleanly.
-        if ret is not None and not readable:
+        # Termination check #2 (after processing readable fds): Exit if process finished
+        # and select() returned no readable fds. See _should_exit_streaming_loop for details.
+        if _should_exit_streaming_loop(process_exited, readable):
             break
 
     # Flush remaining buffers.

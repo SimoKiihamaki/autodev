@@ -6,6 +6,7 @@ import os
 import random
 import subprocess
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Optional
 
@@ -36,22 +37,16 @@ JITTER_MAX_SECONDS = 3.0
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
 
-# Module-level set to track comment_ids that have already been warned about for
-# malformed data. This prevents duplicate warnings across multiple invocations of
-# format_unresolved_bullets() for the same persistent API bug or malformed entry.
+# Module-level LRU cache to track comment_ids that have already been warned about
+# for malformed data. This prevents duplicate warnings across multiple invocations
+# of format_unresolved_bullets() for the same persistent API bug or malformed entry.
 # Note: This is intentionally session-scoped (module-level), not call-scoped,
 # to avoid log spam when the same malformed comment appears in every poll cycle.
 #
-# Memory consideration: This set has a size limit to prevent unbounded growth.
-# While the expected number of malformed comments per PR is small (typically <10)
-# and the process lifetime is bounded (single PR review session), we apply a
-# conservative limit as defense-in-depth. If the limit is reached, the oldest
-# entries are not evicted (that would require an OrderedDict/LRU cache), but
-# we stop adding new entries and log a warning. This is acceptable because:
-# 1. Reaching the limit indicates an abnormal condition worth investigating
-# 2. Duplicate warnings for entries beyond the limit are preferable to complexity
-# 3. The limit (1000) is far beyond any realistic scenario
-_warned_malformed_comment_ids: set[str] = set()
+# Uses OrderedDict as a bounded LRU cache: when max size is reached, oldest entries
+# are evicted to make room for new ones. This maintains deduplication behavior while
+# preventing unbounded memory growth in long-running processes.
+_warned_malformed_comment_ids: OrderedDict[str, None] = OrderedDict()
 _WARNED_MALFORMED_MAX_SIZE = 1000
 
 # Truncation limits for error messages to balance detail with readability.
@@ -435,6 +430,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     logger.debug(
                         "Review runner stderr (debug only): %s", sanitized_debug_stderr
                     )
+                # Log counter reset at debug level to help track intermittent failures
+                if consecutive_failures != 0:
+                    logger.debug(
+                        "Resetting consecutive_failures counter from %d to 0 "
+                        "after successful execution",
+                        consecutive_failures,
+                    )
                 consecutive_failures = 0
                 # Determine completion status message (independent of streaming mode)
                 if not (stderr and stderr.strip()):
@@ -505,6 +507,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 logger.error("Review runner failed due to memory exhaustion: %s", exc)
                 print("\nFatal error: Out of memory", flush=True)
                 raise
+            # IMPORTANT: Exception handler ordering is critical here.
+            # Programming errors (_PROGRAMMING_ERROR_TYPES) MUST be caught before the
+            # generic `except Exception` handler to ensure bugs are never retried or
+            # masked as transient failures. Do not reorder these handlers.
             except _PROGRAMMING_ERROR_TYPES as exc:
                 # Programming errors - fail immediately, don't retry.
                 # See _PROGRAMMING_ERROR_TYPES definition for the full list and rationale.
@@ -628,29 +634,26 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
-            # Use module-level set to track which comment_ids have been warned about.
+            # Use module-level LRU cache to track which comment_ids have been warned about.
             # This prevents duplicate warnings when the same malformed entry appears
             # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
             comment_id = str(entry.get("comment_id", "unknown"))
             if comment_id not in _warned_malformed_comment_ids:
-                # Check size limit before adding to prevent unbounded memory growth.
-                # If limit is reached, log once and allow duplicate warnings rather than
-                # adding complexity of LRU eviction for an edge case.
+                # Add to LRU cache with eviction if at capacity.
+                # This maintains deduplication while preventing unbounded growth.
                 if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
-                    logger.warning(
-                        "Malformed comment ID cache at capacity (%d); "
-                        "duplicate warnings may occur for new malformed entries",
-                        _WARNED_MALFORMED_MAX_SIZE,
-                    )
-                else:
-                    _warned_malformed_comment_ids.add(comment_id)
+                    # Evict oldest entry (FIFO order in OrderedDict)
+                    _warned_malformed_comment_ids.popitem(last=False)
+                _warned_malformed_comment_ids[comment_id] = None
                 logger.warning(
                     "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
                     comment_id,
                     type(summary).__name__,
                 )
             else:
-                # Already warned about this comment_id; log at DEBUG to avoid spam
+                # Already warned about this comment_id; log at DEBUG to avoid spam.
+                # Move to end to mark as recently used (LRU behavior).
+                _warned_malformed_comment_ids.move_to_end(comment_id)
                 logger.debug(
                     "Skipping previously-warned malformed entry: comment_id=%s, type=%s",
                     comment_id,

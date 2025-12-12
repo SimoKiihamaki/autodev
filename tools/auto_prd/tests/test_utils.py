@@ -23,27 +23,11 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
     def test_uses_stderr_only_not_stdout(self) -> None:
         """Verify function uses stderr only, ignoring stdout for security reasons.
 
-        Stdout may contain model output with sensitive data (secrets, PII, tokens)
-        that should not be logged or displayed, even after sanitization.
+        This test ensures that only stderr is used in error details and stdout is
+        ignored to prevent sensitive model output (secrets, PII, tokens) from
+        appearing in error messages.
 
-        BREAKING CHANGE NOTE: This test verifies a deliberate behavior change.
-        Previously, the function fell back to stdout when stderr was empty/None:
-            text = (stderr or stdout or "").strip()
-        This was changed to use stderr-only to prevent sensitive model output from
-        being included in error messages.
-
-        MIGRATION GUIDE for existing callers:
-        - If your code previously received stdout content in error details (e.g., for
-          logging or display), you will now receive "exit code N" instead.
-        - This is intentional: stderr contains error messages while stdout may contain
-          sensitive model output that should not appear in logs.
-        - If you need stdout content for specific use cases:
-          1. Access it directly via exc.output or exc.stdout
-          2. Apply appropriate sanitization (see _sanitize_stderr_for_exception)
-          3. Only log at DEBUG level with explicit opt-in
-
-        BACKWARD COMPATIBILITY: Code that only used stderr content is unaffected.
-        Code that relied on stdout fallback will see changed behavior.
+        For migration notes on this behavior change, see CHANGELOG.md.
         """
         exc = subprocess.CalledProcessError(
             1,
