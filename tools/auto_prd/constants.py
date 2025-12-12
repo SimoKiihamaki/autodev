@@ -89,7 +89,20 @@ COPILOT_REVIEW_LOGINS = {
     }
 }
 
-REVIEW_BOT_LOGINS = CODERABBIT_REVIEW_LOGINS | COPILOT_REVIEW_LOGINS
+# OpenAI Codex review bot logins
+CODEX_REVIEW_LOGINS = {
+    login.lower()
+    for login in {
+        "chatgpt-codex-connector",
+        "chatgpt-codex-connector[bot]",
+        "codex",
+        "codex[bot]",
+    }
+}
+
+REVIEW_BOT_LOGINS = (
+    CODERABBIT_REVIEW_LOGINS | COPILOT_REVIEW_LOGINS | CODEX_REVIEW_LOGINS
+)
 REVIEW_FALLBACK_MENTION = "@reviewer"
 
 _ZSH_LOCK = threading.Lock()

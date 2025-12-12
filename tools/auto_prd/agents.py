@@ -611,14 +611,23 @@ def claude_exec_streaming(
         if effective_timeout is not None:
             elapsed = time.monotonic() - start_time
             if elapsed > effective_timeout:
-                stdout_so_far = "\n".join(stdout_lines)
-                stderr_so_far = "\n".join(stderr_lines)
+                # Include any partial data still in buffers (unterminated lines)
+                # to preserve output that arrived before timeout
+                all_stdout = stdout_lines.copy()
+                if stdout_buffer:
+                    all_stdout.append(stdout_buffer)
+                all_stderr = stderr_lines.copy()
+                if stderr_buffer:
+                    all_stderr.append(stderr_buffer)
+                stdout_so_far = "\n".join(all_stdout)
+                stderr_so_far = "\n".join(all_stderr)
                 logger.error(
                     "Claude execution timed out after %d seconds (limit: %d). "
-                    "Partial stdout (%d lines): %s",
+                    "Partial stdout (%d lines, %d buffered chars): %s",
                     int(elapsed),
                     effective_timeout,
                     len(stdout_lines),
+                    len(stdout_buffer),
                     (
                         stdout_so_far[:2000]
                         if len(stdout_so_far) > 2000
