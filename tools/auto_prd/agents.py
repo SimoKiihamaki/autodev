@@ -738,17 +738,21 @@ def _cleanup_failed_process(
             except OSError:
                 pass  # Stdin may already be closed or in an error state
 
-        # Wait for process with bounded timeout, kill if necessary
+        # Wait for process with bounded timeout, kill if necessary.
+        # Note: We use the same wait_timeout for both the initial wait and post-kill wait.
+        # This is intentional: the parameter controls how long we're willing to wait for
+        # process termination in this cleanup context.
         try:
             proc.wait(timeout=wait_timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             try:
-                proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
+                proc.wait(timeout=wait_timeout)
             except subprocess.TimeoutExpired:
                 logger.warning(
-                    "Process did not terminate after kill() and 5s wait; "
+                    "Process did not terminate after kill() and %.1fs wait; "
                     "possible zombie process (pid=%s)",
+                    wait_timeout,
                     proc.pid,
                 )
 
@@ -942,70 +946,13 @@ def claude_exec_streaming(
             len(prompt),
             sanitized_args[0],  # Log only executable name, not full args
         )
-        # Wrap entire cleanup in try/finally to ensure all fds are closed even if
-        # an exception occurs during cleanup (e.g., proc.wait() hangs, select fails).
-        captured_stderr = ""
-        try:
-            # Close stdin to release the file descriptor - even though write failed,
-            # the pipe may still be open and needs explicit cleanup.
-            try:
-                proc.stdin.close()
-            except OSError:
-                pass  # Stdin may already be closed or in an error state
-            # Don't wait forever: stdin can break even if the process is still running.
-            # Use a fixed 5s timeout with kill fallback to prevent indefinite hangs.
-            # Note: We use a fixed timeout (not derived from effective_timeout) because
-            # cleanup timeout serves a different purpose than execution timeout:
-            # - Execution timeout: how long to allow the command to run
-            # - Cleanup timeout: how long to wait for graceful termination after an error
-            # Even with a very short execution timeout (e.g., 1s), we want to give the
-            # process time to write error output and clean up resources.
-            wait_timeout = 5.0
-            try:
-                proc.wait(timeout=wait_timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                try:
-                    proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
-                except subprocess.TimeoutExpired:
-                    logger.warning(
-                        "Process did not terminate after kill() and 5s wait; "
-                        "possible zombie process (pid=%s)",
-                        proc.pid,
-                    )
-            # Try to capture any stderr the process wrote before dying.
-            # Use select with a short timeout to avoid hanging if stderr is in an
-            # unexpected state (e.g., kernel issues, pipe anomalies).
-            if proc.stderr:
-                try:
-                    # Brief timeout (0.5s) - process has exited so any buffered data
-                    # should be immediately available. If select times out, there's
-                    # likely no data or the fd is in an unexpected state.
-                    readable, _, _ = select.select([proc.stderr], [], [], 0.5)
-                    if readable:
-                        captured_stderr = proc.stderr.read() or ""
-                    else:
-                        logger.debug(
-                            "select() timed out reading stderr after BrokenPipeError - "
-                            "no data available or fd in unexpected state"
-                        )
-                except (OSError, IOError, ValueError) as stderr_exc:
-                    # OSError/IOError: fd already closed, pipe broken, or other I/O failures
-                    # ValueError: select() got invalid fd, or read() on closed file
-                    logger.warning(
-                        "Failed to capture stderr after BrokenPipeError: %s (%s)",
-                        stderr_exc,
-                        type(stderr_exc).__name__,
-                    )
-        finally:
-            # Defensive cleanup - ensure all fds are closed regardless of what
-            # happened above. This prevents resource leaks if any step failed.
-            for fd in (proc.stdin, proc.stdout, proc.stderr):
-                if fd and not fd.closed:
-                    try:
-                        fd.close()
-                    except OSError:
-                        pass  # Best effort - fd may already be in error state
+        # Use the shared cleanup helper to handle process termination and stderr capture.
+        # This consolidates the deeply nested try/except/finally logic into a single,
+        # well-tested function that handles stdin close, wait with timeout, kill if
+        # necessary, stderr capture, and fd cleanup.
+        captured_stderr = _cleanup_failed_process(
+            proc, wait_timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS, capture_stderr=True
+        )
         # User-facing error message - simple and actionable
         error_msg = "Claude process terminated unexpectedly before reading input"
         if captured_stderr:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import random
 import subprocess
+import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -46,8 +47,12 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Uses OrderedDict as a bounded LRU cache: when max size is reached, oldest entries
 # are evicted to make room for new ones. This maintains deduplication behavior while
 # preventing unbounded memory growth in long-running processes.
+#
+# Thread safety: Protected by _WARNED_MALFORMED_LOCK to prevent race conditions
+# during concurrent access from multiple threads (e.g., parallel format_unresolved_bullets calls).
 _warned_malformed_comment_ids: OrderedDict[str, None] = OrderedDict()
 _WARNED_MALFORMED_MAX_SIZE = 1000
+_WARNED_MALFORMED_LOCK = threading.Lock()
 
 # Truncation limits for error messages to balance detail with readability.
 # ERROR_DETAIL_TRUNCATE_CHARS: Max chars for error detail shown to user (brief summary)
@@ -81,7 +86,11 @@ _PROGRAMMING_ERROR_TYPES: tuple[type[Exception], ...] = (
 # Box-drawing characters for streaming output formatting.
 # Cached at module level after first access for performance. The environment
 # variable is read once on first call, similar to STREAMING_READ_CHUNK_SIZE.
+#
+# Thread safety: Protected by _BOX_CHARS_LOCK to prevent race conditions during
+# concurrent initialization from multiple threads (similar to _ZSH_LOCK in constants.py).
 _BOX_CHARS_CACHE: tuple[str, str] | None = None
+_BOX_CHARS_LOCK = threading.Lock()
 
 
 def _get_box_chars() -> tuple[str, str]:
@@ -93,16 +102,20 @@ def _get_box_chars() -> tuple[str, str]:
     The environment variable is read once on first call and cached for the
     session. This matches the behavior of other streaming constants (e.g.,
     STREAMING_READ_CHUNK_SIZE) which are read at module import time.
+
+    Thread-safe: Uses a lock to prevent race conditions during concurrent
+    initialization (following the pattern established by _ZSH_LOCK in constants.py).
     """
     global _BOX_CHARS_CACHE
-    if _BOX_CHARS_CACHE is None:
-        use_ascii = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        _BOX_CHARS_CACHE = ("-", "|") if use_ascii else ("─", "│")
-    return _BOX_CHARS_CACHE
+    with _BOX_CHARS_LOCK:
+        if _BOX_CHARS_CACHE is None:
+            use_ascii = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            _BOX_CHARS_CACHE = ("-", "|") if use_ascii else ("─", "│")
+        return _BOX_CHARS_CACHE
 
 
 _JITTER_RNG = random.Random(
@@ -655,20 +668,28 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
             # This prevents duplicate warnings when the same malformed entry appears
             # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
             comment_id = str(entry.get("comment_id", "unknown"))
-            if comment_id not in _warned_malformed_comment_ids:
-                # Add to LRU cache with eviction if at capacity.
-                # This maintains deduplication while preventing unbounded growth.
-                #
-                # Eviction order: We evict the OLDEST entry (FIFO via popitem(last=False))
-                # BEFORE inserting the new entry. This ensures the cache never exceeds
-                # _WARNED_MALFORMED_MAX_SIZE entries. The sequence is:
-                #   1. If at capacity (len >= max), remove oldest (popitem)
-                #   2. Add new entry (dict assignment)
-                # After this sequence, len == max (not max + 1) because eviction precedes insertion.
-                if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
-                    # Evict oldest entry (FIFO order in OrderedDict)
-                    _warned_malformed_comment_ids.popitem(last=False)
-                _warned_malformed_comment_ids[comment_id] = None
+            # Thread-safe access to the shared cache. The lock protects the check-then-act
+            # sequence (membership test, eviction, insertion) from race conditions.
+            with _WARNED_MALFORMED_LOCK:
+                if comment_id not in _warned_malformed_comment_ids:
+                    # Add to LRU cache with eviction if at capacity.
+                    # This maintains deduplication while preventing unbounded growth.
+                    #
+                    # Eviction order: We evict the OLDEST entry (FIFO via popitem(last=False))
+                    # BEFORE inserting the new entry. This ensures the cache never exceeds
+                    # _WARNED_MALFORMED_MAX_SIZE entries. The sequence is:
+                    #   1. If at capacity (len >= max), remove oldest (popitem)
+                    #   2. Add new entry (dict assignment)
+                    # After this sequence, len == max (not max + 1) because eviction precedes insertion.
+                    if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
+                        # Evict oldest entry (FIFO order in OrderedDict)
+                        _warned_malformed_comment_ids.popitem(last=False)
+                    _warned_malformed_comment_ids[comment_id] = None
+                    should_warn = True
+                else:
+                    should_warn = False
+            # Log outside the lock to minimize lock hold time
+            if should_warn:
                 logger.warning(
                     "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
                     comment_id,
