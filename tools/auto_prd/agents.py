@@ -62,9 +62,15 @@ _SENSITIVE_STDERR_PATTERNS = [
         ),
         r"\1=<REDACTED>",
     ),
-    # File paths that might reveal usernames or directory structure
+    # File paths that might reveal usernames or directory structure (Unix)
     (re.compile(r"/home/[a-zA-Z0-9_\-]+/"), "/home/<USER>/"),
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
+    # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
+    # Handles both backslash and forward slash path separators
+    (
+        re.compile(r"[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
+        r"<DRIVE>:\\Users\\<USER>\\",
+    ),
 ]
 
 
@@ -358,23 +364,16 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 )
                 time.sleep(sleep_for)
                 continue
-            # Log at WARNING since we continue execution without CodeRabbit findings.
-            # ERROR would imply we're halting, but we gracefully degrade here.
-            logger.warning(
-                "CodeRabbit prompt-only run failed after %d attempts: %s. "
-                "Continuing without CodeRabbit findings - manual security review recommended.",
+            # Log at INFO level since this is a soft failure - CodeRabbit is unavailable
+            # but we continue execution. This allows filtering via log level while still
+            # informing users who have INFO logging enabled. WARNING would be appropriate
+            # if this indicated a problem requiring attention, but CodeRabbit unavailability
+            # is often expected (e.g., not configured, rate limited, service unavailable).
+            logger.info(
+                "CodeRabbit analysis unavailable after %d attempts: %s. "
+                "Continuing without CodeRabbit findings - manual review recommended.",
                 attempts,
                 msg or exc,
-            )
-            # Notify user that CodeRabbit analysis failed - they should be aware
-            # that security findings may be missing from automated review
-            print(
-                f"\nWarning: CodeRabbit analysis failed: {msg or exc}",
-                flush=True,
-            )
-            print(
-                "Continuing without CodeRabbit findings - manual review recommended.",
-                flush=True,
             )
             return ""
 
@@ -585,9 +584,11 @@ def _drain_fds_best_effort(
                     stdout_buffer += remaining
                 elif fd == proc_stderr:
                     stderr_buffer += remaining
-        except (OSError, IOError) as drain_exc:
+        except (OSError, IOError, ValueError) as drain_exc:
             # Expected exceptions during best-effort drain operations:
             # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
+            # - ValueError: fd invalid or in an unusable state (e.g., closed fd passed
+            #   from select() error recovery, or fd was closed between select() and read())
             # Any other exceptions (e.g., TypeError, AttributeError) would indicate
             # a programming error and should propagate up.
             #
@@ -660,7 +661,10 @@ def claude_exec_streaming(
         subprocess.TimeoutExpired: If execution exceeds the timeout
     """
     # Platform check - fcntl is Unix-only
-    if fcntl is None or sys.platform == "win32":
+    # Note: We only check fcntl is None, not sys.platform == "win32" separately.
+    # On Windows, fcntl will always be None due to the import guard at module top,
+    # so checking fcntl is None covers both "fcntl unavailable" and "Windows" cases.
+    if fcntl is None:
         raise OSError(
             "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
             "Use claude_exec on Windows systems."
@@ -687,8 +691,6 @@ def claude_exec_streaming(
 
     # Resolve timeout - use parameter, then environment variable, then None (no timeout)
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
-
-    output_handler = on_output
 
     # Use popen_streaming from command.py for policy-compliant subprocess spawning.
     # This centralizes argument sanitization, validation, and environment setup.
@@ -903,7 +905,7 @@ def claude_exec_streaming(
                 if fd == proc.stdout:
                     stdout_buffer += chunk
                     stdout_buffer = _process_buffer(
-                        stdout_buffer, stdout_lines, output_handler
+                        stdout_buffer, stdout_lines, on_output
                     )
                 elif fd == proc.stderr:
                     stderr_buffer += chunk
@@ -950,8 +952,8 @@ def claude_exec_streaming(
     # complete final line since the process has exited and no more data will arrive.
     if stdout_buffer:
         stdout_lines.append(stdout_buffer)
-        if output_handler:
-            output_handler(stdout_buffer)
+        if on_output:
+            on_output(stdout_buffer)
     if stderr_buffer:
         stderr_lines.append(stderr_buffer)
 
@@ -971,10 +973,14 @@ def claude_exec_streaming(
 
     # Surface any I/O or select errors that occurred during streaming
     if io_errors:
+        # Format errors with fd_name context for easier debugging
+        formatted_errors = [
+            f"{fd_name} (errno={errno}): {err}" for fd_name, errno, err in io_errors
+        ]
         logger.error(
-            "Claude execution completed with %d I/O errors - output may be incomplete: %s",
+            "Claude execution completed with %d I/O errors - output may be incomplete:\n%s",
             len(io_errors),
-            io_errors,
+            "\n".join(formatted_errors),
         )
     if select_error_occurred:
         logger.error(

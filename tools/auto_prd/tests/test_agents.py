@@ -264,9 +264,14 @@ class ClaudeExecStreamingTests(unittest.TestCase):
             )
         self.assertIn("requires allow_unsafe_execution=True", str(context.exception))
 
-    @unittest.skipIf(sys.platform == "win32", "fcntl not available on Windows")
-    def test_os_error_on_windows_platform(self):
-        """Test that OSError is raised when fcntl is not available."""
+    def test_os_error_when_fcntl_unavailable(self):
+        """Test that OSError is raised when fcntl is not available.
+
+        This test verifies the error handling path when fcntl is None, which occurs
+        on Windows or any platform where fcntl is unavailable. We patch fcntl to None
+        to test this code path on all platforms (including Unix where fcntl is normally
+        available).
+        """
         with patch("tools.auto_prd.agents.fcntl", None):
             with self.assertRaises(OSError) as context:
                 claude_exec_streaming(

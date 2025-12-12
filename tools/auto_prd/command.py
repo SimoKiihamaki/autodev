@@ -630,16 +630,17 @@ def popen_streaming(
         # We use sanitize_args() to redact both original and sanitized versions.
         redacted_cmd = sanitize_args(cmd)
         redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
-        # Note: strict=True is safe here because sanitized_cmd is created via list
-        # comprehension over cmd (line 625), guaranteeing identical lengths. The
-        # strict parameter serves as an assertion - if lengths ever differ due to
-        # a future code change, the ValueError will surface the bug immediately
-        # rather than silently producing incorrect diff output.
+        # Explicit length check for Python 3.9 compatibility (strict=True requires 3.10+).
+        # sanitized_cmd is created via list comprehension over cmd (line 625), guaranteeing
+        # identical lengths. This assertion surfaces bugs if lengths ever differ due to
+        # a future code change, rather than silently producing incorrect diff output.
+        if len(redacted_cmd) != len(redacted_sanitized_cmd):
+            raise ValueError(
+                f"Sanitization length mismatch: {len(redacted_cmd)} != {len(redacted_sanitized_cmd)}"
+            )
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
-            for i, (orig, san) in enumerate(
-                zip(redacted_cmd, redacted_sanitized_cmd, strict=True)
-            )
+            for i, (orig, san) in enumerate(zip(redacted_cmd, redacted_sanitized_cmd))
             if orig != san
         ]
         if diffs:

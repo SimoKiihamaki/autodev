@@ -39,15 +39,21 @@ STDERR_USER_TRUNCATE_CHARS = 500
 STDERR_LOG_TRUNCATE_CHARS = 2000
 
 # Box-drawing characters for streaming output formatting.
-# These can be overridden via AUTO_PRD_ASCII_OUTPUT=1 for terminal compatibility
-# (e.g., Windows, CI/CD logs, or terminals that don't support Unicode).
-#
-# IMPORTANT: This environment variable is read ONCE at module import time.
-# To use ASCII output, set AUTO_PRD_ASCII_OUTPUT=1 BEFORE importing this module.
-# Changing the environment variable after import will have no effect.
-_USE_ASCII = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in ("1", "true", "yes")
-BOX_HORIZONTAL = "-" if _USE_ASCII else "─"
-BOX_VERTICAL = "|" if _USE_ASCII else "│"
+# These are lazy-loaded via _get_box_chars() to avoid reading environment variables
+# at module import time when streaming may not be used.
+
+
+def _get_box_chars() -> tuple[str, str]:
+    """Return (horizontal, vertical) box-drawing characters.
+
+    Uses ASCII characters if AUTO_PRD_ASCII_OUTPUT is set to a truthy value
+    (1, true, yes), otherwise uses Unicode box-drawing characters.
+
+    The environment variable is read at call time, allowing runtime configuration.
+    """
+    use_ascii = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in ("1", "true", "yes")
+    return ("-", "|") if use_ascii else ("─", "│")
+
 
 _JITTER_RNG = random.Random()
 
@@ -202,8 +208,9 @@ def review_fix_loop(
         print(f"Waiting {initial_wait_minutes} minutes for bot reviews...", flush=True)
         time.sleep(initial_wait_seconds)
 
-    # Use float type from the start to avoid type inconsistency when infinite_reviews=True
-    idle_grace_seconds: float = float(max(0, idle_grace * 60))
+    # Use float type only when infinite_reviews is True (for float("inf") support);
+    # otherwise, keep as int for cleaner numeric comparisons with finite values.
+    idle_grace_seconds: float | int = max(0, idle_grace * 60)
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
@@ -275,12 +282,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             # which provides line-by-line output via the on_output callback.
             use_claude_streaming = review_runner is claude_exec
             if use_claude_streaming:
-                print(f"\n{BOX_HORIZONTAL * 60}")
+                box_h, box_v = _get_box_chars()
+                print(f"\n{box_h * 60}")
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
-                print(f"{BOX_HORIZONTAL * 60}", flush=True)
+                print(f"{box_h * 60}", flush=True)
 
-                def output_handler(line: str) -> None:
-                    print(f"  {BOX_VERTICAL} {line}", flush=True)
+                def output_handler(line: str, vert: str = box_v) -> None:
+                    print(f"  {vert} {line}", flush=True)
                     # Note: Intentionally not logging model output to avoid persisting
                     # potentially sensitive data (secrets, PII) to log files.
                     # If logging is needed for debugging specific issues, callers should
@@ -308,9 +316,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     status_msg = "Review fix completed (with warnings)"
                 # Display completion status with appropriate formatting
                 if use_claude_streaming:
-                    print(f"{BOX_HORIZONTAL * 60}")
+                    print(f"{box_h * 60}")
                     print(f"  {status_msg}")
-                    print(f"{BOX_HORIZONTAL * 60}\n", flush=True)
+                    print(f"{box_h * 60}\n", flush=True)
                 else:
                     print(status_msg, flush=True)
             except subprocess.TimeoutExpired as exc:
