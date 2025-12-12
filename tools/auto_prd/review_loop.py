@@ -676,8 +676,7 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
                 )
             else:
                 # Already warned about this comment_id; log at DEBUG to avoid spam.
-                # Move to end to mark as recently used (LRU behavior).
-                _warned_malformed_comment_ids.move_to_end(comment_id)
+                # No need to reorder - FIFO eviction is sufficient for deduplication.
                 logger.debug(
                     "Skipping previously-warned malformed entry: comment_id=%s, type=%s",
                     comment_id,
