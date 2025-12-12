@@ -42,14 +42,17 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Note: This is intentionally session-scoped (module-level), not call-scoped,
 # to avoid log spam when the same malformed comment appears in every poll cycle.
 #
-# Memory consideration: This set grows unboundedly during the process lifetime.
-# This is acceptable because:
-# 1. The expected number of malformed comments per PR is small (typically <10)
-# 2. Comment IDs are short strings (~20 chars each)
-# 3. The process lifetime for review_fix_loop is bounded (single PR review session)
-# If this tool were repurposed for long-running daemon use, consider adding either
-# a max size limit with LRU eviction, or timestamp-based expiry for old entries.
+# Memory consideration: This set has a size limit to prevent unbounded growth.
+# While the expected number of malformed comments per PR is small (typically <10)
+# and the process lifetime is bounded (single PR review session), we apply a
+# conservative limit as defense-in-depth. If the limit is reached, the oldest
+# entries are not evicted (that would require an OrderedDict/LRU cache), but
+# we stop adding new entries and log a warning. This is acceptable because:
+# 1. Reaching the limit indicates an abnormal condition worth investigating
+# 2. Duplicate warnings for entries beyond the limit are preferable to complexity
+# 3. The limit (1000) is far beyond any realistic scenario
 _warned_malformed_comment_ids: set[str] = set()
+_WARNED_MALFORMED_MAX_SIZE = 1000
 
 # Truncation limits for error messages to balance detail with readability.
 # ERROR_DETAIL_TRUNCATE_CHARS: Max chars for error detail shown to user (brief summary)
@@ -58,6 +61,27 @@ ERROR_DETAIL_TRUNCATE_CHARS = 200
 STDERR_USER_TRUNCATE_CHARS = 500
 # STDERR_LOG_TRUNCATE_CHARS: Max chars of stderr written to log files (more verbose)
 STDERR_LOG_TRUNCATE_CHARS = 2000
+
+# Programming error types that should never be retried.
+# These exceptions indicate bugs in the code rather than transient failures:
+# - AttributeError, TypeError, NameError: Classic programming mistakes
+# - KeyError: Missing dict keys often indicate API changes or data bugs
+# - RuntimeError: Indicates internal errors that won't resolve via retry
+# - AssertionError: Assertion failures indicate violated invariants
+# - ImportError: Module import issues require configuration fixes
+#
+# This tuple is defined once at module level and used in both the explicit
+# exception handler and the fallback handler for consistency. This prevents
+# the fragility of duplicating exception types in multiple places.
+_PROGRAMMING_ERROR_TYPES: tuple[type[Exception], ...] = (
+    AttributeError,
+    TypeError,
+    NameError,
+    KeyError,
+    RuntimeError,
+    AssertionError,
+    ImportError,
+)
 
 # Box-drawing characters for streaming output formatting.
 # Cached at module level after first access for performance. The environment
@@ -108,27 +132,32 @@ def _should_stop_after_failure(
 
     This is a decision function: it logs the failure, provides user feedback,
     and returns True/False to indicate whether max retries have been exhausted.
-    It does NOT manage the failure counter - that responsibility stays with the
-    caller, keeping retry logic explicit and easy to follow in the main loop.
+    It does NOT manage the failure counter - callers MUST increment the counter
+    BEFORE calling this function.
+
+    Usage contract:
+        1. Caller increments consecutive_failures BEFORE calling this function
+        2. Caller passes the incremented value to failure_count
+        3. This function checks if failure_count >= MAX_CONSECUTIVE_FAILURES
 
     Example usage pattern at call sites::
 
         except SomeError as exc:
-            consecutive_failures += 1  # Increment BEFORE calling
-            if _should_stop_after_failure(consecutive_failures, str(exc), ...):
+            consecutive_failures += 1  # Step 1: Increment BEFORE calling
+            if _should_stop_after_failure(consecutive_failures, str(exc), ...):  # Step 2: Pass incremented value
                 return False  # Max failures reached, stop loop
             continue  # Retry
 
     Args:
-        failure_count: Current count of consecutive failures, already incremented
-            by the caller to include the current failure. Value semantics:
-            - 1 means this is the first failure
-            - 2 means this is the second consecutive failure
-            - N means this is the Nth consecutive failure
+        failure_count: Number of consecutive failures INCLUDING the current failure.
+            Callers must increment their counter before calling and pass that value.
+            For example:
+            - Pass 1 for the first failure
+            - Pass 2 for the second consecutive failure
+            - Pass N for the Nth consecutive failure
 
-            The function returns True when failure_count >= MAX_CONSECUTIVE_FAILURES,
-            meaning: if MAX_CONSECUTIVE_FAILURES is 3, the loop stops after exactly
-            3 failed attempts (the call where failure_count=3).
+            The function returns True when failure_count >= MAX_CONSECUTIVE_FAILURES.
+            With MAX_CONSECUTIVE_FAILURES=3, the loop stops when failure_count reaches 3.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
@@ -371,11 +400,21 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     # box_v is assigned from _get_box_chars() above before this closure
                     # is defined, so the value is stable for the duration of this handler.
                     print(f"  {box_v} {line}", flush=True)
-                    # Note: Intentionally not logging model output to avoid persisting
-                    # potentially sensitive data (secrets, PII) to log files.
-                    # If logging is needed for debugging specific issues, callers should
-                    # implement their own output_handler with appropriate sanitization
-                    # and log level controls (e.g., DEBUG with opt-in environment flag).
+                    # Security note: We print to stdout but intentionally do NOT log to files.
+                    #
+                    # Stdout printing is acceptable because:
+                    # - It's ephemeral (terminal scrollback clears)
+                    # - Users expect to see real-time model output for progress feedback
+                    # - If stdout IS captured (CI, redirects), that's the user's explicit choice
+                    #
+                    # File logging is avoided because:
+                    # - Log files persist indefinitely and may be shared in bug reports
+                    # - Structured logs may be shipped to centralized logging systems
+                    # - Model output can contain echoed secrets, PII, or code with credentials
+                    #
+                    # If debugging requires logged output, implement a custom output_handler
+                    # with sanitization (see _sanitize_stderr_for_exception) and use DEBUG level
+                    # with an opt-in environment flag.
 
                 runner_kwargs["on_output"] = output_handler
                 # Pass timeout to streaming variant for consistent timeout behavior
@@ -415,7 +454,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # per the documented pattern (see _should_stop_after_failure docstring).
                 consecutive_failures += 1
                 timeout_secs = getattr(exc, "timeout", None)
-                if timeout_secs is None or timeout_secs == "unknown":
+                # subprocess.TimeoutExpired.timeout is documented to be numeric (int/float).
+                # We only check for None here; if timeout is somehow a non-numeric value,
+                # the f-string will still produce a reasonable message.
+                if timeout_secs is None:
                     error_detail = "Execution timed out (timeout value not available)"
                 else:
                     error_detail = f"Execution timed out after {timeout_secs} seconds"
@@ -463,22 +505,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 logger.error("Review runner failed due to memory exhaustion: %s", exc)
                 print("\nFatal error: Out of memory", flush=True)
                 raise
-            except (
-                AttributeError,
-                TypeError,
-                NameError,
-                KeyError,
-                RuntimeError,
-                AssertionError,
-                ImportError,
-            ) as exc:
+            except _PROGRAMMING_ERROR_TYPES as exc:
                 # Programming errors - fail immediately, don't retry.
-                # These exceptions indicate bugs in the code rather than transient failures:
-                # - AttributeError, TypeError, NameError: Classic programming mistakes
-                # - KeyError: Missing dict keys often indicate API changes or data bugs
-                # - RuntimeError: Indicates internal errors that won't resolve via retry
-                # - AssertionError: Assertion failures indicate violated invariants
-                # - ImportError: Module import issues require configuration fixes
+                # See _PROGRAMMING_ERROR_TYPES definition for the full list and rationale.
                 error_type = type(exc).__name__
                 logger.error(
                     "Review runner failed with programming error (%s): %s - not retrying",
@@ -500,9 +529,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # Non-zero = error (e.g., from safety utilities in command.py), treat as failure.
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
-                    # Clean exit requested by code - propagate without retry.
-                    # The function immediately raises and terminates here, so the
-                    # consecutive_failures counter is not reset.
+                    # Clean exit requested by code - propagate immediately without retry.
                     raise
                 # Non-zero exit code: treat as execution failure.
                 consecutive_failures += 1
@@ -519,24 +546,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     return False
                 sleep_with_jitter(float(poll))
                 continue
-            except (
-                Exception
-            ) as exc:
+            except Exception as exc:
                 # Defense-in-depth: Re-raise programming errors that should have been
-                # caught by earlier except blocks. These types are explicitly listed
-                # above (AttributeError, TypeError, etc.) but if exception handling
-                # order changes during refactoring, this check prevents silent masking.
-                # Note: This is intentionally duplicating the type list as a safeguard.
-                programming_errors = (
-                    AttributeError,
-                    TypeError,
-                    NameError,
-                    KeyError,
-                    RuntimeError,
-                    AssertionError,
-                    ImportError,
-                )
-                if isinstance(exc, programming_errors):
+                # caught by the earlier except _PROGRAMMING_ERROR_TYPES block.
+                # If a programming error reaches here, it indicates that the exception
+                # handler ordering was changed during refactoring. Using the same
+                # _PROGRAMMING_ERROR_TYPES tuple ensures consistency.
+                if isinstance(exc, _PROGRAMMING_ERROR_TYPES):
                     logger.error(
                         "Programming error %s reached fallback handler unexpectedly - "
                         "this indicates a bug in exception handling logic",
@@ -570,10 +586,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     {
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
-                        # Wall-clock timestamp for audit/debugging purposes only (e.g., "last
-                        # activity was at 2:30 PM"). NOT used for idle timeout computation -
-                        # the in-process 'last_activity' variable (time.monotonic()) handles
-                        # that and resets fresh on each run.
+                        # Wall-clock timestamp for operational visibility - see checkpoint.py
+                        # for rationale on why this is included in persistent state.
                         "last_activity_wall_clock": time.time(),
                     },
                 )
@@ -619,7 +633,17 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
             # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
             comment_id = str(entry.get("comment_id", "unknown"))
             if comment_id not in _warned_malformed_comment_ids:
-                _warned_malformed_comment_ids.add(comment_id)
+                # Check size limit before adding to prevent unbounded memory growth.
+                # If limit is reached, log once and allow duplicate warnings rather than
+                # adding complexity of LRU eviction for an edge case.
+                if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
+                    logger.warning(
+                        "Malformed comment ID cache at capacity (%d); "
+                        "duplicate warnings may occur for new malformed entries",
+                        _WARNED_MALFORMED_MAX_SIZE,
+                    )
+                else:
+                    _warned_malformed_comment_ids.add(comment_id)
                 logger.warning(
                     "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
                     comment_id,

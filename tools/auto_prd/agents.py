@@ -74,13 +74,22 @@ _SENSITIVE_STDERR_PATTERNS = [
     # Handles both backslash and forward slash path separators via [\\/]+ pattern.
     # The trailing separator is optional ([\\/]*) to match paths like "C:\Users\username"
     # without a trailing slash, which commonly appear in error messages.
-    # The replacement uses BACKSLASHES to match Windows conventions because:
+    #
+    # PATH NORMALIZATION BEHAVIOR: The replacement ALWAYS uses backslashes regardless
+    # of the original path's separator style. This means:
+    # - Input:  "D:/Users/alice/file.txt" (forward slashes)
+    # - Output: "<DRIVE>:\Users\<USER>\" (backslashes)
+    #
+    # Rationale for backslash normalization:
     # 1. Windows users expect backslashes in path output and will find it clearer
     # 2. Sanitized paths appear in error messages/logs meant for user debugging
     # 3. Consistency with how Windows displays paths natively
-    # Note: The regex matches both slash styles (forward and back) but the replacement
-    # always uses backslashes for familiarity. This is a minor normalization trade-off
-    # but improves readability for the primary use case (Windows error debugging).
+    # 4. Forward slashes in Windows paths are typically from cross-platform code
+    #    (e.g., Python's pathlib), so normalizing improves debugging context
+    #
+    # Trade-off: Paths that intentionally used forward slashes (which Windows accepts)
+    # will be normalized to backslashes. This is acceptable because the sanitized output
+    # is for display/logging only, not for programmatic path operations.
     (
         re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]*", re.IGNORECASE),
         r"<DRIVE>:\\Users\\<USER>\\",
@@ -662,6 +671,85 @@ def _drain_fds_best_effort(
     return stdout_buffer, stderr_buffer
 
 
+def _cleanup_failed_process(
+    proc: subprocess.Popen[str],
+    wait_timeout: float = 5.0,
+    capture_stderr: bool = True,
+) -> str:
+    """Clean up a failed subprocess and optionally capture stderr.
+
+    This function handles the common cleanup pattern for subprocesses that have
+    failed or need to be terminated. It:
+    1. Closes stdin (if open)
+    2. Waits for process termination with a timeout
+    3. Kills the process if wait times out
+    4. Optionally captures any stderr output
+    5. Closes all file descriptors
+
+    Args:
+        proc: The subprocess.Popen instance to clean up.
+        wait_timeout: Maximum seconds to wait for natural termination before kill().
+        capture_stderr: If True, attempt to read any remaining stderr data.
+
+    Returns:
+        Captured stderr content (empty string if capture_stderr=False or on failure).
+    """
+    captured_stderr = ""
+
+    try:
+        # Close stdin to release the file descriptor
+        if proc.stdin and not proc.stdin.closed:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass  # Stdin may already be closed or in an error state
+
+        # Wait for process with bounded timeout, kill if necessary
+        try:
+            proc.wait(timeout=wait_timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process did not terminate after kill() and 5s wait; "
+                    "possible zombie process (pid=%s)",
+                    proc.pid,
+                )
+
+        # Optionally capture stderr
+        if capture_stderr and proc.stderr:
+            try:
+                # Brief timeout (0.5s) - process has exited so any buffered data
+                # should be immediately available.
+                readable, _, _ = select.select([proc.stderr], [], [], 0.5)
+                if readable:
+                    captured_stderr = proc.stderr.read() or ""
+                else:
+                    logger.debug(
+                        "select() timed out reading stderr during cleanup - "
+                        "no data available or fd in unexpected state"
+                    )
+            except (OSError, IOError, ValueError) as stderr_exc:
+                logger.warning(
+                    "Failed to capture stderr during cleanup: %s (%s)",
+                    stderr_exc,
+                    type(stderr_exc).__name__,
+                )
+
+    finally:
+        # Defensive cleanup - ensure all fds are closed
+        for fd in (proc.stdin, proc.stdout, proc.stderr):
+            if fd and not fd.closed:
+                try:
+                    fd.close()
+                except OSError:
+                    pass  # Best effort - fd may already be in error state
+
+    return captured_stderr
+
+
 def claude_exec_streaming(
     prompt: str,
     repo_root: Path,
@@ -821,10 +909,14 @@ def claude_exec_streaming(
             except OSError:
                 pass  # Stdin may already be closed or in an error state
             # Don't wait forever: stdin can break even if the process is still running.
-            # Use a bounded wait with kill fallback to prevent indefinite hangs.
-            wait_timeout = (
-                5.0 if effective_timeout is None else float(min(5, effective_timeout))
-            )
+            # Use a fixed 5s timeout with kill fallback to prevent indefinite hangs.
+            # Note: We use a fixed timeout (not derived from effective_timeout) because
+            # cleanup timeout serves a different purpose than execution timeout:
+            # - Execution timeout: how long to allow the command to run
+            # - Cleanup timeout: how long to wait for graceful termination after an error
+            # Even with a very short execution timeout (e.g., 1s), we want to give the
+            # process time to write error output and clean up resources.
+            wait_timeout = 5.0
             try:
                 proc.wait(timeout=wait_timeout)
             except subprocess.TimeoutExpired:
@@ -896,7 +988,9 @@ def claude_exec_streaming(
                 f"UNEXPECTED SUBPROCESS STATE: Process did not terminate after proc.wait(); "
                 f"returncode is None (command: {sanitized_args[0]}, pid: {getattr(proc, 'pid', None)}, "
                 f"poll(): {poll_result}). This indicates a possible bug in the subprocess module or OS. "
-                f"Please report this issue with full diagnostics."
+                f"Please report this issue at https://github.com/SimoKiihamaki/autodev/issues with: "
+                f"1) This error message, 2) OS name and version, 3) Python version (`python --version`), "
+                f"4) Any antivirus/security software running."
             )
             raise RuntimeError(msg) from None
         raise subprocess.CalledProcessError(
@@ -990,8 +1084,6 @@ def claude_exec_streaming(
                 # Check if process already exited between timeout check and kill.
                 # This handles a subtle race condition: the process may have completed
                 # naturally in the time between checking elapsed >= timeout and now.
-                # If already exited, skip kill() and log that it completed just as
-                # we were about to time it out.
                 if proc.poll() is None:
                     proc.kill()
                     try:
@@ -1001,28 +1093,50 @@ def claude_exec_streaming(
                             "Process did not terminate after kill signal within timeout; "
                             "continuing with partial output."
                         )
+                    # Defensive cleanup for stdin - already closed after prompt write,
+                    # but included for consistency with other error handlers.
+                    if proc.stdin and not proc.stdin.closed:
+                        proc.stdin.close()
+                    if proc.stdout:
+                        proc.stdout.close()
+                    if proc.stderr:
+                        proc.stderr.close()
+                    # Use TimeoutExpired constructor parameters (output=, stderr=), which populate
+                    # the exception's standard `output` and `stderr` attributes.
+                    raise subprocess.TimeoutExpired(
+                        sanitized_args,
+                        effective_timeout,
+                        output=stdout_so_far.encode(),
+                        stderr=stderr_so_far.encode(),
+                    )
                 else:
+                    # Process completed naturally just as timeout was reached - return success
+                    # rather than raising TimeoutExpired, since the operation did complete.
+                    # This prevents confusing callers who would see a timeout error despite
+                    # the process having finished successfully.
                     logger.debug(
                         "Process exited naturally (code=%d) just as timeout was reached; "
-                        "skipping kill but still raising TimeoutExpired for consistency",
+                        "returning output since process completed successfully",
                         proc.returncode,
                     )
-                # Defensive cleanup for stdin - already closed after prompt write,
-                # but included for consistency with other error handlers.
-                if proc.stdin and not proc.stdin.closed:
-                    proc.stdin.close()
-                if proc.stdout:
-                    proc.stdout.close()
-                if proc.stderr:
-                    proc.stderr.close()
-                # Use TimeoutExpired constructor parameters (output=, stderr=), which populate
-                # the exception's standard `output` and `stderr` attributes.
-                raise subprocess.TimeoutExpired(
-                    sanitized_args,
-                    effective_timeout,
-                    output=stdout_so_far.encode(),
-                    stderr=stderr_so_far.encode(),
-                )
+                    # Defensive cleanup for stdin - already closed after prompt write,
+                    # but included for consistency with other code paths.
+                    if proc.stdin and not proc.stdin.closed:
+                        proc.stdin.close()
+                    if proc.stdout:
+                        proc.stdout.close()
+                    if proc.stderr:
+                        proc.stderr.close()
+                    # If process exited with non-zero code, raise CalledProcessError
+                    if proc.returncode != 0:
+                        raise subprocess.CalledProcessError(
+                            proc.returncode,
+                            sanitized_args,
+                            output=stdout_so_far.encode(),
+                            stderr=stderr_so_far.encode(),
+                        )
+                    # Success - return the output
+                    return stdout_so_far, stderr_so_far
 
         ret = proc.poll()
         # Exclude fds that have reached EOF - they would cause select to return

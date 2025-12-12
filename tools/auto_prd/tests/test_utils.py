@@ -26,9 +26,8 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
         Stdout may contain model output with sensitive data (secrets, PII, tokens)
         that should not be logged or displayed, even after sanitization.
 
-        BREAKING CHANGE NOTE: This test verifies a deliberate behavior change introduced
-        in PR #56 (Claude streaming and review resilience). Previously, the function
-        fell back to stdout when stderr was empty/None:
+        BREAKING CHANGE NOTE: This test verifies a deliberate behavior change.
+        Previously, the function fell back to stdout when stderr was empty/None:
             text = (stderr or stdout or "").strip()
         This was changed to use stderr-only to prevent sensitive model output from
         being included in error messages.

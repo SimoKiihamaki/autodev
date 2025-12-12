@@ -148,8 +148,15 @@ def create_checkpoint(
                 "started_at": None,
                 "completed_at": None,
                 "processed_comment_ids": [],
-                # Wall-clock timestamp for audit purposes only; NOT used in timeout logic.
-                # The in-process idle timeout uses time.monotonic() which cannot persist.
+                # Wall-clock timestamp for operational visibility (e.g., user checking
+                # "when was the last activity?") and for future resume heuristics.
+                # NOT used for idle timeout computation - that uses in-process
+                # time.monotonic() which cannot persist across process restarts.
+                #
+                # Rationale for inclusion in checkpoint:
+                # - Helps users diagnose stalled sessions ("last activity was 3 hours ago")
+                # - Could inform future "resume stale session?" prompts
+                # - Minimal overhead (single float per checkpoint save)
                 "last_activity_wall_clock": None,
                 "cycles": 0,
             },

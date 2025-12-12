@@ -133,9 +133,9 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
     """Extract error details from CalledProcessError using stderr only.
 
-    BREAKING CHANGE (PR #56): This function intentionally does NOT fall back to
-    stdout when stderr is empty. This design decision prevents sensitive model
-    output (secrets, PII, tokens) from appearing in error messages and logs.
+    BREAKING CHANGE: This function intentionally does NOT fall back to stdout
+    when stderr is empty. This design decision prevents sensitive model output
+    (secrets, PII, tokens) from appearing in error messages and logs.
 
     Previous implementations in this codebase fell back to stdout when stderr
     was empty. The change to stderr-only ensures error messages come from the
