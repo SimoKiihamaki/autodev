@@ -334,8 +334,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
                 print(f"{box_h * 60}", flush=True)
 
-                def output_handler(line: str) -> None:
-                    print(f"  {box_v} {line}", flush=True)
+                def output_handler(line: str, vert: str = box_v) -> None:
+                    print(f"  {vert} {line}", flush=True)
                     # Note: Intentionally not logging model output to avoid persisting
                     # potentially sensitive data (secrets, PII) to log files.
                     # If logging is needed for debugging specific issues, callers should
@@ -439,7 +439,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             except (SystemExit, KeyboardInterrupt):
                 # Allow clean shutdown and user cancellation to propagate
                 raise
-            except Exception as exc:  # pragma: no cover - best-effort resilience
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - best-effort resilience  # pragma: no cover
                 consecutive_failures += 1
                 error_type = type(exc).__name__
                 logger.exception(
