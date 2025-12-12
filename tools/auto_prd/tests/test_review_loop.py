@@ -238,7 +238,7 @@ class ReviewFixLoopTests(unittest.TestCase):
     @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
     @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
     @mock.patch("tools.auto_prd.review_loop.policy_runner")
-    def test_timeout_increments_failure_counter(
+    def test_timeout_expired_exception_increments_failure_counter(
         self,
         mock_policy_runner,
         _mock_git_head,
@@ -247,7 +247,12 @@ class ReviewFixLoopTests(unittest.TestCase):
         _mock_should_stop,
         _mock_sleep,
     ) -> None:
-        """Test that TimeoutExpired increments failure counter and returns False after max failures."""
+        """Test that TimeoutExpired exception handling increments failure counter.
+
+        Note: This test verifies the error handling path for TimeoutExpired exceptions,
+        not actual timeout behavior during execution. The mock_runner is configured to
+        raise TimeoutExpired immediately on every call.
+        """
         # Mock runner that always times out
         mock_runner = mock.MagicMock(
             side_effect=subprocess.TimeoutExpired(["claude"], 300)
@@ -335,19 +340,31 @@ class ReviewFixLoopTests(unittest.TestCase):
         _mock_should_stop,
         _mock_sleep,
     ) -> None:
-        """Test that successful execution resets the failure counter."""
+        """Test that successful execution resets the failure counter.
+
+        The scenario verifies counter reset by: (1) first call fails (counter=1),
+        (2) second call succeeds (counter resets to 0), (3) third call fails but
+        the loop completes before MAX_CONSECUTIVE_FAILURES because the counter
+        was reset. If the counter wasn't reset, we'd have 2 failures and be
+        closer to the limit.
+        """
         mock_runner = mock.MagicMock(
             side_effect=[
                 subprocess.CalledProcessError(1, ["claude"], stderr=b"error"),
-                ("output", ""),
+                ("output", ""),  # Success - should reset counter
+                subprocess.CalledProcessError(1, ["claude"], stderr=b"error2"),
+                ("output", ""),  # Success after reset - proves counter was reset
             ]
         )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
+        # Four feedback items to exercise the full sequence
         feedback_sequence = [
-            [{"summary": "Fix this", "comment_id": 1}],
-            [{"summary": "Fix this", "comment_id": 2}],
-            [],
+            [{"summary": "Fix this", "comment_id": 1}],  # -> fail
+            [{"summary": "Fix this", "comment_id": 2}],  # -> success (reset)
+            [{"summary": "Fix this", "comment_id": 3}],  # -> fail (counter=1, not 2)
+            [{"summary": "Fix this", "comment_id": 4}],  # -> success
+            [],  # Exit condition
         ]
 
         with mock.patch(
@@ -366,8 +383,16 @@ class ReviewFixLoopTests(unittest.TestCase):
                     dry_run=False,
                 )
 
-        # Should return True since the loop completed normally
+        # Should return True since the loop completed normally (counter was reset)
         self.assertTrue(result)
+        # Verify the runner was called exactly 4 times (2 failures + 2 successes)
+        # If counter wasn't reset, we would have hit MAX_CONSECUTIVE_FAILURES and
+        # returned False after 3 failures.
+        self.assertEqual(
+            mock_runner.call_count,
+            4,
+            "Expected 4 runner calls (fail, success, fail, success)",
+        )
 
     @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
     @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
@@ -482,8 +507,11 @@ class ReviewFixLoopTests(unittest.TestCase):
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
             with self.subTest(error_class=error_class):
-                # Create fresh mock_runner per iteration. mock_policy_runner is reused
-                # with reset state (reset_mock + new return_value) across iterations.
+                # Create a fresh mock_runner for each error_class subTest iteration.
+                # This is necessary because each subTest needs its own side_effect,
+                # and the mock's call_count must be isolated per error type.
+                # The outer mock_policy_runner patch is reused across iterations
+                # with reset_mock() to clear any prior call state.
                 mock_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )
@@ -495,10 +523,7 @@ class ReviewFixLoopTests(unittest.TestCase):
                     return_value=[{"summary": "Fix this", "comment_id": 1}],
                 ):
                     with tempfile.TemporaryDirectory() as tmpdir:
-                        with self.assertRaises(
-                            error_class,
-                            msg=f"{error_class.__name__} should be re-raised",
-                        ):
+                        with self.assertRaises(error_class):
                             review_loop.review_fix_loop(
                                 pr_number=13,
                                 owner_repo="owner/repo",
@@ -510,6 +535,7 @@ class ReviewFixLoopTests(unittest.TestCase):
                                 dry_run=False,
                             )
 
+                # Use assertEqual with msg as third arg for proper display on failure
                 self.assertEqual(
                     mock_runner.call_count,
                     1,

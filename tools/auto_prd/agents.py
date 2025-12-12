@@ -66,10 +66,12 @@ _SENSITIVE_STDERR_PATTERNS = [
     (re.compile(r"/home/[a-zA-Z0-9_\-]+/"), "/home/<USER>/"),
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
     # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
-    # Handles both backslash and forward slash path separators
+    # Handles both backslash and forward slash path separators.
+    # Uses forward slash in replacement for consistency, as forward slashes work
+    # in both Windows and Unix contexts and avoid escaping issues in output.
     (
         re.compile(r"[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
-        r"<DRIVE>:\\Users\\<USER>\\",
+        r"<DRIVE>:/Users/<USER>/",
     ),
 ]
 
@@ -112,58 +114,56 @@ def _sanitize_stderr_for_exception(stderr: str, max_chars: int) -> str:
 # This design trades off runtime configurability for startup performance,
 # as these values typically don't need to change during execution.
 
-
-def _get_streaming_chunk_size() -> int:
-    """Get the streaming read chunk size from environment, default 4096 bytes.
-
-    The default 4KB chunk size balances memory usage with system call overhead
-    for typical streaming scenarios.
-    """
-    raw = os.getenv("AUTO_PRD_STREAMING_CHUNK_SIZE")
-    if raw is None:
-        return 4096
+# Read streaming chunk size from environment once at import time.
+# The default 4KB chunk size balances memory usage with system call overhead
+# for typical streaming scenarios.
+_raw_chunk_size = os.getenv("AUTO_PRD_STREAMING_CHUNK_SIZE")
+if _raw_chunk_size is None:
+    STREAMING_READ_CHUNK_SIZE = 4096
+else:
     try:
-        val = int(raw)
-        if val > 0:
-            return val
-        logger.warning(
-            "AUTO_PRD_STREAMING_CHUNK_SIZE must be > 0, got %r; using default 4096", raw
-        )
-        return 4096
+        _val = int(_raw_chunk_size)
+        if _val > 0:
+            STREAMING_READ_CHUNK_SIZE = _val
+        else:
+            logger.warning(
+                "AUTO_PRD_STREAMING_CHUNK_SIZE must be > 0, got %r; using default 4096",
+                _raw_chunk_size,
+            )
+            STREAMING_READ_CHUNK_SIZE = 4096
     except ValueError:
         logger.warning(
-            "Invalid AUTO_PRD_STREAMING_CHUNK_SIZE value %r; using default 4096", raw
+            "Invalid AUTO_PRD_STREAMING_CHUNK_SIZE value %r; using default 4096",
+            _raw_chunk_size,
         )
-        return 4096
+        STREAMING_READ_CHUNK_SIZE = 4096
 
-
-def _get_streaming_poll_timeout() -> float:
-    """Get the streaming select poll timeout from environment, default 0.1 seconds.
-
-    The default 100ms timeout provides a balance between responsive streaming
-    and CPU efficiency. Lower values increase responsiveness but consume more CPU.
-    """
-    raw = os.getenv("AUTO_PRD_STREAMING_POLL_TIMEOUT")
-    if raw is None:
-        return 0.1
+# Read streaming poll timeout from environment once at import time.
+# The default 100ms timeout provides a balance between responsive streaming
+# and CPU efficiency. Lower values increase responsiveness but consume more CPU.
+_raw_poll_timeout = os.getenv("AUTO_PRD_STREAMING_POLL_TIMEOUT")
+if _raw_poll_timeout is None:
+    STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
+else:
     try:
-        val = float(raw)
-        if val > 0:
-            return val
-        logger.warning(
-            "AUTO_PRD_STREAMING_POLL_TIMEOUT must be > 0, got %r; using default 0.1",
-            raw,
-        )
-        return 0.1
+        _val = float(_raw_poll_timeout)
+        if _val > 0:
+            STREAMING_SELECT_TIMEOUT_SECONDS = _val
+        else:
+            logger.warning(
+                "AUTO_PRD_STREAMING_POLL_TIMEOUT must be > 0, got %r; using default 0.1",
+                _raw_poll_timeout,
+            )
+            STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
     except ValueError:
         logger.warning(
-            "Invalid AUTO_PRD_STREAMING_POLL_TIMEOUT value %r; using default 0.1", raw
+            "Invalid AUTO_PRD_STREAMING_POLL_TIMEOUT value %r; using default 0.1",
+            _raw_poll_timeout,
         )
-        return 0.1
+        STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
-
-STREAMING_READ_CHUNK_SIZE = _get_streaming_chunk_size()
-STREAMING_SELECT_TIMEOUT_SECONDS = _get_streaming_poll_timeout()
+# Clean up module-level temporaries to avoid polluting namespace
+del _raw_chunk_size, _raw_poll_timeout
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -744,13 +744,26 @@ def claude_exec_streaming(
         except OSError:
             pass  # Stdin may already be closed or in an error state
         proc.wait()
-        # Try to capture any stderr the process wrote before dying
+        # Try to capture any stderr the process wrote before dying.
+        # Use select with a short timeout to avoid hanging if stderr is in an
+        # unexpected state (e.g., kernel issues, pipe anomalies).
         captured_stderr = ""
         if proc.stderr:
             try:
-                captured_stderr = proc.stderr.read() or ""
-            except (OSError, IOError) as stderr_exc:
+                # Brief timeout (0.5s) - process has exited so any buffered data
+                # should be immediately available. If select times out, there's
+                # likely no data or the fd is in an unexpected state.
+                readable, _, _ = select.select([proc.stderr], [], [], 0.5)
+                if readable:
+                    captured_stderr = proc.stderr.read() or ""
+                else:
+                    logger.debug(
+                        "select() timed out reading stderr after BrokenPipeError - "
+                        "no data available or fd in unexpected state"
+                    )
+            except (OSError, IOError, ValueError) as stderr_exc:
                 # OSError/IOError: fd already closed, pipe broken, or other I/O failures
+                # ValueError: select() got invalid fd, or read() on closed file
                 logger.warning(
                     "Failed to capture stderr after BrokenPipeError: %s (%s)",
                     stderr_exc,
@@ -778,7 +791,8 @@ def claude_exec_streaming(
                 sanitized_args[0],
             )
             raise RuntimeError(
-                "Process did not terminate after proc.wait(); returncode is None"
+                f"Process did not terminate after proc.wait(); returncode is None "
+                f"(command: {sanitized_args[0]})"
             )
         raise subprocess.CalledProcessError(
             proc.returncode,
@@ -814,7 +828,14 @@ def claude_exec_streaming(
     stdout_buffer = ""
     stderr_buffer = ""
 
-    # Track I/O errors for surfacing at the end
+    # Track I/O errors for surfacing at the end of streaming.
+    # NOTE: I/O errors during streaming are logged and reported but do NOT cause
+    # the function to raise an exception if the process exit code is 0. This is
+    # intentional: the primary success criterion is the process exit code, not
+    # complete I/O capture. If I/O errors occur but the process exits successfully,
+    # we return the (potentially incomplete) output with a warning rather than
+    # failing entirely. Callers who need guaranteed complete output should check
+    # for io_errors warnings in the logs after calling.
     io_errors: list[tuple[str, int | None, str]] = []
 
     # Track fds that have reached EOF to avoid infinite loop.
@@ -964,11 +985,13 @@ def claude_exec_streaming(
                     # This prevents the infinite loop where select returns immediately
                     # with "readable" fds that only have EOF available.
                     #
-                    # Note on race condition: One might worry about data arriving on an fd
-                    # AFTER it returns empty (EOF) but BEFORE it's added to eof_fds.
-                    # However, this race is impossible: once a pipe's write end is closed
-                    # (which causes EOF), the subprocess cannot write more data to that
-                    # same closed pipe. EOF on a pipe is a terminal state.
+                    # Note on race condition and defensive programming:
+                    # Under normal conditions, once read() returns empty (EOF), no more
+                    # data can arrive because the pipe's write end is closed. However,
+                    # we defensively add the fd to eof_fds even in abnormal cases
+                    # (process crash, kernel issues) where select() might spuriously
+                    # report the fd as readable after EOF. This defensive exclusion
+                    # prevents infinite loops regardless of the underlying cause.
                     eof_fds.add(fd)
                     continue
                 if fd == proc.stdout:
@@ -1008,10 +1031,22 @@ def claude_exec_streaming(
                 # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
             except ValueError as e:
-                # TextIOWrapper.read() can raise ValueError if fd is closed/invalid
-                # between select() returning and read() being called. This race condition
-                # can occur if the subprocess terminates abruptly. Handle it the same as
-                # non-transient I/O errors: log, track, and exclude from subsequent reads.
+                # TextIOWrapper.read() raises ValueError in specific cases:
+                # - "I/O operation on closed file" when fd is closed between select()
+                #   returning and read() being called (race condition on abrupt termination)
+                # - "read of closed file" (alternative wording for same condition)
+                # - "underlying buffer has been detached" (rare, buffer management issue)
+                #
+                # We only catch these expected I/O-related ValueErrors. Other ValueErrors
+                # (e.g., from bugs in our code like invalid read() arguments) should
+                # propagate as they indicate programming errors, not I/O issues.
+                error_msg = str(e).lower()
+                expected_patterns = ("closed file", "closed", "detached")
+                if not any(pattern in error_msg for pattern in expected_patterns):
+                    # Unexpected ValueError - this is likely a programming error, not
+                    # an I/O issue. Re-raise to surface the bug rather than silently
+                    # treating it as an I/O error.
+                    raise
                 fd_name = "stdout" if fd == proc.stdout else "stderr"
                 logger.error(
                     "ValueError reading from Claude process (fd=%s): %s - "
@@ -1080,9 +1115,12 @@ def claude_exec_streaming(
         )
 
     if not stdout_text.strip() and stderr_text.strip():
+        # Sanitize stderr to redact sensitive information (API keys, tokens, paths)
+        # before logging, same as non-streaming claude_exec.
+        sanitized_stderr = _sanitize_stderr_for_exception(stderr_text, 500)
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
-            stderr_text[:500] if len(stderr_text) > 500 else stderr_text,
+            sanitized_stderr,
         )
 
     return stdout_text, stderr_text

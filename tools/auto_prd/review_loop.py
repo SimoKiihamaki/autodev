@@ -80,6 +80,19 @@ def _handle_runner_failure(
 ) -> bool:
     """Log failure details and determine if loop should stop.
 
+    IMPORTANT: Callers must increment their failure counter BEFORE calling this
+    function. This function does not manage the counter - it only reads and reports
+    the value. This design keeps counter management responsibility in the caller's
+    control flow, making retry logic easier to follow in the main loop.
+
+    Example usage pattern at call sites::
+
+        except SomeError as exc:
+            consecutive_failures += 1  # Increment BEFORE calling
+            if _handle_runner_failure(consecutive_failures, str(exc), ...):
+                return False  # Max failures reached
+            continue  # Retry
+
     Args:
         failure_count: Current count of consecutive failures, already incremented
             by the caller to include the current failure. Value semantics:
@@ -124,9 +137,10 @@ def _handle_runner_failure(
         )
         print(f"  Error: {sanitized_user_error_detail}", flush=True)
     if stderr_text.strip():
-        # Sanitize stderr to redact potentially sensitive information (tokens, secrets,
-        # credentials, user paths) before logging. This is critical because stderr can
-        # contain echoed config values, auth tokens, or file paths that reveal PII.
+        # Sanitize stderr ONCE with the larger log truncation limit, then truncate
+        # the already-sanitized output for user display. This avoids duplicate regex
+        # processing on potentially large stderr content while ensuring both log and
+        # user output are sanitized.
         sanitized_stderr = _sanitize_stderr_for_exception(
             stderr_text, STDERR_LOG_TRUNCATE_CHARS
         )
@@ -134,10 +148,11 @@ def _handle_runner_failure(
         # acceptable because: (1) failures need debugging context, (2) stderr typically
         # contains error messages not model output, (3) content is now sanitized.
         logger.warning("Review runner stderr:\n%s", sanitized_stderr)
-        # For user-facing output, also sanitize and apply shorter truncation limit
-        sanitized_user_stderr = _sanitize_stderr_for_exception(
-            stderr_text, STDERR_USER_TRUNCATE_CHARS
-        )
+        # For user-facing output, truncate the already-sanitized stderr to the
+        # shorter user limit to keep console output concise.
+        sanitized_user_stderr = sanitized_stderr[:STDERR_USER_TRUNCATE_CHARS]
+        if len(sanitized_stderr) > STDERR_USER_TRUNCATE_CHARS:
+            sanitized_user_stderr += "...(truncated)"
         print(f"  Stderr: {sanitized_user_stderr}", flush=True)
 
     if failure_count >= MAX_CONSECUTIVE_FAILURES:
@@ -227,9 +242,11 @@ def review_fix_loop(
         print(f"Waiting {initial_wait_minutes} minutes for bot reviews...", flush=True)
         time.sleep(initial_wait_seconds)
 
-    # Use float type only when infinite_reviews is True (for float("inf") support);
-    # otherwise, keep as int for cleaner numeric comparisons with finite values.
-    idle_grace_seconds: float | int = max(0, idle_grace * 60)
+    # Always use float for idle_grace_seconds for type consistency and clarity.
+    # This works for both finite and infinite (float("inf")) values without
+    # requiring type narrowing complexity. float comparisons with time.monotonic()
+    # differences work correctly for all cases.
+    idle_grace_seconds: float = float(max(0, idle_grace * 60))
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
@@ -321,12 +338,15 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
             try:
                 _, stderr = actual_runner(fix_prompt, **runner_kwargs)
-                # Note: Stderr is logged at debug level for diagnostics, but NOT at higher
-                # levels to minimize exposure of potentially sensitive data. Debug logs are
-                # typically disabled in production. Stdout is not logged at all (see
-                # output_handler above) as it contains actual model responses.
+                # Note: Stderr is logged at debug level for diagnostics, but still sanitized
+                # to redact secrets/PII even at debug level. Debug logs may be enabled during
+                # troubleshooting and could be shared in bug reports. Stdout is not logged at
+                # all (see output_handler above) as it contains actual model responses.
                 if stderr and stderr.strip():
-                    logger.debug("Review runner stderr (debug only): %s", stderr[:500])
+                    sanitized_debug_stderr = _sanitize_stderr_for_exception(stderr, 500)
+                    logger.debug(
+                        "Review runner stderr (debug only): %s", sanitized_debug_stderr
+                    )
                 consecutive_failures = 0
                 # Determine completion status message (independent of streaming mode)
                 if not (stderr and stderr.strip()):
@@ -477,13 +497,19 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
 def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     lines: list[str] = []
+    # Track malformed entries within this single function call to limit log spam.
+    # Note: This counter is per-call, so each invocation of format_unresolved_bullets()
+    # resets the counter and will emit one WARNING for the first malformed entry
+    # encountered in that call. This is intentional: if the same malformed data
+    # persists across multiple calls (e.g., in a loop), the WARNING helps surface
+    # the issue repeatedly rather than suppressing it across the session.
     malformed_count = 0
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
             malformed_count += 1
             # Log first malformed entry at WARNING to surface potential API issues,
-            # subsequent entries at DEBUG to avoid log spam
+            # subsequent entries at DEBUG to avoid log spam within this call
             log_level = logger.warning if malformed_count == 1 else logger.debug
             log_level(
                 "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",

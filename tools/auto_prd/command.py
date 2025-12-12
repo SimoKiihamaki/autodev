@@ -620,6 +620,12 @@ def popen_streaming(
         ValueError: If cmd contains unsafe shell metacharacters.
         SystemExit: If command is not in allowlist or cwd is outside safe roots.
     """
+    # IMPORTANT: Validate the ORIGINAL command BEFORE sanitization to catch security
+    # issues (shell metacharacters like |, ;, >, <) that would otherwise be hidden
+    # by the sanitization step. This ensures we reject malicious input rather than
+    # silently sanitizing it away.
+    validate_command_args(cmd)
+
     # Sanitize args via scrub_cli_text when sanitize=True
     sanitized_cmd: list[str] = (
         [scrub_cli_text(arg) for arg in cmd] if sanitize else list(cmd)
@@ -649,7 +655,6 @@ def popen_streaming(
             )
             logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
 
-    validate_command_args(sanitized_cmd)
     validate_cwd(cwd)
     validate_extra_env(extra_env)
 
@@ -660,7 +665,16 @@ def popen_streaming(
     env = env_with_zsh(extra_env or {})
     env["PYTHONUNBUFFERED"] = "1"
     # Set PYTHONPATH and AUTO_PRD_ROOT so project modules can be imported by the subprocess.
-    repo_root = str(find_repo_root())
+    # find_repo_root() always returns a valid Path (falls back to cwd() if no .git found),
+    # so repo_root_path will never be None. We validate it exists to catch edge cases where
+    # the fallback cwd was deleted between find_repo_root() and this check.
+    repo_root_path = find_repo_root()
+    if not repo_root_path.exists():
+        raise FileNotFoundError(
+            f"Repository root directory does not exist: {repo_root_path}. "
+            "Ensure you're running from a valid directory."
+        )
+    repo_root = str(repo_root_path)
     env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
         os.pathsep
     )
