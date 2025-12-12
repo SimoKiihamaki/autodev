@@ -771,7 +771,12 @@ def claude_exec_streaming(
     # (size limits, control character filtering) to prevent hangs or unexpected failures.
     validate_stdin(prompt)
 
-    # Resolve timeout - use parameter, then environment variable, then None (no timeout)
+    # Resolve timeout using three-level fallback:
+    # 1. Use the explicit timeout parameter if provided (not None)
+    # 2. Otherwise, check AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable
+    # 3. If both are unset/None, effective_timeout will be None (meaning no timeout)
+    # Note: get_claude_exec_timeout() can also return None, so effective_timeout
+    # may be None after this line, which is intentional for unlimited execution.
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
 
     # Use popen_streaming from command.py for policy-compliant subprocess spawning.
@@ -874,16 +879,23 @@ def claude_exec_streaming(
             )
             error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
         # Determine appropriate return code - proc.wait() was called above so
-        # returncode should be set. If still None, something is very wrong.
+        # returncode should be set. If still None, something is very wrong with
+        # the subprocess module or OS (e.g., zombie process, kernel bug).
         if proc.returncode is None:
+            poll_result = proc.poll()
             logger.error(
-                "Process returncode is None after proc.wait() - this indicates "
-                "the process did not terminate as expected. Command: %s",
+                "UNEXPECTED SUBPROCESS STATE: returncode is None after proc.wait(). "
+                "This suggests a deeper issue with the subprocess module or OS. "
+                "Diagnostics: command=%s, pid=%s, poll()=%r",
                 sanitized_args[0],
+                getattr(proc, "pid", None),
+                poll_result,
             )
             raise RuntimeError(
-                f"Process did not terminate after proc.wait(); returncode is None "
-                f"(command: {sanitized_args[0]})"
+                f"UNEXPECTED SUBPROCESS STATE: Process did not terminate after proc.wait(); "
+                f"returncode is None (command: {sanitized_args[0]}, pid: {getattr(proc, 'pid', None)}, "
+                f"poll(): {poll_result}). This indicates a possible bug in the subprocess module or OS. "
+                f"Please report this issue with full diagnostics."
             ) from None
         raise subprocess.CalledProcessError(
             proc.returncode,
@@ -943,10 +955,9 @@ def claude_exec_streaming(
 
     # Stream output in real-time
     while True:
-        # Check timeout only when a timeout is configured.
-        # This conditional avoids unnecessary elapsed time calculation
-        # (time.monotonic() call, subtraction, and comparison) on every loop
-        # iteration when no timeout is set.
+        # Only check for timeout if a timeout is configured (effective_timeout is not None).
+        # Checking timeout when None would be semantically meaningless since there's no
+        # limit to compare against.
         if effective_timeout is not None:
             elapsed = time.monotonic() - start_time
             if elapsed >= effective_timeout:
@@ -981,13 +992,19 @@ def claude_exec_streaming(
                 # we were about to time it out.
                 if proc.poll() is None:
                     proc.kill()
+                    try:
+                        proc.wait(timeout=5.0)
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            "Process did not terminate after kill signal within timeout; "
+                            "continuing with partial output."
+                        )
                 else:
                     logger.debug(
                         "Process exited naturally (code=%d) just as timeout was reached; "
                         "skipping kill but still raising TimeoutExpired for consistency",
                         proc.returncode,
                     )
-                proc.wait()
                 # Defensive cleanup for stdin - already closed after prompt write,
                 # but included for consistency with other error handlers.
                 if proc.stdin and not proc.stdin.closed:
@@ -1153,61 +1170,28 @@ def claude_exec_streaming(
                 # list comprehension that filters out eof_fds.
                 eof_fds.add(fd)
             except ValueError as e:
-                # TextIOWrapper.read() raises ValueError in specific cases:
-                # - "I/O operation on closed file" when fd is closed between select()
-                #   returning and read() being called (race condition on abrupt termination)
-                # - "read of closed file" (alternative wording for same condition)
-                # - "underlying buffer has been detached" (rare, buffer management issue)
+                # TextIOWrapper.read() raises ValueError when the fd is closed between
+                # select() returning and read() being called (race condition on abrupt
+                # process termination). The fd.closed attribute is the reliable indicator.
                 #
-                # We only catch these expected I/O-related ValueErrors. Other ValueErrors
-                # (e.g., from bugs in our code like invalid read() arguments) should
-                # propagate as they indicate programming errors, not I/O issues.
-                #
-                # DETECTION STRATEGY:
-                # Rather than relying solely on fragile error message pattern matching
-                # (which can vary across Python versions), we use a two-pronged approach:
-                # 1. Check if the file object is actually closed - this is the most
-                #    reliable indicator that we hit the expected race condition.
-                # 2. Fall back to error message pattern matching for other I/O-related
-                #    ValueErrors (e.g., buffer detached) that don't set fd.closed=True.
-                #
-                # This approach is more robust because:
-                # - fd.closed is a documented, stable file object attribute
-                # - We still handle edge cases via pattern matching as a fallback
-                # - Unknown ValueErrors propagate to surface programming bugs
+                # If fd.closed is False, this is an unexpected ValueError (likely a
+                # programming error) and should propagate to surface the bug.
                 fd_is_closed = getattr(fd, "closed", False)
-
-                # Known Python I/O ValueError messages (fallback patterns):
-                # - "I/O operation on closed file" (most common)
-                # - "read of closed file" (alternative wording)
-                # - "underlying buffer has been detached"
-                # - "invalid mode" / "invalid file mode" (file mode issues)
-                error_msg = str(e).lower()
-                expected_patterns = (
-                    "closed file",  # Matches "I/O operation on closed file", "read of closed file"
-                    "buffer has been detached",  # "underlying buffer has been detached"
-                    "invalid mode",  # "invalid mode" or "invalid file mode"
-                )
-                is_io_related = fd_is_closed or any(
-                    pattern in error_msg for pattern in expected_patterns
-                )
-
-                if not is_io_related:
-                    # Unexpected ValueError - this is likely a programming error, not
-                    # an I/O issue. Re-raise to surface the bug rather than silently
-                    # treating it as an I/O error.
+                if not fd_is_closed:
+                    # Unexpected ValueError - not an I/O closure issue. Re-raise to
+                    # surface the bug rather than silently treating it as an I/O error.
                     raise
                 fd_name = "stdout" if fd == proc.stdout else "stderr"
                 logger.error(
                     "ValueError reading from Claude process (fd=%s, closed=%s): %s - "
-                    "fd may be closed/invalid, OUTPUT MAY BE INCOMPLETE",
+                    "fd closed during read, OUTPUT MAY BE INCOMPLETE",
                     fd_name,
                     fd_is_closed,
                     e,
                 )
                 io_errors.append((fd_name, getattr(e, "errno", None), str(e)))
                 print(
-                    f"  [WARNING] Read error on {fd_name} (fd closed/invalid) - "
+                    f"  [WARNING] Read error on {fd_name} (fd closed) - "
                     "some output may be missing",
                     file=sys.stderr,
                     flush=True,

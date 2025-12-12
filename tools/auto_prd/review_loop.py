@@ -358,8 +358,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
                 print(f"{box_h * 60}", flush=True)
 
-                def output_handler(line: str, vert: str = box_v) -> None:
-                    print(f"  {vert} {line}", flush=True)
+                def output_handler(line: str) -> None:
+                    # Uses box_v from the enclosing scope (captured at closure creation).
+                    # box_v is assigned from _get_box_chars() above before this closure
+                    # is defined, so the value is stable for the duration of this handler.
+                    print(f"  {box_v} {line}", flush=True)
                     # Note: Intentionally not logging model output to avoid persisting
                     # potentially sensitive data (secrets, PII) to log files.
                     # If logging is needed for debugging specific issues, callers should
@@ -490,10 +493,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate without retry.
-                    # Reset consecutive_failures before raising to maintain clean state,
-                    # even though this function terminates immediately. This is defensive:
-                    # if this code path is ever refactored to not raise, the counter will
-                    # correctly reflect that this was not a failure.
+                    # Note: The consecutive_failures reset below has no observable effect
+                    # since the function immediately raises and terminates. This line is
+                    # retained as defensive/documentary code: if this code path is ever
+                    # refactored to not raise, the counter will correctly reflect that
+                    # a clean exit is not a failure.
                     consecutive_failures = 0
                     raise
                 # Non-zero exit code: treat as execution failure.
@@ -514,6 +518,28 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - best-effort resilience  # pragma: no cover
+                # Safety check: re-raise known programming error types that should
+                # have been caught by the earlier explicit except blocks. If they
+                # reach here, it indicates a bug in exception handling logic above.
+                # This prevents the broad Exception handler from masking serious bugs.
+                if isinstance(
+                    exc,
+                    (
+                        AttributeError,
+                        TypeError,
+                        NameError,
+                        KeyError,
+                        RuntimeError,
+                        AssertionError,
+                        ImportError,
+                    ),
+                ):
+                    logger.error(
+                        "Programming error %s reached fallback handler unexpectedly - "
+                        "this indicates a bug in exception handling logic",
+                        type(exc).__name__,
+                    )
+                    raise
                 consecutive_failures += 1
                 error_type = type(exc).__name__
                 logger.exception(
