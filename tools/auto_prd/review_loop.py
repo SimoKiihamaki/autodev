@@ -83,25 +83,25 @@ def _decode_stderr(stderr: bytes | str | None) -> str:
     return str(stderr)
 
 
-def _handle_runner_failure(
+def _should_stop_after_failure(
     failure_count: int,
     error_detail: str,
     stderr_text: str = "",
     error_type: str = "",
 ) -> bool:
-    """Log failure details and determine if loop should stop.
+    """Log failure details and decide whether the retry loop should stop.
 
-    IMPORTANT: Callers must increment their failure counter BEFORE calling this
-    function. This function does not manage the counter - it only reads and reports
-    the value. This design keeps counter management responsibility in the caller's
-    control flow, making retry logic easier to follow in the main loop.
+    This is a decision function: it logs the failure, provides user feedback,
+    and returns True/False to indicate whether max retries have been exhausted.
+    It does NOT manage the failure counter - that responsibility stays with the
+    caller, keeping retry logic explicit and easy to follow in the main loop.
 
     Example usage pattern at call sites::
 
         except SomeError as exc:
             consecutive_failures += 1  # Increment BEFORE calling
-            if _handle_runner_failure(consecutive_failures, str(exc), ...):
-                return False  # Max failures reached
+            if _should_stop_after_failure(consecutive_failures, str(exc), ...):
+                return False  # Max failures reached, stop loop
             continue  # Retry
 
     Args:
@@ -119,7 +119,7 @@ def _handle_runner_failure(
         error_type: Optional error type name for user feedback
 
     Returns:
-        True if loop should stop due to max failures reached.
+        True if loop should stop (max failures reached), False to continue retrying.
     """
     # Sanitize error_detail to redact potentially sensitive information (tokens, secrets,
     # credentials, user paths) before logging. error_detail may come from stderr/stdout
@@ -377,10 +377,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             except subprocess.TimeoutExpired as exc:
                 # Timeout - count as failure but provide specific feedback
                 consecutive_failures += 1
-                timeout_secs = getattr(exc, "timeout", "unknown")
-                error_detail = f"Execution timed out after {timeout_secs} seconds"
+                timeout_secs = getattr(exc, "timeout", None)
+                if timeout_secs is None or timeout_secs == "unknown":
+                    error_detail = "Execution timed out (timeout value not available)"
+                else:
+                    error_detail = f"Execution timed out after {timeout_secs} seconds"
                 stderr_text = _decode_stderr(getattr(exc, "stderr", None))
-                if _handle_runner_failure(
+                if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,
                     stderr_text,
@@ -393,7 +396,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 consecutive_failures += 1
                 error_detail = extract_called_process_error_details(exc)
                 stderr_text = _decode_stderr(exc.stderr)
-                if _handle_runner_failure(
+                if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,
                     stderr_text,
@@ -437,7 +440,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 )
                 raise
             except (SystemExit, KeyboardInterrupt):
-                # Allow clean shutdown and user cancellation to propagate
+                # Allow clean shutdown and user cancellation to propagate.
+                # Note: We intentionally do NOT increment consecutive_failures here.
+                # These exceptions represent intentional user/system interruption, not
+                # execution failures. The counter tracks transient errors that should
+                # trigger retry logic; interruptions bypass retry logic entirely by
+                # re-raising immediately. If the caller needs to know the execution
+                # was interrupted, they can catch these exceptions at a higher level.
                 raise
             except (
                 Exception
@@ -447,7 +456,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 logger.exception(
                     "Review runner failed with unexpected error (%s)", error_type
                 )
-                if _handle_runner_failure(
+                if _should_stop_after_failure(
                     consecutive_failures,
                     str(exc),
                     error_type=error_type,
@@ -473,9 +482,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                         # suitable for informational/audit purposes (e.g., "last activity was
                         # at 2:30 PM"). This value is NOT used for idle timeout computation;
                         # the in-process 'last_activity' variable (time.monotonic()) handles
-                        # that and is reset fresh on each run. time.monotonic() cannot be
-                        # persisted across process restarts since it's relative to an
-                        # arbitrary epoch (often system boot).
+                        # that and is reset fresh on each run. On checkpoint resume, the idle
+                        # timeout window is intentionally reset (starting from the new process's
+                        # time.monotonic() epoch) since time.monotonic() cannot be persisted
+                        # across process restarts - it's relative to an arbitrary epoch (often
+                        # system boot) that differs between processes.
                         "last_activity_time": time.time(),
                     },
                 )

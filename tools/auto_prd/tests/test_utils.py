@@ -25,6 +25,15 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
 
         Stdout may contain model output with sensitive data (secrets, PII, tokens)
         that should not be logged or displayed, even after sanitization.
+
+        SECURITY FIX NOTE: This test verifies a breaking change from previous behavior.
+        Previously, the function fell back to stdout when stderr was empty/None:
+            text = (stderr or stdout or "").strip()
+        This was changed to use stderr-only to prevent sensitive model output from
+        being included in error messages. Code that previously received stdout content
+        in error details will now receive "exit code N" instead. This is intentional -
+        callers who need stdout content should access it directly from the exception's
+        output/stdout attribute after appropriate sanitization.
         """
         exc = subprocess.CalledProcessError(
             1,
@@ -34,9 +43,9 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
         )
         details = extract_called_process_error_details(exc)
         self.assertIsInstance(details, str)
-        # Should NOT contain stdout content
+        # Should NOT contain stdout content (security: stdout may have sensitive data)
         self.assertNotIn("sensitive", details)
-        # Should fall back to exit code when stderr is empty
+        # Should fall back to exit code when stderr is empty (new behavior)
         self.assertEqual(details, "exit code 1")
 
     def test_returns_stderr_when_available(self) -> None:

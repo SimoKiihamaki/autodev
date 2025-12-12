@@ -10,6 +10,7 @@ import select
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -25,11 +26,15 @@ from .logging_utils import logger
 from .utils import extract_called_process_error_details
 
 # fcntl is Unix-only; import conditionally to allow module import on Windows.
-# On Windows, fcntl will be None and streaming functions will raise OSError.
+# We use a boolean flag (HAS_FCNTL) for type-safe availability checks, avoiding
+# the type: ignore comments that would be needed if fcntl could be None.
+# On Windows, HAS_FCNTL is False and streaming functions will raise OSError.
 try:
-    import fcntl  # type: ignore[import-not-found]
+    import fcntl
+
+    HAS_FCNTL = True
 except ModuleNotFoundError:  # pragma: no cover (Windows)
-    fcntl = None  # type: ignore[assignment]
+    HAS_FCNTL = False
 
 RATE_LIMIT_JITTER_MIN = -3
 RATE_LIMIT_JITTER_MAX = 3
@@ -66,13 +71,13 @@ _SENSITIVE_STDERR_PATTERNS = [
     (re.compile(r"/home/[a-zA-Z0-9_\-]+/"), "/home/<USER>/"),
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
     # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
-    # Handles both backslash and forward slash path separators.
-    # Output uses forward slashes for consistency because:
+    # Handles both backslash and forward slash path separators via [\\/]+ pattern.
+    # The replacement NORMALIZES all separators to forward slashes because:
     # 1. Forward slashes work in Windows, Unix, and cross-platform contexts
     # 2. Avoids escaping issues in logs/output (backslashes need escaping)
-    # 3. Provides consistent output format regardless of original separator
-    # Trade-off: Windows users may see unfamiliar path style, but redacted paths
-    # are for debugging/logs, not for direct filesystem use.
+    # 3. Provides consistent sanitized output regardless of original separator style
+    # Trade-off: Windows users may see unfamiliar path style in sanitized output,
+    # but redacted paths are for debugging/logs, not for direct filesystem use.
     (
         re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
         r"<DRIVE>:/Users/<USER>/",
@@ -168,17 +173,14 @@ else:
 
 # Clean up module-level temporaries to avoid polluting namespace.
 # Note: _chunk_size_val and _timeout_val are only defined when _raw_chunk_size/_raw_poll_timeout
-# are not None (i.e., when the environment variables are set), so we delete them conditionally
-# using try/except to handle the case where they don't exist.
+# are not None (i.e., when the environment variables are set). We use contextlib.suppress(NameError)
+# to unconditionally attempt deletion, which is cleaner than try/except blocks and handles both
+# "defined" and "not defined" cases uniformly.
 del _raw_chunk_size, _raw_poll_timeout
-try:
+with suppress(NameError):
     del _chunk_size_val
-except NameError:
-    pass  # Variable not defined (env var was None)
-try:
+with suppress(NameError):
     del _timeout_val
-except NameError:
-    pass  # Variable not defined (env var was None)
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -379,12 +381,14 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 )
                 time.sleep(sleep_for)
                 continue
-            # Log at INFO level since this is a soft failure - CodeRabbit is unavailable
-            # but we continue execution. This allows filtering via log level while still
-            # informing users who have INFO logging enabled. WARNING would be appropriate
-            # if this indicated a problem requiring attention, but CodeRabbit unavailability
-            # is often expected (e.g., not configured, rate limited, service unavailable).
-            logger.info(
+            # Determine appropriate log level based on error type:
+            # - INFO: CodeRabbit intentionally not configured (expected, not actionable)
+            # - WARNING: Rate limiting, service errors, or other failures that may result
+            #   in incomplete review and warrant user attention
+            error_str = (msg or str(exc)).lower()
+            is_config_skip = "not configured" in error_str or "not found" in error_str
+            log_fn = logger.info if is_config_skip else logger.warning
+            log_fn(
                 "CodeRabbit analysis unavailable after %d attempts: %s. "
                 "Continuing without CodeRabbit findings - manual review recommended.",
                 attempts,
@@ -535,7 +539,7 @@ def _set_nonblocking(fd: int) -> None:
     Raises:
         OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
-    if fcntl is None:
+    if not HAS_FCNTL:
         raise OSError("Non-blocking I/O requires fcntl (Unix-only).")
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -688,10 +692,10 @@ def claude_exec_streaming(
         RuntimeError: If select() fails unrecoverably during streaming
     """
     # Platform check - fcntl is Unix-only
-    # Note: We only check fcntl is None, not sys.platform == "win32" separately.
-    # On Windows, fcntl will always be None due to the import guard at module top,
-    # so checking fcntl is None covers both "fcntl unavailable" and "Windows" cases.
-    if fcntl is None:
+    # Note: We check HAS_FCNTL (boolean flag), not sys.platform == "win32" separately.
+    # On Windows, fcntl import fails and HAS_FCNTL is False due to the import guard
+    # at module top, so checking HAS_FCNTL covers both "fcntl unavailable" and "Windows".
+    if not HAS_FCNTL:
         raise OSError(
             "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
             "Use claude_exec on Windows systems."
@@ -755,42 +759,50 @@ def claude_exec_streaming(
             len(prompt),
             sanitized_args[0],  # Log only executable name, not full args
         )
-        # Close stdin to release the file descriptor - even though write failed,
-        # the pipe may still be open and needs explicit cleanup.
-        try:
-            proc.stdin.close()
-        except OSError:
-            pass  # Stdin may already be closed or in an error state
-        proc.wait()
-        # Try to capture any stderr the process wrote before dying.
-        # Use select with a short timeout to avoid hanging if stderr is in an
-        # unexpected state (e.g., kernel issues, pipe anomalies).
+        # Wrap entire cleanup in try/finally to ensure all fds are closed even if
+        # an exception occurs during cleanup (e.g., proc.wait() hangs, select fails).
         captured_stderr = ""
-        if proc.stderr:
+        try:
+            # Close stdin to release the file descriptor - even though write failed,
+            # the pipe may still be open and needs explicit cleanup.
             try:
-                # Brief timeout (0.5s) - process has exited so any buffered data
-                # should be immediately available. If select times out, there's
-                # likely no data or the fd is in an unexpected state.
-                readable, _, _ = select.select([proc.stderr], [], [], 0.5)
-                if readable:
-                    captured_stderr = proc.stderr.read() or ""
-                else:
-                    logger.debug(
-                        "select() timed out reading stderr after BrokenPipeError - "
-                        "no data available or fd in unexpected state"
+                proc.stdin.close()
+            except OSError:
+                pass  # Stdin may already be closed or in an error state
+            proc.wait()
+            # Try to capture any stderr the process wrote before dying.
+            # Use select with a short timeout to avoid hanging if stderr is in an
+            # unexpected state (e.g., kernel issues, pipe anomalies).
+            if proc.stderr:
+                try:
+                    # Brief timeout (0.5s) - process has exited so any buffered data
+                    # should be immediately available. If select times out, there's
+                    # likely no data or the fd is in an unexpected state.
+                    readable, _, _ = select.select([proc.stderr], [], [], 0.5)
+                    if readable:
+                        captured_stderr = proc.stderr.read() or ""
+                    else:
+                        logger.debug(
+                            "select() timed out reading stderr after BrokenPipeError - "
+                            "no data available or fd in unexpected state"
+                        )
+                except (OSError, IOError, ValueError) as stderr_exc:
+                    # OSError/IOError: fd already closed, pipe broken, or other I/O failures
+                    # ValueError: select() got invalid fd, or read() on closed file
+                    logger.warning(
+                        "Failed to capture stderr after BrokenPipeError: %s (%s)",
+                        stderr_exc,
+                        type(stderr_exc).__name__,
                     )
-            except (OSError, IOError, ValueError) as stderr_exc:
-                # OSError/IOError: fd already closed, pipe broken, or other I/O failures
-                # ValueError: select() got invalid fd, or read() on closed file
-                logger.warning(
-                    "Failed to capture stderr after BrokenPipeError: %s (%s)",
-                    stderr_exc,
-                    type(stderr_exc).__name__,
-                )
-            finally:
-                proc.stderr.close()
-        if proc.stdout:
-            proc.stdout.close()
+        finally:
+            # Defensive cleanup - ensure all fds are closed regardless of what
+            # happened above. This prevents resource leaks if any step failed.
+            for fd in (proc.stdin, proc.stdout, proc.stderr):
+                if fd and not fd.closed:
+                    try:
+                        fd.close()
+                    except OSError:
+                        pass  # Best effort - fd may already be in error state
         # User-facing error message - simple and actionable
         error_msg = "Claude process terminated unexpectedly before reading input"
         if captured_stderr:
@@ -895,7 +907,19 @@ def claude_exec_streaming(
                     len(stderr_lines),
                     len(stderr_so_far),
                 )
-                proc.kill()
+                # Check if process already exited between timeout check and kill.
+                # This handles a subtle race condition: the process may have completed
+                # naturally in the time between checking elapsed >= timeout and now.
+                # If already exited, skip kill() and log that it completed just as
+                # we were about to time it out.
+                if proc.poll() is None:
+                    proc.kill()
+                else:
+                    logger.debug(
+                        "Process exited naturally (code=%d) just as timeout was reached; "
+                        "skipping kill but still raising TimeoutExpired for consistency",
+                        proc.returncode,
+                    )
                 proc.wait()
                 # Defensive cleanup for stdin - already closed after prompt write,
                 # but included for consistency with other error handlers.
@@ -1060,8 +1084,20 @@ def claude_exec_streaming(
                 # We only catch these expected I/O-related ValueErrors. Other ValueErrors
                 # (e.g., from bugs in our code like invalid read() arguments) should
                 # propagate as they indicate programming errors, not I/O issues.
+                #
+                # NOTE: This pattern matching approach is inherently fragile since error
+                # messages can vary across Python versions. The patterns below cover known
+                # messages from Python 3.9-3.13. If a new Python version changes the
+                # wording, the unknown ValueError will propagate and surface the issue
+                # rather than silently failing. This is intentional - we prefer explicit
+                # failure over silent incorrect handling.
                 error_msg = str(e).lower()
-                expected_patterns = ("closed file", "closed", "detached")
+                expected_patterns = (
+                    "closed file",  # "I/O operation on closed file"
+                    "closed",  # Catch variations like "read of closed file"
+                    "detached",  # "underlying buffer has been detached"
+                    "invalid",  # "invalid file mode" or similar
+                )
                 if not any(pattern in error_msg for pattern in expected_patterns):
                     # Unexpected ValueError - this is likely a programming error, not
                     # an I/O issue. Re-raise to surface the bug rather than silently

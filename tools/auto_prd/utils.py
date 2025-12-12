@@ -139,6 +139,16 @@ def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> 
     even after sanitization. Using stderr-only ensures error messages come
     from the process's error stream, not from potentially sensitive output.
 
+    BREAKING CHANGE: Previous versions of this function fell back to stdout
+    when stderr was empty::
+
+        text = (stderr or stdout or "").strip()  # OLD behavior
+
+    This was changed to stderr-only for security reasons. Code that previously
+    received stdout content in error details will now receive "exit code N"
+    instead. Callers who need stdout content should access the exception's
+    `output` or `stdout` attribute directly after appropriate sanitization.
+
     Args:
         exc: The CalledProcessError exception to extract details from.
 

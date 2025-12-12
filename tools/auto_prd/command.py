@@ -620,10 +620,21 @@ def popen_streaming(
         ValueError: If cmd contains unsafe shell metacharacters.
         SystemExit: If command is not in allowlist or cwd is outside safe roots.
     """
-    # IMPORTANT: Validate the ORIGINAL command BEFORE sanitization to catch security
+    # IMPORTANT: We validate the ORIGINAL command BEFORE sanitization to catch security
     # issues (shell metacharacters like |, ;, >, <) that would otherwise be hidden
-    # by the sanitization step. This ensures we reject malicious input rather than
-    # silently sanitizing it away.
+    # by the sanitization step. This is a security-conscious design decision:
+    #
+    # - Validating BEFORE sanitization: Ensures malicious input is rejected upfront,
+    #   making attack attempts visible rather than silently sanitizing them away.
+    #   This treats potentially malicious input as an error to investigate.
+    #
+    # - Validating AFTER sanitization would allow: Commands with backticks or other
+    #   suspicious patterns to pass through undetected, with the metacharacters
+    #   quietly converted to safe equivalents. While subprocess with shell=False
+    #   prevents actual injection, the original suspicious input warrants attention.
+    #
+    # Note: Backticks receive special treatment in validate_command_args() - they're
+    # logged but allowed because shell=False prevents shell interpretation.
     validate_command_args(cmd)
 
     # Sanitize args via scrub_cli_text when sanitize=True
@@ -672,7 +683,8 @@ def popen_streaming(
     if not repo_root_path.exists():
         raise FileNotFoundError(
             f"Repository root directory does not exist: {repo_root_path}. "
-            "Ensure you're running from a valid directory."
+            "This may indicate the repository was deleted or moved. "
+            "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
         )
     repo_root = str(repo_root_path)
     env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
