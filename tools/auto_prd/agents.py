@@ -811,7 +811,7 @@ def claude_exec_streaming(
             raise RuntimeError(
                 f"Process did not terminate after proc.wait(); returncode is None "
                 f"(command: {sanitized_args[0]})"
-            )
+            ) from None
         raise subprocess.CalledProcessError(
             proc.returncode,
             sanitized_args,
