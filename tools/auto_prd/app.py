@@ -475,8 +475,8 @@ def run(args) -> None:
                     )
 
         # Review/fix phase
-        # Track whether review phase succeeded for session completion decision
-        review_succeeded = True  # Default for skipped phase
+        # Track whether review phase succeeded for session completion decision (default for skipped phase)
+        review_succeeded = True
         if include("review_fix"):
             mark_phase_started(checkpoint, "review_fix")
             save_checkpoint(checkpoint)

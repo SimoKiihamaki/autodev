@@ -22,6 +22,16 @@ get_claude_exec_timeout = safe_import(
 claude_exec_streaming = safe_import(
     "tools.auto_prd.agents", "..agents", "claude_exec_streaming"
 )
+_process_buffer = safe_import("tools.auto_prd.agents", "..agents", "_process_buffer")
+_drain_fds_best_effort = safe_import(
+    "tools.auto_prd.agents", "..agents", "_drain_fds_best_effort"
+)
+_resolve_unsafe_flag = safe_import(
+    "tools.auto_prd.agents", "..agents", "_resolve_unsafe_flag"
+)
+_build_claude_args = safe_import(
+    "tools.auto_prd.agents", "..agents", "_build_claude_args"
+)
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "..command", "register_safe_cwd"
 )
@@ -453,6 +463,215 @@ class ClaudeExecStreamingTests(unittest.TestCase):
                 dry_run=False,
             )
         self.assertEqual(context.exception.returncode, 1)
+
+
+class ProcessBufferTests(unittest.TestCase):
+    """Test suite for _process_buffer helper function."""
+
+    def test_empty_buffer_returns_empty(self):
+        """Test _process_buffer with empty buffer returns empty string."""
+        lines: list[str] = []
+        result = _process_buffer("", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, [])
+
+    def test_no_newlines_returns_input_unchanged(self):
+        """Test _process_buffer with no newlines returns input unchanged."""
+        lines: list[str] = []
+        result = _process_buffer("incomplete", lines)
+        self.assertEqual(result, "incomplete")
+        self.assertEqual(lines, [])
+
+    def test_single_complete_line(self):
+        """Test _process_buffer extracts single complete line."""
+        lines: list[str] = []
+        result = _process_buffer("complete\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["complete"])
+
+    def test_multiple_complete_lines(self):
+        """Test _process_buffer extracts all complete lines."""
+        lines: list[str] = []
+        result = _process_buffer("line1\nline2\nline3\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "line2", "line3"])
+
+    def test_with_trailing_incomplete_line(self):
+        """Test _process_buffer returns incomplete trailing line."""
+        lines: list[str] = []
+        result = _process_buffer("complete\nincomplete", lines)
+        self.assertEqual(result, "incomplete")
+        self.assertEqual(lines, ["complete"])
+
+    def test_with_output_handler(self):
+        """Test _process_buffer calls output handler for each line."""
+        lines: list[str] = []
+        handler_calls: list[str] = []
+
+        def handler(line: str) -> None:
+            handler_calls.append(line)
+
+        result = _process_buffer("line1\nline2\n", lines, handler)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "line2"])
+        self.assertEqual(handler_calls, ["line1", "line2"])
+
+    def test_empty_lines_preserved(self):
+        """Test _process_buffer preserves empty lines (consecutive newlines)."""
+        lines: list[str] = []
+        result = _process_buffer("line1\n\nline3\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "", "line3"])
+
+
+class DrainFdsBestEffortTests(unittest.TestCase):
+    """Test suite for _drain_fds_best_effort helper function."""
+
+    def test_drains_remaining_data_from_stdout(self):
+        """Test _drain_fds_best_effort captures remaining stdout data."""
+        mock_stdout = MagicMock()
+        mock_stdout.closed = False
+        mock_stdout.read.return_value = "remaining"
+
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_stdout], mock_stdout, None, "existing", ""
+        )
+        self.assertEqual(stdout_buf, "existingremaining")
+        self.assertEqual(stderr_buf, "")
+
+    def test_drains_remaining_data_from_stderr(self):
+        """Test _drain_fds_best_effort captures remaining stderr data."""
+        mock_stderr = MagicMock()
+        mock_stderr.closed = False
+        mock_stderr.read.return_value = "error_remaining"
+
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_stderr], None, mock_stderr, "", "existing_error"
+        )
+        self.assertEqual(stdout_buf, "")
+        self.assertEqual(stderr_buf, "existing_errorerror_remaining")
+
+    def test_skips_closed_file_descriptors(self):
+        """Test _drain_fds_best_effort skips closed file descriptors."""
+        mock_fd = MagicMock()
+        mock_fd.closed = True
+
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_fd], None, None, "original", ""
+        )
+        self.assertEqual(stdout_buf, "original")
+        mock_fd.read.assert_not_called()
+
+    def test_handles_empty_fd_list(self):
+        """Test _drain_fds_best_effort with empty fd list."""
+        stdout_buf, stderr_buf = _drain_fds_best_effort([], None, None, "buf1", "buf2")
+        self.assertEqual(stdout_buf, "buf1")
+        self.assertEqual(stderr_buf, "buf2")
+
+    def test_handles_read_exception_gracefully(self):
+        """Test _drain_fds_best_effort catches read exceptions."""
+        mock_fd = MagicMock()
+        mock_fd.closed = False
+        mock_fd.read.side_effect = OSError("Read failed")
+
+        # Should not raise - errors are logged and ignored
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_fd], mock_fd, None, "", ""
+        )
+        self.assertEqual(stdout_buf, "")
+        self.assertEqual(stderr_buf, "")
+
+
+class ResolveUnsafeFlagTests(unittest.TestCase):
+    """Test suite for _resolve_unsafe_flag helper function."""
+
+    def test_allow_unsafe_execution_true(self):
+        """Test _resolve_unsafe_flag with allow_unsafe_execution=True."""
+        result = _resolve_unsafe_flag(True, None, "test_caller")
+        self.assertTrue(result)
+
+    def test_allow_unsafe_execution_false(self):
+        """Test _resolve_unsafe_flag with allow_unsafe_execution=False."""
+        result = _resolve_unsafe_flag(False, None, "test_caller")
+        self.assertFalse(result)
+
+    def test_both_none_returns_false(self):
+        """Test _resolve_unsafe_flag with both None returns False."""
+        result = _resolve_unsafe_flag(None, None, "test_caller")
+        self.assertFalse(result)
+
+    def test_yolo_alone_returns_true(self):
+        """Test _resolve_unsafe_flag with yolo=True alone."""
+        with patch("tools.auto_prd.agents.logger") as mock_logger:
+            result = _resolve_unsafe_flag(None, True, "test_caller")
+            self.assertTrue(result)
+            mock_logger.warning.assert_called()
+
+    def test_yolo_false_returns_false(self):
+        """Test _resolve_unsafe_flag with yolo=False returns False."""
+        with patch("tools.auto_prd.agents.logger"):
+            result = _resolve_unsafe_flag(None, False, "test_caller")
+            self.assertFalse(result)
+
+    def test_both_set_uses_or_logic(self):
+        """Test _resolve_unsafe_flag ORs both values when both set."""
+        with patch("tools.auto_prd.agents.logger"):
+            # False OR True = True
+            result = _resolve_unsafe_flag(False, True, "test_caller")
+            self.assertTrue(result)
+
+            # True OR False = True
+            result = _resolve_unsafe_flag(True, False, "test_caller")
+            self.assertTrue(result)
+
+
+class BuildClaudeArgsTests(unittest.TestCase):
+    """Test suite for _build_claude_args helper function."""
+
+    def test_basic_args_without_flags(self):
+        """Test _build_claude_args generates basic args."""
+        args = _build_claude_args(
+            allow_flag=False, model=None, enable_search=True, extra=None
+        )
+        self.assertEqual(args, ["claude", "-p", "-"])
+
+    def test_with_allow_flag(self):
+        """Test _build_claude_args adds --dangerously-skip-permissions."""
+        args = _build_claude_args(
+            allow_flag=True, model=None, enable_search=True, extra=None
+        )
+        self.assertIn("--dangerously-skip-permissions", args)
+        self.assertEqual(args[0], "claude")
+        self.assertEqual(args[-2:], ["-p", "-"])
+
+    def test_with_model(self):
+        """Test _build_claude_args adds model flag."""
+        args = _build_claude_args(
+            allow_flag=False, model="claude-3-opus", enable_search=True, extra=None
+        )
+        self.assertIn("--model", args)
+        model_idx = args.index("--model")
+        self.assertEqual(args[model_idx + 1], "claude-3-opus")
+
+    def test_with_extra_args(self):
+        """Test _build_claude_args appends extra args."""
+        args = _build_claude_args(
+            allow_flag=False, model=None, enable_search=True, extra=["--verbose", "-v"]
+        )
+        self.assertIn("--verbose", args)
+        self.assertIn("-v", args)
+        # Extra args should be before the final -p -
+        self.assertEqual(args[-2:], ["-p", "-"])
+
+    def test_p_stdin_always_at_end(self):
+        """Test _build_claude_args always ends with -p -."""
+        args = _build_claude_args(
+            allow_flag=True,
+            model="claude-3-sonnet",
+            enable_search=True,
+            extra=["--debug"],
+        )
+        self.assertEqual(args[-2:], ["-p", "-"])
 
 
 if __name__ == "__main__":

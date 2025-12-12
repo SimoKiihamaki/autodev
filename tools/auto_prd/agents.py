@@ -306,7 +306,22 @@ def coderabbit_prompt_only(base_branch: str | None, repo_root: Path) -> str:
                 )
                 time.sleep(sleep_for)
                 continue
-            logger.warning("CodeRabbit prompt-only run failed: %s", msg or exc)
+            # Log at ERROR level since this could mask security vulnerabilities
+            logger.error(
+                "CodeRabbit prompt-only run failed after %d attempts: %s",
+                attempts,
+                msg or exc,
+            )
+            # Notify user that CodeRabbit analysis failed - they should be aware
+            # that security findings may be missing from automated review
+            print(
+                f"\nWarning: CodeRabbit analysis failed: {msg or exc}",
+                flush=True,
+            )
+            print(
+                "Continuing without CodeRabbit findings - manual review recommended.",
+                flush=True,
+            )
             return ""
 
 
@@ -493,12 +508,22 @@ def _drain_fds_best_effort(
                     stdout_buffer += remaining
                 elif fd == proc_stderr:
                     stderr_buffer += remaining
-        except Exception as drain_exc:
-            # Log at debug level - this is best-effort recovery during error handling
-            logger.debug(
-                "Best-effort drain failed for fd (expected during error recovery): %s",
-                drain_exc,
-            )
+        except (OSError, IOError, ValueError) as drain_exc:
+            # Log at WARNING if there was buffered data we might have lost.
+            # The buffers passed in represent data we already read but haven't
+            # processed yet - losing additional data on top of that is significant.
+            if stdout_buffer or stderr_buffer:
+                logger.warning(
+                    "Best-effort drain failed for fd - some output may be lost: %s (%s)",
+                    drain_exc,
+                    type(drain_exc).__name__,
+                )
+            else:
+                # Log at debug if no buffered data - less concerning
+                logger.debug(
+                    "Best-effort drain failed for fd (expected during error recovery): %s",
+                    drain_exc,
+                )
     return stdout_buffer, stderr_buffer
 
 
@@ -619,7 +644,8 @@ def claude_exec_streaming(
             if proc.stderr:
                 try:
                     captured_stderr = proc.stderr.read() or ""
-                except Exception as stderr_exc:
+                except (OSError, IOError, ValueError) as stderr_exc:
+                    # Catch specific I/O exceptions - avoid catching SystemExit, KeyboardInterrupt
                     logger.warning(
                         "Failed to capture stderr after BrokenPipeError: %s (%s)",
                         stderr_exc,
@@ -682,7 +708,7 @@ def claude_exec_streaming(
     # When a process exits, its pipes still exist as file objects (not None),
     # but select() returns them as "readable" with EOF. Without tracking EOF,
     # the loop would spin forever: read empty string -> continue -> select -> repeat.
-    eof_fds: set = set()
+    eof_fds: set[IO[str]] = set()
 
     # Stream output in real-time
     while True:
@@ -815,9 +841,12 @@ def claude_exec_streaming(
                     e,
                 )
                 io_errors.append((fd_name, e.errno, str(e)))
-                # Notify user immediately of potential data loss
+                # Notify user immediately of potential data loss.
+                # Write to stderr explicitly since stdout may be the problematic fd,
+                # and we want this warning to be visible regardless.
                 print(
                     f"  [WARNING] I/O error on {fd_name} - some output may be missing",
+                    file=sys.stderr,
                     flush=True,
                 )
                 # Mark fd as EOF to exclude it from subsequent select() calls.
@@ -840,6 +869,9 @@ def claude_exec_streaming(
     if stderr_buffer:
         stderr_lines.append(stderr_buffer)
 
+    # Note: proc.poll() already confirmed exit (returncode is set). This wait() call
+    # is kept for defensive completeness to ensure subprocess resources are released,
+    # though it will return immediately since the process has already terminated.
     proc.wait()
 
     # Explicitly close file descriptors

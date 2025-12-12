@@ -653,6 +653,13 @@ def popen_streaming(
 
     env = env_with_zsh(extra_env or {})
     env["PYTHONUNBUFFERED"] = "1"
+    # Set PYTHONPATH and AUTO_PRD_ROOT for subprocess module resolution (consistent
+    # with safe_popen). This ensures project modules can be imported by the subprocess.
+    repo_root = str(find_repo_root())
+    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
+        os.pathsep
+    )
+    env["AUTO_PRD_ROOT"] = repo_root
 
     proc = subprocess.Popen(
         sanitized_cmd,

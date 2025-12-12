@@ -195,7 +195,8 @@ def review_fix_loop(
         print(f"Waiting {initial_wait_minutes} minutes for bot reviews...", flush=True)
         time.sleep(initial_wait_seconds)
 
-    idle_grace_seconds = max(0, idle_grace * 60)
+    # Use float type from the start to avoid type inconsistency when infinite_reviews=True
+    idle_grace_seconds: float = float(max(0, idle_grace * 60))
     if infinite_reviews:
         idle_grace_seconds = float("inf")
     poll = max(15, poll_interval)
@@ -357,6 +358,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     flush=True,
                 )
                 raise
+            except (SystemExit, KeyboardInterrupt):
+                # Allow clean shutdown and user cancellation to propagate
+                raise
             except Exception as exc:  # pragma: no cover - best-effort resilience
                 consecutive_failures += 1
                 error_type = type(exc).__name__
@@ -385,7 +389,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     {
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
-                        "last_activity_time": time.monotonic(),
+                        # Use time.time() for checkpoint persistence - monotonic() is not
+                        # meaningful across process restarts since it's relative to process start
+                        "last_activity_time": time.time(),
                     },
                 )
                 save_checkpoint(checkpoint)
@@ -425,6 +431,12 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
     for entry in unresolved:
         summary = entry.get("summary")
         if not isinstance(summary, str):
+            # Log skipped entries for debugging malformed API responses
+            logger.debug(
+                "Skipping unresolved entry with invalid summary type: comment_id=%s, type=%s",
+                entry.get("comment_id", "unknown"),
+                type(summary).__name__,
+            )
             continue
         lines.append(f"* {summary.strip()}")
     text = "\n".join(lines)
