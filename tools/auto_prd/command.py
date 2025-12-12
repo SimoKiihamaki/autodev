@@ -675,6 +675,16 @@ def popen_streaming(
     env = env_with_zsh(extra_env or {})
     env["PYTHONUNBUFFERED"] = "1"
     # Set PYTHONPATH and AUTO_PRD_ROOT so project modules can be imported by the subprocess.
+    #
+    # Why these are set for ALL popen_streaming calls (even non-Python commands like 'claude'):
+    # 1. PYTHONPATH: The 'claude' CLI may spawn Python subprocesses internally (hooks, plugins)
+    #    that need to import tools.auto_prd modules for consistent behavior.
+    # 2. AUTO_PRD_ROOT: Used by various tools/scripts to locate the project root reliably
+    #    without re-running git-based detection. Setting it unconditionally is simpler and
+    #    faster than checking whether each specific command needs it.
+    # 3. The overhead is negligible (two string assignments to the env dict) and avoids the
+    #    complexity of conditional setup based on command type detection.
+    #
     # find_repo_root() always returns a valid Path (falls back to cwd() if no .git found),
     # so repo_root_path will never be None. We validate it exists to catch edge cases where
     # the fallback cwd was deleted between find_repo_root() and this check.

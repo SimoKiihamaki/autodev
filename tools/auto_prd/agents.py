@@ -470,6 +470,8 @@ def _build_claude_args(
     model: str | None,
     enable_search: bool,
     extra: list[str] | tuple[str, ...] | None,
+    *,
+    caller: str = "claude_exec or claude_exec_streaming",
 ) -> list[str]:
     """Build the CLI arguments for Claude execution.
 
@@ -484,6 +486,8 @@ def _build_claude_args(
         extra: Optional list of additional string arguments to pass to Claude.
             Must be a list or tuple of strings if provided. Validated here
             before any arguments are constructed to fail fast with clear errors.
+        caller: Name of the calling function for clearer error messages.
+            Defaults to "claude_exec or claude_exec_streaming" for generic context.
 
     Returns:
         List of CLI arguments for Claude execution.
@@ -497,11 +501,11 @@ def _build_claude_args(
     # Early validation ensures clear error messages with caller stack context.
     if extra is not None:
         if not isinstance(extra, (list, tuple)):
-            msg = f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
+            msg = f"{caller}: 'extra' must be a list or tuple of strings, got {type(extra).__name__}"
             raise TypeError(msg)
         if not all(isinstance(x, str) for x in extra):
             invalid_types = [type(x).__name__ for x in extra if not isinstance(x, str)]
-            msg = f"'extra' must contain only strings, found: {invalid_types}"
+            msg = f"{caller}: 'extra' must contain only strings, found: {invalid_types}"
             raise TypeError(msg)
 
     args: list[str] = ["claude"]
@@ -539,7 +543,9 @@ def claude_exec(
     if allow_flag:
         verify_unsafe_execution_ready()
 
-    args = _build_claude_args(allow_flag, model, enable_search, extra)
+    args = _build_claude_args(
+        allow_flag, model, enable_search, extra, caller="claude_exec"
+    )
     if dry_run:
         # Log command name and arg count only - avoid full arg dump to prevent
         # potential secret/PII leakage via `extra` arguments
@@ -686,10 +692,13 @@ def _drain_fds_best_effort(
             # Any other exceptions (e.g., TypeError, AttributeError) would indicate
             # a programming error and should propagate up.
             #
-            # Always log at WARNING since we attempted to read from this fd and failed,
-            # meaning we may have lost data that was available in the pipe.
-            logger.warning(
-                "Best-effort drain failed for fd - some output may be lost: %s (%s)",
+            # Log at DEBUG level since this function is explicitly designed for "best-effort"
+            # cleanup during error recovery, where some data loss is already expected.
+            # WARNING would be misleading since the caller has already acknowledged the
+            # possibility of incomplete output by using this function.
+            logger.debug(
+                "Best-effort drain failed for fd during error recovery "
+                "(expected; some output may be lost): %s (%s)",
                 drain_exc,
                 type(drain_exc).__name__,
             )
@@ -863,7 +872,9 @@ def claude_exec_streaming(
     if allow_flag:
         verify_unsafe_execution_ready()
 
-    args = _build_claude_args(allow_flag, model, enable_search, extra)
+    args = _build_claude_args(
+        allow_flag, model, enable_search, extra, caller="claude_exec_streaming"
+    )
     if dry_run:
         # Log command name and arg count only - avoid full arg dump to prevent
         # potential secret/PII leakage via `extra` arguments
@@ -1063,15 +1074,19 @@ def claude_exec_streaming(
     stdout_buffer = ""
     stderr_buffer = ""
 
-    # Track I/O errors for surfacing at the end of streaming.
-    # NOTE: I/O errors during streaming are logged and reported but do NOT cause
+    # Track read() errors for surfacing at the end of streaming.
+    # NOTE: Read errors during streaming are logged and reported but do NOT cause
     # the function to raise an exception if the process exit code is 0. This is
     # intentional: the primary success criterion is the process exit code, not
-    # complete I/O capture. If I/O errors occur but the process exits successfully,
+    # complete I/O capture. If read errors occur but the process exits successfully,
     # we return the (potentially incomplete) output with a warning rather than
     # failing entirely. Callers who need guaranteed complete output should check
-    # for io_errors warnings in the logs after calling.
-    io_errors: list[tuple[str, int | None, str]] = []
+    # for read_errors warnings in the logs after calling.
+    #
+    # Note: This tracks errors from read() operations only, not select() errors
+    # (which cause immediate RuntimeError). The name "read_errors" reflects this
+    # specific scope.
+    read_errors: list[tuple[str, int | None, str]] = []
 
     # Track fds that have reached EOF to avoid infinite loop.
     # When a process exits, its pipes still exist as file objects (not None),
@@ -1159,8 +1174,11 @@ def claude_exec_streaming(
                         "using exit code to determine success/failure (not raising TimeoutExpired)",
                         proc.returncode,
                     )
-                    # Defensive cleanup for stdin - already closed after prompt write,
-                    # but included for consistency with other code paths.
+                    # Close fds BEFORE returning since this is an early return path.
+                    # Unlike the normal success path (which closes fds after the main loop
+                    # at lines ~1383-1386), early returns must clean up explicitly here
+                    # to prevent resource leaks. This is the same pattern used by all
+                    # other early exit points (timeout kill, BrokenPipeError, etc.).
                     if proc.stdin and not proc.stdin.closed:
                         proc.stdin.close()
                     if proc.stdout:
@@ -1210,11 +1228,9 @@ def claude_exec_streaming(
                 "terminating process and aborting streaming",
                 e,
             )
-            # Attempt to drain any remaining buffered data before terminating.
-            # Return values are intentionally discarded since we're raising immediately.
-            _drain_fds_best_effort(
-                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
-            )
+            # Kill and wait for process BEFORE draining fds.
+            # If we drain first, fd.read() has no readiness guarantee after select()
+            # failed, and could block indefinitely waiting for EOF.
             proc.kill()
             try:
                 proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
@@ -1223,6 +1239,11 @@ def claude_exec_streaming(
                     "Process did not terminate after kill signal within timeout; "
                     "continuing cleanup."
                 )
+            # Now attempt to drain any remaining buffered data (best-effort).
+            # Return values are intentionally discarded since we're raising immediately.
+            _drain_fds_best_effort(
+                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
+            )
             # Defensive cleanup for stdin - already closed after prompt write,
             # but included for consistency with other error handlers.
             if proc.stdin and not proc.stdin.closed:
@@ -1248,11 +1269,9 @@ def claude_exec_streaming(
                 e.errno,
                 e,
             )
-            # Attempt to drain any remaining buffered data before terminating.
-            # Return values are intentionally discarded since we're raising immediately.
-            _drain_fds_best_effort(
-                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
-            )
+            # Kill and wait for process BEFORE draining fds.
+            # If we drain first, fd.read() has no readiness guarantee after select()
+            # failed, and could block indefinitely waiting for EOF.
             proc.kill()
             try:
                 proc.wait(timeout=PROCESS_CLEANUP_TIMEOUT_SECONDS)
@@ -1261,6 +1280,11 @@ def claude_exec_streaming(
                     "Process did not terminate after kill signal within timeout; "
                     "continuing cleanup."
                 )
+            # Now attempt to drain any remaining buffered data (best-effort).
+            # Return values are intentionally discarded since we're raising immediately.
+            _drain_fds_best_effort(
+                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
+            )
             # Defensive cleanup for stdin - already closed after prompt write,
             # but included for consistency with other error handlers.
             if proc.stdin and not proc.stdin.closed:
@@ -1310,7 +1334,7 @@ def claude_exec_streaming(
                     e.errno,
                     e,
                 )
-                io_errors.append((fd_name, e.errno, str(e)))
+                read_errors.append((fd_name, e.errno, str(e)))
                 # Notify user immediately of potential data loss.
                 # Write to stderr explicitly since stdout may be the problematic fd,
                 # and we want this warning to be visible regardless.
@@ -1345,7 +1369,7 @@ def claude_exec_streaming(
                         fd.closed,
                         e,
                     )
-                    io_errors.append((fd_name, getattr(e, "errno", None), str(e)))
+                    read_errors.append((fd_name, getattr(e, "errno", None), str(e)))
                     print(
                         f"  [WARNING] Read error on {fd_name} (fd closed) - "
                         "some output may be missing",
@@ -1388,15 +1412,15 @@ def claude_exec_streaming(
     stdout_text = "\n".join(stdout_lines)
     stderr_text = "\n".join(stderr_lines)
 
-    # Surface any I/O or select errors that occurred during streaming
-    if io_errors:
+    # Surface any read errors that occurred during streaming
+    if read_errors:
         # Format errors with fd_name context for easier debugging
         formatted_errors = [
-            f"{fd_name} (errno={errno}): {err}" for fd_name, errno, err in io_errors
+            f"{fd_name} (errno={errno}): {err}" for fd_name, errno, err in read_errors
         ]
         logger.error(
-            "Claude execution completed with %d I/O errors - output may be incomplete:\n%s",
-            len(io_errors),
+            "Claude execution completed with %d read errors - output may be incomplete:\n%s",
+            len(read_errors),
             "\n".join(formatted_errors),
         )
     if proc.returncode != 0:

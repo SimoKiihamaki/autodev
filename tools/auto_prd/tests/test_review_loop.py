@@ -343,11 +343,19 @@ class ReviewFixLoopTests(unittest.TestCase):
     ) -> None:
         """Test that successful execution resets the failure counter.
 
-        The scenario verifies counter reset by: (1) first call fails (counter=1),
-        (2) second call succeeds (counter resets to 0), (3) third call fails but
-        the loop completes before MAX_CONSECUTIVE_FAILURES because the counter
-        was reset. If the counter wasn't reset, we'd have 2 failures and be
-        closer to the limit.
+        The scenario executes 4 runner calls in sequence to verify counter reset:
+
+        1. First call FAILS -> counter becomes 1
+        2. Second call SUCCEEDS -> counter resets to 0
+        3. Third call FAILS -> counter becomes 1 (not 2, proving reset worked)
+        4. Fourth call SUCCEEDS -> loop exits normally via should_stop_review_after_push
+
+        If the counter wasn't reset after call #2, call #3 would have set counter
+        to 2, meaning we'd be closer to MAX_CONSECUTIVE_FAILURES=3.
+
+        The 4th call is necessary because the loop continues after each successful
+        execution (calls #2 and #4) to check for more feedback. The empty feedback
+        list [] at the end triggers the exit condition.
         """
         mock_runner = mock.MagicMock(
             side_effect=[

@@ -231,9 +231,16 @@ class PopenStreamingTests(unittest.TestCase):
             ["echo", "contains `backticks`"], cwd=self.repo_root
         )
 
-        # Verify backticks were sanitized to single quotes
+        # Verify backticks were sanitized to single quotes in the returned args
         self.assertEqual(sanitized_args, ["echo", "contains 'backticks'"])
         self.assertNotIn("`", sanitized_args[1])
+
+        # Verify that Popen was called with the sanitized arguments
+        # (not the original unsanitized arguments)
+        mock_popen.assert_called_once()
+        actual_args = mock_popen.call_args[0][0]  # First positional argument to Popen
+        self.assertEqual(actual_args, ["echo", "contains 'backticks'"])
+        self.assertNotIn("`", actual_args[1])
 
     @mock.patch("tools.auto_prd.command.shutil.which")
     def test_raises_file_not_found_for_missing_command(self, mock_which):

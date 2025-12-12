@@ -218,6 +218,36 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
         raise
 
 
+def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """Migrate checkpoint from older schema versions to current version.
+
+    This function handles backward compatibility for checkpoints created by older
+    versions of the software. It performs in-place migration of deprecated field
+    names and structures.
+
+    Args:
+        checkpoint: Checkpoint dictionary to migrate.
+
+    Returns:
+        The migrated checkpoint (same object, modified in place).
+    """
+    # Migration: last_activity_time -> last_activity_wall_clock (version 1)
+    # The field was renamed for clarity - "wall_clock" explicitly indicates this is
+    # a wall-clock timestamp (time.time()) for operational visibility, not a monotonic
+    # timer used for idle timeout computation.
+    review_fix = checkpoint.get("phases", {}).get("review_fix", {})
+    if (
+        "last_activity_time" in review_fix
+        and "last_activity_wall_clock" not in review_fix
+    ):
+        review_fix["last_activity_wall_clock"] = review_fix.pop("last_activity_time")
+        logger.debug(
+            "Migrated checkpoint field: last_activity_time -> last_activity_wall_clock"
+        )
+
+    return checkpoint
+
+
 def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
     """Load checkpoint from disk.
 
@@ -226,6 +256,9 @@ def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
 
     Returns:
         Checkpoint dictionary or None if not found.
+
+    Note:
+        Automatically migrates checkpoints from older schema versions.
     """
     checkpoint_path = get_checkpoint_path(session_id)
     if not checkpoint_path.exists():
@@ -234,6 +267,8 @@ def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
     try:
         with open(checkpoint_path) as f:
             checkpoint = json.load(f)
+        # Migrate from older schema versions if needed
+        checkpoint = _migrate_checkpoint(checkpoint)
         logger.debug("Loaded checkpoint from %s", checkpoint_path)
         return checkpoint
     except (json.JSONDecodeError, OSError) as e:
