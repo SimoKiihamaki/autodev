@@ -521,7 +521,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 continue
             except (
                 Exception
-            ) as exc:  # noqa: BLE001 - best-effort resilience  # pragma: no cover
+            ) as exc:
                 # Defense-in-depth: Re-raise programming errors that should have been
                 # caught by earlier except blocks. These types are explicitly listed
                 # above (AttributeError, TypeError, etc.) but if exception handling

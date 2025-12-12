@@ -33,7 +33,7 @@ try:
     import fcntl
 
     HAS_FCNTL = True
-except ModuleNotFoundError:  # pragma: no cover (Windows)
+except ImportError:  # pragma: no cover (Windows)
     HAS_FCNTL = False
 
 RATE_LIMIT_JITTER_MIN = -3
@@ -491,11 +491,11 @@ def _build_claude_args(
     if extra is not None:
         if not isinstance(extra, (list, tuple)):
             msg = f"'extra' must be a list or tuple of strings, got {type(extra).__name__}"
-            raise TypeError(msg)  # noqa: TRY003
+            raise TypeError(msg)
         if not all(isinstance(x, str) for x in extra):
             invalid_types = [type(x).__name__ for x in extra if not isinstance(x, str)]
             msg = f"'extra' must contain only strings, found: {invalid_types}"
-            raise TypeError(msg)  # noqa: TRY003
+            raise TypeError(msg)
 
     args: list[str] = ["claude"]
     if allow_flag:
@@ -527,7 +527,7 @@ def claude_exec(
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
     if not allow_flag and not dry_run:
         msg = "Claude executor requires allow_unsafe_execution=True to bypass permissions."
-        raise PermissionError(msg)  # noqa: TRY003
+        raise PermissionError(msg)
     os.environ.setdefault("CI", "1")
     if allow_flag:
         verify_unsafe_execution_ready()
@@ -574,15 +574,13 @@ def _set_nonblocking(fd: int) -> None:
         OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
     if not HAS_FCNTL:
-        raise OSError("Non-blocking I/O requires fcntl (Unix-only).")
+        raise OSError("Non-blocking I/O requires fcntl.")
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
     except (OSError, ValueError) as e:
         logger.error("Failed to set non-blocking mode on fd %d: %s", fd, e)
-        raise OSError(
-            f"Failed to configure non-blocking I/O for Claude streaming (fd={fd}): {e}"
-        ) from e
+        raise OSError("Failed to configure non-blocking I/O.") from e
 
 
 def _process_buffer(
@@ -741,13 +739,13 @@ def claude_exec_streaming(
             "claude_exec_streaming requires Unix fcntl module for non-blocking I/O. "
             "Use claude_exec on Windows systems."
         )
-        raise OSError(msg)  # noqa: TRY003
+        raise OSError(msg)
     allow_flag = _resolve_unsafe_flag(
         allow_unsafe_execution, yolo, "claude_exec_streaming"
     )
     if not allow_flag and not dry_run:
         msg = "Claude executor requires allow_unsafe_execution=True to bypass permissions."
-        raise PermissionError(msg)  # noqa: TRY003
+        raise PermissionError(msg)
     os.environ.setdefault("CI", "1")
     if allow_flag:
         verify_unsafe_execution_ready()
@@ -799,7 +797,7 @@ def claude_exec_streaming(
         if proc.stderr:
             proc.stderr.close()
         msg = "Claude streaming requires stdin=PIPE (got no stdin)"
-        raise RuntimeError(msg)  # noqa: TRY003
+        raise RuntimeError(msg)
     try:
         proc.stdin.write(prompt)
         proc.stdin.close()
@@ -900,7 +898,7 @@ def claude_exec_streaming(
                 f"poll(): {poll_result}). This indicates a possible bug in the subprocess module or OS. "
                 f"Please report this issue with full diagnostics."
             )
-            raise RuntimeError(msg) from None  # noqa: TRY003
+            raise RuntimeError(msg) from None
         raise subprocess.CalledProcessError(
             proc.returncode,
             sanitized_args,
@@ -1087,7 +1085,7 @@ def claude_exec_streaming(
             if proc.stderr:
                 proc.stderr.close()
             msg = "select() failed (ValueError); streaming aborted"
-            raise RuntimeError(msg) from e  # noqa: TRY003
+            raise RuntimeError(msg) from e
         except OSError as e:
             # EINTR can be retried (interrupted by signal)
             if e.errno == errno.EINTR:
@@ -1125,7 +1123,7 @@ def claude_exec_streaming(
             if proc.stderr:
                 proc.stderr.close()
             msg = "select() failed (OSError); streaming aborted"
-            raise RuntimeError(msg) from e  # noqa: TRY003
+            raise RuntimeError(msg) from e
 
         for fd in readable:
             try:
