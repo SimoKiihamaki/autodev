@@ -1,3 +1,4 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -228,6 +229,292 @@ class ReviewFixLoopTests(unittest.TestCase):
 
         mock_get_unresolved.assert_called_once()
         mock_should_stop.assert_called()
+
+    @mock.patch("tools.auto_prd.review_loop.time.sleep")
+    @mock.patch(
+        "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=False
+    )
+    @mock.patch("tools.auto_prd.review_loop.acknowledge_review_items")
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_timeout_increments_failure_counter(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+        mock_acknowledge,
+        mock_should_stop,
+        mock_sleep,
+    ) -> None:
+        """Test that TimeoutExpired increments failure counter and returns False after max failures."""
+        # Mock runner that always times out
+        mock_runner = mock.MagicMock(
+            side_effect=subprocess.TimeoutExpired(["claude"], 300)
+        )
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        # Return feedback so the loop tries to fix it
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
+
+        # Should return False due to consecutive failures
+        self.assertFalse(result)
+        # Should have been called MAX_CONSECUTIVE_FAILURES times
+        self.assertEqual(mock_runner.call_count, review_loop.MAX_CONSECUTIVE_FAILURES)
+
+    @mock.patch("tools.auto_prd.review_loop.time.sleep")
+    @mock.patch(
+        "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=False
+    )
+    @mock.patch("tools.auto_prd.review_loop.acknowledge_review_items")
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_called_process_error_increments_failure_counter(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+        mock_acknowledge,
+        mock_should_stop,
+        mock_sleep,
+    ) -> None:
+        """Test that CalledProcessError increments failure counter."""
+        mock_runner = mock.MagicMock(
+            side_effect=subprocess.CalledProcessError(1, ["claude"], stderr=b"error")
+        )
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
+
+        self.assertFalse(result)
+        self.assertEqual(mock_runner.call_count, review_loop.MAX_CONSECUTIVE_FAILURES)
+
+    @mock.patch("tools.auto_prd.review_loop.time.sleep")
+    @mock.patch(
+        "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=True
+    )
+    @mock.patch("tools.auto_prd.review_loop.acknowledge_review_items")
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_successful_execution_resets_failure_counter(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+        mock_acknowledge,
+        mock_should_stop,
+        mock_sleep,
+    ) -> None:
+        """Test that successful execution resets the failure counter."""
+        # First call fails, second succeeds
+        call_count = [0]
+
+        def mock_runner_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise subprocess.CalledProcessError(1, ["claude"], stderr=b"error")
+            return ("output", "")
+
+        mock_runner = mock.MagicMock(side_effect=mock_runner_side_effect)
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        # Return feedback on first call, then stop
+        feedback_calls = [0]
+
+        def get_feedback_side_effect(*args, **kwargs):
+            feedback_calls[0] += 1
+            if feedback_calls[0] <= 2:
+                return [{"summary": "Fix this", "comment_id": feedback_calls[0]}]
+            return []
+
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            side_effect=get_feedback_side_effect,
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
+
+        # Should return True since the loop completed normally
+        self.assertTrue(result)
+
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_permission_error_reraises_immediately(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+    ) -> None:
+        """Test that PermissionError is re-raised immediately without retry."""
+        mock_runner = mock.MagicMock(
+            side_effect=PermissionError("requires allow_unsafe_execution=True")
+        )
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with self.assertRaises(PermissionError):
+                    review_loop.review_fix_loop(
+                        pr_number=13,
+                        owner_repo="owner/repo",
+                        repo_root=Path(tmpdir),
+                        idle_grace=0,
+                        poll_interval=1,
+                        codex_model="gpt",
+                        allow_unsafe_execution=True,
+                        dry_run=False,
+                    )
+
+        # Should only be called once - no retry on unrecoverable errors
+        self.assertEqual(mock_runner.call_count, 1)
+
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_file_not_found_error_reraises_immediately(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+    ) -> None:
+        """Test that FileNotFoundError is re-raised immediately without retry."""
+        mock_runner = mock.MagicMock(
+            side_effect=FileNotFoundError("claude executable not found")
+        )
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with self.assertRaises(FileNotFoundError):
+                    review_loop.review_fix_loop(
+                        pr_number=13,
+                        owner_repo="owner/repo",
+                        repo_root=Path(tmpdir),
+                        idle_grace=0,
+                        poll_interval=1,
+                        codex_model="gpt",
+                        allow_unsafe_execution=True,
+                        dry_run=False,
+                    )
+
+        self.assertEqual(mock_runner.call_count, 1)
+
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_memory_error_reraises_immediately(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+    ) -> None:
+        """Test that MemoryError is re-raised immediately without retry."""
+        mock_runner = mock.MagicMock(side_effect=MemoryError("out of memory"))
+        mock_policy_runner.return_value = (mock_runner, "claude")
+
+        with mock.patch(
+            "tools.auto_prd.review_loop.get_unresolved_feedback",
+            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with self.assertRaises(MemoryError):
+                    review_loop.review_fix_loop(
+                        pr_number=13,
+                        owner_repo="owner/repo",
+                        repo_root=Path(tmpdir),
+                        idle_grace=0,
+                        poll_interval=1,
+                        codex_model="gpt",
+                        allow_unsafe_execution=True,
+                        dry_run=False,
+                    )
+
+        self.assertEqual(mock_runner.call_count, 1)
+
+    @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
+    @mock.patch("tools.auto_prd.review_loop.git_head_sha", return_value="abc123")
+    @mock.patch("tools.auto_prd.review_loop.policy_runner")
+    def test_programming_errors_reraise_immediately(
+        self,
+        mock_policy_runner,
+        mock_git_head,
+        mock_trigger,
+    ) -> None:
+        """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
+        for error_class in [AttributeError, TypeError, NameError, KeyError]:
+            mock_runner = mock.MagicMock(side_effect=error_class("programming error"))
+            mock_policy_runner.return_value = (mock_runner, "claude")
+
+            with mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    with self.assertRaises(
+                        error_class, msg=f"{error_class.__name__} should be re-raised"
+                    ):
+                        review_loop.review_fix_loop(
+                            pr_number=13,
+                            owner_repo="owner/repo",
+                            repo_root=Path(tmpdir),
+                            idle_grace=0,
+                            poll_interval=1,
+                            codex_model="gpt",
+                            allow_unsafe_execution=True,
+                            dry_run=False,
+                        )
+
+            self.assertEqual(
+                mock_runner.call_count,
+                1,
+                f"{error_class.__name__} should not retry",
+            )
 
 
 if __name__ == "__main__":

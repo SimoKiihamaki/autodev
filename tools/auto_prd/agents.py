@@ -33,12 +33,60 @@ RATE_LIMIT_MAX_SLEEP_SECONDS = 900
 CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
 
 # I/O buffer and polling constants for claude_exec_streaming
-# Read chunk size: 4KB is a reasonable default for buffered I/O, balancing
-# memory usage with system call overhead.
-STREAMING_READ_CHUNK_SIZE = 4096
-# Select poll timeout: 100ms provides a balance between responsive streaming
-# and CPU efficiency. Lower values increase responsiveness but consume more CPU.
-STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
+# These values can be overridden via environment variables for performance tuning.
+
+
+def _get_streaming_chunk_size() -> int:
+    """Get the streaming read chunk size from environment, default 4096 bytes.
+
+    The default 4KB chunk size balances memory usage with system call overhead
+    for typical streaming scenarios.
+    """
+    raw = os.getenv("AUTO_PRD_STREAMING_CHUNK_SIZE")
+    if raw is None:
+        return 4096
+    try:
+        val = int(raw)
+        if val > 0:
+            return val
+        logger.warning(
+            "AUTO_PRD_STREAMING_CHUNK_SIZE must be > 0, got %r; using default 4096", raw
+        )
+        return 4096
+    except ValueError:
+        logger.warning(
+            "Invalid AUTO_PRD_STREAMING_CHUNK_SIZE value %r; using default 4096", raw
+        )
+        return 4096
+
+
+def _get_streaming_poll_timeout() -> float:
+    """Get the streaming select poll timeout from environment, default 0.1 seconds.
+
+    The default 100ms timeout provides a balance between responsive streaming
+    and CPU efficiency. Lower values increase responsiveness but consume more CPU.
+    """
+    raw = os.getenv("AUTO_PRD_STREAMING_POLL_TIMEOUT")
+    if raw is None:
+        return 0.1
+    try:
+        val = float(raw)
+        if val > 0:
+            return val
+        logger.warning(
+            "AUTO_PRD_STREAMING_POLL_TIMEOUT must be > 0, got %r; using default 0.1",
+            raw,
+        )
+        return 0.1
+    except ValueError:
+        logger.warning(
+            "Invalid AUTO_PRD_STREAMING_POLL_TIMEOUT value %r; using default 0.1", raw
+        )
+        return 0.1
+
+
+STREAMING_READ_CHUNK_SIZE = _get_streaming_chunk_size()
+STREAMING_SELECT_TIMEOUT_SECONDS = _get_streaming_poll_timeout()
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -315,7 +363,7 @@ def claude_exec(
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
     if not allow_flag and not dry_run:
         raise PermissionError(
-            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+            "claude_exec: requires allow_unsafe_execution=True to bypass permissions."
         )
     os.environ.setdefault("CI", "1")
     if allow_flag:
@@ -334,6 +382,10 @@ def claude_exec(
         timeout=get_claude_exec_timeout(),
     )
 
+    # Log warning if stdout is empty but stderr has content. This pattern may indicate:
+    # - Rate limiting (API returns error in stderr but no output)
+    # - Process crashed after partial execution
+    # - Configuration issues preventing normal output
     if not out.strip() and stderr.strip():
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
@@ -375,7 +427,7 @@ def _process_buffer(
 
     Args:
         buffer: Input buffer potentially containing newline-terminated lines.
-        lines: List to append complete lines to (modified in-place).
+        lines: List to append complete lines to (in/out parameter, modified in-place).
         output_handler: Optional callback invoked for each complete line.
 
     Returns:
@@ -405,6 +457,18 @@ def claude_exec_streaming(
 
     Like claude_exec but streams stdout in real-time for visibility.
     Note: This function uses fcntl for non-blocking I/O and is Unix-only.
+
+    Example:
+        >>> def my_handler(line: str) -> None:
+        ...     print(f"[claude] {line}", flush=True)
+        ...
+        >>> stdout, stderr = claude_exec_streaming(
+        ...     prompt="Explain this code",
+        ...     repo_root=Path("/path/to/repo"),
+        ...     allow_unsafe_execution=True,
+        ...     on_output=my_handler,  # Called for each line as it arrives
+        ...     timeout=300,  # 5 minute timeout
+        ... )
 
     Args:
         prompt: The prompt to send to Claude
@@ -439,7 +503,7 @@ def claude_exec_streaming(
     )
     if not allow_flag and not dry_run:
         raise PermissionError(
-            "Claude executor requires allow_unsafe_execution=True to bypass permissions."
+            "claude_exec_streaming: requires allow_unsafe_execution=True to bypass permissions."
         )
     os.environ.setdefault("CI", "1")
     if allow_flag:
@@ -454,11 +518,7 @@ def claude_exec_streaming(
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
     start_time = time.monotonic()
 
-    def default_output_handler(line: str) -> None:
-        # Simple print for default handler; callers provide their own formatting via on_output
-        print(line, flush=True)
-
-    output_handler = on_output or default_output_handler
+    output_handler = on_output or (lambda line: print(line, flush=True))
 
     # Use popen_streaming from command.py for policy-compliant subprocess spawning.
     # This centralizes argument sanitization, validation, and environment setup.
@@ -500,10 +560,17 @@ def claude_exec_streaming(
             error_msg = "Claude process terminated unexpectedly before reading input"
             if captured_stderr:
                 error_msg = f"{error_msg}. Stderr: {captured_stderr}"
+            # Determine appropriate return code:
+            # - Use actual returncode if process exited normally
+            # - Use 141 (SIGPIPE on Unix) if process was killed by pipe closure
+            if proc.returncode is None:
+                returncode = 141  # SIGPIPE on Unix
+            else:
+                returncode = proc.returncode
             raise subprocess.CalledProcessError(
-                proc.returncode or -1,
+                returncode,
                 sanitized_args,
-                output="".encode(),
+                output=b"",
                 stderr=error_msg.encode(),
             )
 
@@ -597,9 +664,13 @@ def claude_exec_streaming(
                 e,
             )
             select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking
+            # Attempt to drain any remaining buffered data before breaking.
+            # Check fd validity first - if select failed due to invalid fd,
+            # reading from it would also fail.
             for fd in readable_fds:
                 try:
+                    if fd.closed:
+                        continue
                     remaining = fd.read()
                     if remaining:
                         if fd == proc.stdout:
@@ -621,9 +692,13 @@ def claude_exec_streaming(
                 e,
             )
             select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking
+            # Attempt to drain any remaining buffered data before breaking.
+            # Check fd validity first - if select failed due to invalid fd,
+            # reading from it would also fail.
             for fd in readable_fds:
                 try:
+                    if fd.closed:
+                        continue
                     remaining = fd.read()
                     if remaining:
                         if fd == proc.stdout:

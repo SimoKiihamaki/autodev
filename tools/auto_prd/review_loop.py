@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 import subprocess
 import time
@@ -37,6 +38,13 @@ STDERR_USER_TRUNCATE_CHARS = 500
 # STDERR_LOG_TRUNCATE_CHARS: Max chars of stderr written to log files (more verbose)
 STDERR_LOG_TRUNCATE_CHARS = 2000
 
+# Box-drawing characters for streaming output formatting.
+# These can be overridden via AUTO_PRD_ASCII_OUTPUT=1 for terminal compatibility
+# (e.g., Windows, CI/CD logs, or terminals that don't support Unicode).
+_USE_ASCII = os.getenv("AUTO_PRD_ASCII_OUTPUT", "").lower() in ("1", "true", "yes")
+BOX_HORIZONTAL = "-" if _USE_ASCII else "─"
+BOX_VERTICAL = "|" if _USE_ASCII else "│"
+
 _JITTER_RNG = random.Random()
 
 
@@ -58,9 +66,9 @@ def _handle_runner_failure(
     """Log failure details and determine if loop should stop.
 
     Args:
-        consecutive_failures: Current count of consecutive failures (1-indexed).
-            This should be the count AFTER incrementing for the current failure.
-            For example, pass 1 for the first failure, 2 for the second, etc.
+        consecutive_failures: The current count of consecutive failures.
+            This is the number of failures that have occurred without a successful run.
+            For example, 1 for the first failure, 2 for the second, etc.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
@@ -226,12 +234,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             # Use streaming for claude to show real-time progress
             use_streaming = review_runner is claude_exec
             if use_streaming:
-                print(f"\n{'─' * 60}")
+                print(f"\n{BOX_HORIZONTAL * 60}")
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
-                print(f"{'─' * 60}", flush=True)
+                print(f"{BOX_HORIZONTAL * 60}", flush=True)
 
                 def output_handler(line: str) -> None:
-                    print(f"  │ {line}", flush=True)
+                    print(f"  {BOX_VERTICAL} {line}", flush=True)
                     logger.info("claude: %s", line[:200])
 
                 runner_kwargs["on_output"] = output_handler
@@ -245,9 +253,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     logger.debug("Review runner stderr output:\n%s", stderr)
                 consecutive_failures = 0
                 if use_streaming:
-                    print(f"{'─' * 60}")
-                    print("  Review fix completed successfully")
-                    print(f"{'─' * 60}\n", flush=True)
+                    print(f"{BOX_HORIZONTAL * 60}")
+                    if not (stderr and stderr.strip()):
+                        print("  Review fix completed successfully")
+                    else:
+                        print("  Review fix completed (with warnings)")
+                    print(f"{BOX_HORIZONTAL * 60}\n", flush=True)
             except subprocess.TimeoutExpired as exc:
                 # Timeout - count as failure but provide specific feedback
                 consecutive_failures += 1
