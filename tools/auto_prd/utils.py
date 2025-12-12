@@ -137,8 +137,6 @@ def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> 
     Stdout is never included to prevent sensitive model output from appearing
     in error messages.
 
-    For migration notes on the stderr-only behavior change, see CHANGELOG.md.
-
     Args:
         exc: The CalledProcessError exception to extract details from.
 
