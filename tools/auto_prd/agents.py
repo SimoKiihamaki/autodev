@@ -74,7 +74,7 @@ _SENSITIVE_STDERR_PATTERNS = [
     # Trade-off: Windows users may see unfamiliar path style, but redacted paths
     # are for debugging/logs, not for direct filesystem use.
     (
-        re.compile(r"[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
+        re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
         r"<DRIVE>:/Users/<USER>/",
     ),
 ]
