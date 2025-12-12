@@ -148,7 +148,9 @@ def create_checkpoint(
                 "started_at": None,
                 "completed_at": None,
                 "processed_comment_ids": [],
-                "last_activity_time": None,
+                # Wall-clock timestamp for audit purposes only; NOT used in timeout logic.
+                # The in-process idle timeout uses time.monotonic() which cannot persist.
+                "last_activity_wall_clock": None,
                 "cycles": 0,
             },
         },

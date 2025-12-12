@@ -209,10 +209,20 @@ def review_fix_loop(
         checkpoint: Optional checkpoint dict for resume support.
 
     Returns:
-        True if the loop terminated gracefully (i.e., completed work, timed out, no feedback
-        found, or was stopped by policy/user action such as should_stop_review_after_push).
-        False if the loop terminated due to reaching MAX_CONSECUTIVE_FAILURES consecutive
-        runner failures.
+        bool: True means "terminated without reaching max failures" - the function completed
+        without exhausting all retry attempts. This includes:
+        - pr_number is None (nothing to do, no-op)
+        - dry_run=True (skipped execution)
+        - Loop completed successfully
+        - Loop timed out due to idle_grace
+        - Loop stopped by policy (e.g., should_stop_review_after_push)
+
+        False means "terminated due to failures" - the loop hit MAX_CONSECUTIVE_FAILURES
+        consecutive runner failures and gave up.
+
+        Note: True does NOT mean "successfully completed work". It means the function
+        terminated without encountering a fatal error condition. Callers should check
+        pr_number and dry_run if they need to distinguish "nothing to do" from "completed".
 
     Raises:
         The following exceptions are re-raised immediately if encountered and are considered
@@ -439,15 +449,31 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     flush=True,
                 )
                 raise
-            except (SystemExit, KeyboardInterrupt):
-                # Allow clean shutdown and user cancellation to propagate.
-                # Note: We intentionally do NOT increment consecutive_failures here.
-                # These exceptions represent intentional user/system interruption, not
-                # execution failures. The counter tracks transient errors that should
-                # trigger retry logic; interruptions bypass retry logic entirely by
-                # re-raising immediately. If the caller needs to know the execution
-                # was interrupted, they can catch these exceptions at a higher level.
+            except KeyboardInterrupt:
+                # User cancellation - always propagate immediately without retry.
                 raise
+            except SystemExit as exc:
+                # SystemExit handling: non-zero codes are treated as failures.
+                # SystemExit(0) or SystemExit(None) = clean exit, propagate immediately.
+                # Non-zero = error (e.g., from safety utilities in command.py), treat as failure.
+                exit_code = getattr(exc, "code", None)
+                if exit_code in (0, None):
+                    # Clean exit requested by code - propagate without retry.
+                    raise
+                # Non-zero exit code: treat as execution failure.
+                consecutive_failures += 1
+                logger.error(
+                    "Review runner received SystemExit with code %s - treating as failure",
+                    exit_code,
+                )
+                if _should_stop_after_failure(
+                    consecutive_failures,
+                    f"SystemExit(code={exit_code})",
+                    error_type="SystemExit",
+                ):
+                    return False
+                sleep_with_jitter(float(poll))
+                continue
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - best-effort resilience  # pragma: no cover
@@ -478,16 +504,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     {
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
-                        # Use time.time() for checkpoint persistence: provides wall-clock time
-                        # suitable for informational/audit purposes (e.g., "last activity was
-                        # at 2:30 PM"). This value is NOT used for idle timeout computation;
+                        # Wall-clock timestamp for audit/debugging purposes only (e.g., "last
+                        # activity was at 2:30 PM"). NOT used for idle timeout computation -
                         # the in-process 'last_activity' variable (time.monotonic()) handles
-                        # that and is reset fresh on each run. On checkpoint resume, the idle
-                        # timeout window is intentionally reset (starting from the new process's
-                        # time.monotonic() epoch) since time.monotonic() cannot be persisted
-                        # across process restarts - it's relative to an arbitrary epoch (often
-                        # system boot) that differs between processes.
-                        "last_activity_time": time.time(),
+                        # that and resets fresh on each run.
+                        "last_activity_wall_clock": time.time(),
                     },
                 )
                 save_checkpoint(checkpoint)

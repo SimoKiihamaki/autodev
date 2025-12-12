@@ -72,6 +72,8 @@ _SENSITIVE_STDERR_PATTERNS = [
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
     # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
     # Handles both backslash and forward slash path separators via [\\/]+ pattern.
+    # The trailing separator is optional ([\\/]*) to match paths like "C:\Users\username"
+    # without a trailing slash, which commonly appear in error messages.
     # The replacement NORMALIZES all separators to forward slashes because:
     # 1. Forward slashes work in Windows, Unix, and cross-platform contexts
     # 2. Avoids escaping issues in logs/output (backslashes need escaping)
@@ -79,7 +81,7 @@ _SENSITIVE_STDERR_PATTERNS = [
     # Trade-off: Windows users may see unfamiliar path style in sanitized output,
     # but redacted paths are for debugging/logs, not for direct filesystem use.
     (
-        re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]", re.IGNORECASE),
+        re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]*", re.IGNORECASE),
         r"<DRIVE>:/Users/<USER>/",
     ),
 ]
@@ -172,10 +174,13 @@ else:
         STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
 # Clean up module-level temporaries to avoid polluting namespace.
-# Note: _chunk_size_val and _timeout_val are only defined when _raw_chunk_size/_raw_poll_timeout
-# are not None (i.e., when the environment variables are set). We use contextlib.suppress(NameError)
-# to unconditionally attempt deletion, which is cleaner than try/except blocks and handles both
-# "defined" and "not defined" cases uniformly.
+# Note: _chunk_size_val and _timeout_val are only defined under specific conditions:
+# - The environment variable must be set (not None), AND
+# - The try block's int()/float() parsing must succeed, AND
+# - The parsed value must be positive (entering the if branch that assigns the variable)
+# If any condition fails (env var unset, parse error, non-positive value), the variable
+# won't be defined. We use contextlib.suppress(NameError) to unconditionally attempt
+# deletion, which is cleaner than try/except blocks and handles all cases uniformly.
 del _raw_chunk_size, _raw_poll_timeout
 with suppress(NameError):
     del _chunk_size_val
@@ -1099,12 +1104,18 @@ def claude_exec_streaming(
                 # wording, the unknown ValueError will propagate and surface the issue
                 # rather than silently failing. This is intentional - we prefer explicit
                 # failure over silent incorrect handling.
+                #
+                # Patterns are intentionally specific to avoid matching unrelated ValueErrors.
+                # Known Python I/O ValueError messages:
+                # - "I/O operation on closed file" (most common)
+                # - "read of closed file" (alternative wording)
+                # - "underlying buffer has been detached"
+                # - "invalid mode" / "invalid file mode" (file mode issues)
                 error_msg = str(e).lower()
                 expected_patterns = (
-                    "closed file",  # "I/O operation on closed file"
-                    "closed",  # Catch variations like "read of closed file"
-                    "detached",  # "underlying buffer has been detached"
-                    "invalid",  # "invalid file mode" or similar
+                    "closed file",  # Matches "I/O operation on closed file", "read of closed file"
+                    "buffer has been detached",  # "underlying buffer has been detached"
+                    "invalid mode",  # "invalid mode" or "invalid file mode"
                 )
                 if not any(pattern in error_msg for pattern in expected_patterns):
                     # Unexpected ValueError - this is likely a programming error, not
