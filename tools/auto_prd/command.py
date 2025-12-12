@@ -637,7 +637,7 @@ def popen_streaming(
         redacted_cmd = sanitize_args(cmd)
         redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
         # Explicit length check for Python 3.9 compatibility (strict=True requires 3.10+).
-        # sanitized_cmd is created via list comprehension over cmd (line 625), guaranteeing
+        # sanitized_cmd is created via list comprehension over cmd (line 630), guaranteeing
         # identical lengths. This assertion surfaces bugs if lengths ever differ due to
         # a future code change, rather than silently producing incorrect diff output.
         if len(redacted_cmd) != len(redacted_sanitized_cmd):

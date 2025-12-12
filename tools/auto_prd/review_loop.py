@@ -13,6 +13,7 @@ from .agents import (
     codex_exec,
     claude_exec,
     claude_exec_streaming,
+    get_claude_exec_timeout,
     _sanitize_stderr_for_exception,
 )
 from .utils import extract_called_process_error_details
@@ -342,6 +343,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     # and log level controls (e.g., DEBUG with opt-in environment flag).
 
                 runner_kwargs["on_output"] = output_handler
+                # Pass timeout to streaming variant for consistent timeout behavior
+                # with non-streaming execution.
+                runner_kwargs["timeout"] = get_claude_exec_timeout()
                 actual_runner = claude_exec_streaming
             else:
                 actual_runner = review_runner

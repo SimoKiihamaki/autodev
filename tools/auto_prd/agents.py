@@ -166,8 +166,19 @@ else:
         )
         STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 
-# Clean up module-level temporaries to avoid polluting namespace
+# Clean up module-level temporaries to avoid polluting namespace.
+# Note: _chunk_size_val and _timeout_val are only defined when _raw_chunk_size/_raw_poll_timeout
+# are not None (i.e., when the environment variables are set), so we delete them conditionally
+# using try/except to handle the case where they don't exist.
 del _raw_chunk_size, _raw_poll_timeout
+try:
+    del _chunk_size_val
+except NameError:
+    pass  # Variable not defined (env var was None)
+try:
+    del _timeout_val
+except NameError:
+    pass  # Variable not defined (env var was None)
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -507,9 +518,12 @@ def claude_exec(
     # - Process crashed after partial execution
     # - Configuration issues preventing normal output
     if not out.strip() and stderr.strip():
+        # Sanitize stderr to redact sensitive information (API keys, tokens, paths)
+        # before logging, consistent with claude_exec_streaming behavior.
+        sanitized_stderr = _sanitize_stderr_for_exception(stderr, 500)
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
-            stderr[:500] if len(stderr) > 500 else stderr,
+            sanitized_stderr,
         )
 
     return out, stderr
