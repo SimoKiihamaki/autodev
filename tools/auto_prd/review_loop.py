@@ -261,7 +261,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
                 def output_handler(line: str) -> None:
                     print(f"  {BOX_VERTICAL} {line}", flush=True)
-                    logger.info("claude: %s", line[:200])
+                    # Note: Intentionally not logging model output to avoid persisting
+                    # potentially sensitive data (secrets, PII) to log files.
 
                 runner_kwargs["on_output"] = output_handler
                 actual_runner = claude_exec_streaming

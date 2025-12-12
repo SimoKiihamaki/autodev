@@ -15,7 +15,12 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from .command import run_cmd, verify_unsafe_execution_ready, popen_streaming
+from .command import (
+    run_cmd,
+    verify_unsafe_execution_ready,
+    popen_streaming,
+    validate_stdin,
+)
 from .logging_utils import logger
 from .utils import extract_called_process_error_details
 
@@ -441,6 +446,48 @@ def _process_buffer(
     return buffer
 
 
+def _drain_fds_best_effort(
+    fds: list,
+    proc_stdout,
+    proc_stderr,
+    stdout_buffer: str,
+    stderr_buffer: str,
+) -> tuple[str, str]:
+    """Best-effort drain of file descriptors into buffers.
+
+    Used during error recovery to capture any remaining data before breaking
+    out of the streaming loop. Errors are logged at debug level since this
+    is a best-effort operation during abnormal termination.
+
+    Args:
+        fds: List of file descriptors to drain.
+        proc_stdout: The process stdout file object for comparison.
+        proc_stderr: The process stderr file object for comparison.
+        stdout_buffer: Current stdout buffer contents.
+        stderr_buffer: Current stderr buffer contents.
+
+    Returns:
+        Tuple of (updated_stdout_buffer, updated_stderr_buffer).
+    """
+    for fd in fds:
+        try:
+            if fd.closed:
+                continue
+            remaining = fd.read()
+            if remaining:
+                if fd == proc_stdout:
+                    stdout_buffer += remaining
+                elif fd == proc_stderr:
+                    stderr_buffer += remaining
+        except Exception as drain_exc:
+            # Log at debug level - this is best-effort recovery during error handling
+            logger.debug(
+                "Best-effort drain failed for fd (expected during error recovery): %s",
+                drain_exc,
+            )
+    return stdout_buffer, stderr_buffer
+
+
 def claude_exec_streaming(
     prompt: str,
     repo_root: Path,
@@ -513,6 +560,10 @@ def claude_exec_streaming(
     if dry_run:
         logger.info("Dry run enabled; skipping Claude execution. Args: %s", args)
         return "DRY_RUN", ""
+
+    # Validate stdin before spawning subprocess - applies same safety checks as run_cmd
+    # (size limits, control character filtering) to prevent hangs or unexpected failures.
+    validate_stdin(prompt)
 
     # Resolve timeout - use parameter, then environment variable, then None (no timeout)
     effective_timeout = timeout if timeout is not None else get_claude_exec_timeout()
@@ -673,21 +724,10 @@ def claude_exec_streaming(
                 e,
             )
             select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking.
-            # Check fd validity first - if select failed due to invalid fd,
-            # reading from it would also fail.
-            for fd in readable_fds:
-                try:
-                    if fd.closed:
-                        continue
-                    remaining = fd.read()
-                    if remaining:
-                        if fd == proc.stdout:
-                            stdout_buffer += remaining
-                        elif fd == proc.stderr:
-                            stderr_buffer += remaining
-                except Exception:
-                    pass  # Best effort drain
+            # Attempt to drain any remaining buffered data before breaking
+            stdout_buffer, stderr_buffer = _drain_fds_best_effort(
+                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
+            )
             break
         except OSError as e:
             # EINTR can be retried (interrupted by signal)
@@ -701,21 +741,10 @@ def claude_exec_streaming(
                 e,
             )
             select_error_occurred = True
-            # Attempt to drain any remaining buffered data before breaking.
-            # Check fd validity first - if select failed due to invalid fd,
-            # reading from it would also fail.
-            for fd in readable_fds:
-                try:
-                    if fd.closed:
-                        continue
-                    remaining = fd.read()
-                    if remaining:
-                        if fd == proc.stdout:
-                            stdout_buffer += remaining
-                        elif fd == proc.stderr:
-                            stderr_buffer += remaining
-                except Exception:
-                    pass  # Best effort drain
+            # Attempt to drain any remaining buffered data before breaking
+            stdout_buffer, stderr_buffer = _drain_fds_best_effort(
+                readable_fds, proc.stdout, proc.stderr, stdout_buffer, stderr_buffer
+            )
             break
 
         for fd in readable:
@@ -765,16 +794,12 @@ def claude_exec_streaming(
             break
 
     # Flush remaining buffers.
-    # Note: If the process output did not end with a newline, the final line
-    # is incomplete (i.e., the process ended mid-line or the final line was
-    # intentionally unterminated). We treat this as complete for final output
-    # purposes since the process has exited and no more data will arrive.
+    # If process output didn't end with a newline, treat remaining buffer as the
+    # complete final line since the process has exited and no more data will arrive.
     if stdout_buffer:
-        # Final line - may be incomplete if buffer didn't end with newline
         stdout_lines.append(stdout_buffer)
         output_handler(stdout_buffer)
     if stderr_buffer:
-        # Final line - may be incomplete if buffer didn't end with newline
         stderr_lines.append(stderr_buffer)
 
     proc.wait()

@@ -241,11 +241,11 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_timeout_increments_failure_counter(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
-        mock_acknowledge,
-        mock_should_stop,
-        mock_sleep,
+        _mock_git_head,
+        _mock_trigger,
+        _mock_acknowledge,
+        _mock_should_stop,
+        _mock_sleep,
     ) -> None:
         """Test that TimeoutExpired increments failure counter and returns False after max failures."""
         # Mock runner that always times out
@@ -287,11 +287,11 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_called_process_error_increments_failure_counter(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
-        mock_acknowledge,
-        mock_should_stop,
-        mock_sleep,
+        _mock_git_head,
+        _mock_trigger,
+        _mock_acknowledge,
+        _mock_should_stop,
+        _mock_sleep,
     ) -> None:
         """Test that CalledProcessError increments failure counter."""
         mock_runner = mock.MagicMock(
@@ -329,17 +329,18 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_successful_execution_resets_failure_counter(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
-        mock_acknowledge,
-        mock_should_stop,
-        mock_sleep,
+        _mock_git_head,
+        _mock_trigger,
+        _mock_acknowledge,
+        _mock_should_stop,
+        _mock_sleep,
     ) -> None:
         """Test that successful execution resets the failure counter."""
         # First call fails, second succeeds
         call_count = [0]
 
         def mock_runner_side_effect(*args, **kwargs):
+            _ = args, kwargs  # Satisfy ARG001
             call_count[0] += 1
             if call_count[0] == 1:
                 raise subprocess.CalledProcessError(1, ["claude"], stderr=b"error")
@@ -352,6 +353,7 @@ class ReviewFixLoopTests(unittest.TestCase):
         feedback_calls = [0]
 
         def get_feedback_side_effect(*args, **kwargs):
+            _ = args, kwargs  # Satisfy ARG001
             feedback_calls[0] += 1
             if feedback_calls[0] <= 2:
                 return [{"summary": "Fix this", "comment_id": feedback_calls[0]}]
@@ -382,8 +384,8 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_permission_error_reraises_immediately(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
+        _mock_git_head,
+        _mock_trigger,
     ) -> None:
         """Test that PermissionError is re-raised immediately without retry."""
         mock_runner = mock.MagicMock(
@@ -417,8 +419,8 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_file_not_found_error_reraises_immediately(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
+        _mock_git_head,
+        _mock_trigger,
     ) -> None:
         """Test that FileNotFoundError is re-raised immediately without retry."""
         mock_runner = mock.MagicMock(
@@ -451,8 +453,8 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_memory_error_reraises_immediately(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
+        _mock_git_head,
+        _mock_trigger,
     ) -> None:
         """Test that MemoryError is re-raised immediately without retry."""
         mock_runner = mock.MagicMock(side_effect=MemoryError("out of memory"))
@@ -483,8 +485,8 @@ class ReviewFixLoopTests(unittest.TestCase):
     def test_programming_errors_reraise_immediately(
         self,
         mock_policy_runner,
-        mock_git_head,
-        mock_trigger,
+        _mock_git_head,
+        _mock_trigger,
     ) -> None:
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:

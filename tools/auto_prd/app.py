@@ -502,18 +502,18 @@ def run(args) -> None:
                 )
                 update_phase_state(checkpoint, "review_fix", {"terminated_early": True})
                 save_checkpoint(checkpoint)
-                # Continue to post final comment but don't mark session as complete
+                # Skip final success comment when review loop failed
             else:
                 mark_phase_complete(checkpoint, "review_fix")
                 save_checkpoint(checkpoint)
-
-        post_final_comment(
-            pr_number=pr_number,
-            owner_repo=owner_repo,
-            prd_path=prd_path,
-            repo_root=repo_root,
-            dry_run=args.dry_run,
-        )
+                # Only post final success comment when review loop completed successfully
+                post_final_comment(
+                    pr_number=pr_number,
+                    owner_repo=owner_repo,
+                    prd_path=prd_path,
+                    repo_root=repo_root,
+                    dry_run=args.dry_run,
+                )
 
         # Mark session complete only if all phases succeeded.
         # When review_succeeded is False, the session terminated early due to
