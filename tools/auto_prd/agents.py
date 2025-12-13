@@ -73,7 +73,8 @@ STDERR_ERROR_MESSAGE_MAX_CHARS = 1000
 # 2. Trie-based prefix matching for known prefixes (sk-, ghp_, etc.):
 #    - Overkill for ~10 patterns; adds complexity without proportional benefit
 # 3. Early exit if stderr is short:
-#    - Already handled by max_chars truncation before pattern matching
+#    - Not implemented; we sanitize first, then truncate, to avoid leaking
+#      secrets that may appear late in stderr.
 #
 # Current design prioritizes maintainability: each pattern is independent and self-documenting.
 _SENSITIVE_STDERR_PATTERNS = [
@@ -498,10 +499,10 @@ def _safe_typename(obj: object) -> str:
     """
     try:
         return type(obj).__name__
-    except Exception:
+    except Exception:  # noqa: BLE001 - defensive: error formatting must not fail
         try:
             return str(type(obj))
-        except Exception:
+        except Exception:  # noqa: BLE001 - defensive: last-resort formatting
             return "<unknown type>"
 
 

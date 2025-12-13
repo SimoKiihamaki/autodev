@@ -742,7 +742,7 @@ def popen_streaming(
     # Verify .git entry exists (directory for normal repos, file for worktrees/submodules)
     git_entry = repo_root_path / ".git"
     if not git_entry.exists():
-        raise FileNotFoundError(
+        raise FileNotFoundError(  # noqa: TRY003
             f"Repository root {repo_root_path} does not contain a .git directory or file. "
             "This may indicate an invalid repository path."
         )

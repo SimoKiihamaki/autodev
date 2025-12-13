@@ -472,12 +472,12 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
                 print(f"{horizontal_char * 60}", flush=True)
 
-                def output_handler(line: str) -> None:
+                def output_handler(line: str, vert: str = vertical_char) -> None:
                     # Print streaming output with vertical box character.
-                    # Note: vertical_char is captured from enclosing scope (standard closure).
+                    # Note: vert captures vertical_char via default argument to avoid B023.
                     # Security: Output is printed to stdout only (not logged to files) to avoid
                     # persisting potentially sensitive model output. See _sanitize_stderr_for_exception.
-                    print(f"  {vertical_char} {line}", flush=True)
+                    print(f"  {vert} {line}", flush=True)
 
                 runner_kwargs["on_output"] = output_handler
                 # Pass timeout to streaming variant for consistent timeout behavior
@@ -642,7 +642,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     return False
                 sleep_with_jitter(float(poll))
                 continue
-            except Exception as exc:
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
                 # earlier explicit handler and re-raised immediately. This catch-all only
                 # handles truly unexpected exceptions. If you modify exception handlers,
