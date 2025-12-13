@@ -114,7 +114,7 @@ def ensure_line_buffering() -> None:
             sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
         except (AttributeError, io.UnsupportedOperation):
             # Fallback for older Python versions: already set PYTHONUNBUFFERED above
-            # Note: This project requires Python 3.9+, so this path should not be hit
+            # Note: This project requires Python 3.10+, so this path should not be hit
             pass
 
     if not sys.stderr.isatty():
@@ -124,7 +124,7 @@ def ensure_line_buffering() -> None:
             sys.stderr.reconfigure(line_buffering=True)  # type: ignore[union-attr]
         except (AttributeError, io.UnsupportedOperation):
             # Fallback for older Python versions: already set PYTHONUNBUFFERED above
-            # Note: This project requires Python 3.9+, so this path should not be hit
+            # Note: This project requires Python 3.10+, so this path should not be hit
             pass
 
 

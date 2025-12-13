@@ -61,7 +61,7 @@ The binary will be output to `./bin/aprd` and can be run directly from there.
 
 ### Dependencies
 - Go 1.22+ (uses Go modules)
-- Python 3.9+ (for the automation script)
+- Python 3.10+ (for the automation script)
 - External CLIs: `codex`, `claude`, `coderabbit`, `git`, `gh`
 
 ## Key Implementation Details

@@ -59,7 +59,7 @@ def _is_path_within(path: Path, parent: Path) -> bool:
         True if path is within parent directory.
     """
     try:
-        # Use is_relative_to for Python 3.9+ compatibility
+        # Use is_relative_to (available in Python 3.9+; Python 3.10+ is required for this project)
         return path.is_relative_to(parent.resolve())
     except (ValueError, OSError):
         return False

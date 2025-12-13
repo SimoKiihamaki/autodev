@@ -201,9 +201,12 @@ def classify_error(
             break
 
     # Determine severity
-    if category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT) or (
-        category == ErrorCategory.API and "rate limit" in message.lower()
-    ):
+    # Using separate if/elif branches (instead of `or`) for clarity per PR review feedback,
+    # to avoid operator precedence confusion with the `and` clause.
+    if category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT):  # noqa: SIM114
+        severity = ErrorSeverity.WARNING
+        retryable = True
+    elif category == ErrorCategory.API and "rate limit" in message.lower():
         severity = ErrorSeverity.WARNING
         retryable = True
     elif category in (ErrorCategory.GIT, ErrorCategory.RUNNER):

@@ -737,7 +737,7 @@ def _drain_fds_best_effort(
                     stderr_buffer += chunk
         except (OSError, ValueError) as drain_exc:
             # Expected exceptions during best-effort drain operations:
-            # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
+            # - OSError: fd already closed, pipe broken, or other I/O failures
             # - ValueError: fd invalid or in an unusable state (e.g., closed fd passed
             #   from select() error recovery, or fd was closed between select() and read())
             # Any other exceptions (e.g., TypeError, AttributeError) would indicate
