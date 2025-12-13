@@ -326,7 +326,7 @@ class ReviewFixLoopTests(unittest.TestCase):
 
     @mock.patch("tools.auto_prd.review_loop.time.sleep")
     @mock.patch(
-        "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=True
+        "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=False
     )
     @mock.patch("tools.auto_prd.review_loop.acknowledge_review_items")
     @mock.patch("tools.auto_prd.review_loop.trigger_copilot")
@@ -348,14 +348,16 @@ class ReviewFixLoopTests(unittest.TestCase):
         1. First call FAILS -> counter becomes 1
         2. Second call SUCCEEDS -> counter resets to 0
         3. Third call FAILS -> counter becomes 1 (not 2, proving reset worked)
-        4. Fourth call SUCCEEDS -> loop exits normally via should_stop_review_after_push
+        4. Fourth call SUCCEEDS -> counter resets to 0, loop continues
 
         If the counter wasn't reset after call #2, call #3 would have set counter
         to 2, meaning we'd be closer to MAX_CONSECUTIVE_FAILURES=3.
 
-        The 4th call is necessary because the loop continues after each successful
-        execution (calls #2 and #4) to check for more feedback. The empty feedback
-        list [] at the end triggers the exit condition.
+        Exit path: After call #4 succeeds, the 5th get_unresolved_feedback call
+        returns [] (empty list). With idle_grace=0, this triggers the exit condition
+        at line 702-705 ("No unresolved feedback; stopping."). The mock for
+        should_stop_review_after_push is set to False because that check (line 695)
+        comes BEFORE the idle_grace check - we want to exercise the idle_grace path.
         """
         mock_runner = mock.MagicMock(
             side_effect=[

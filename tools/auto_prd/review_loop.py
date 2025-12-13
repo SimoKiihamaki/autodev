@@ -645,7 +645,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
-                # NOTE: Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
+                # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
+                # because it can indicate both programming bugs and transient API issues
+                # (e.g., malformed JSON responses). See lines 90-100 for detailed rationale.
+                #
+                # Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
                 # earlier explicit handler and re-raised immediately. This catch-all only
                 # handles truly unexpected exceptions. If you modify exception handlers,
                 # ensure _PROGRAMMING_ERROR_TYPES remains higher in the handler chain.

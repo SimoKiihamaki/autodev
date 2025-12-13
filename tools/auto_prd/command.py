@@ -575,8 +575,11 @@ def safe_popen(
     env["PYTHONUNBUFFERED"] = "1"
     # Note: Appending repo_root to PYTHONPATH allows project modules to be imported
     # without shadowing system packages.
-    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
-        os.pathsep
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{existing_pythonpath}{os.pathsep}{repo_root}"
+        if existing_pythonpath
+        else repo_root
     )
     env["AUTO_PRD_ROOT"] = repo_root
 
@@ -747,8 +750,11 @@ def popen_streaming(
             "This may indicate an invalid repository path."
         )
     repo_root = str(repo_root_path)
-    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
-        os.pathsep
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{existing_pythonpath}{os.pathsep}{repo_root}"
+        if existing_pythonpath
+        else repo_root
     )
     env["AUTO_PRD_ROOT"] = repo_root
 

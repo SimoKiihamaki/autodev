@@ -302,8 +302,17 @@ def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
             break
         migration_fn(checkpoint)
         current_version += 1
+        # Update version after each successful migration step so that if the process
+        # crashes during a multi-step migration (e.g., v0 -> v3), the checkpoint will
+        # be at an intermediate version (e.g., v1) on disk rather than v0. This allows
+        # recovery to resume from the last successful migration instead of re-applying
+        # all migrations from the beginning.
+        #
+        # Note: Migrations are idempotent (guarded by field presence checks), so
+        # re-applying them is safe but wasteful. This update avoids unnecessary work.
+        checkpoint["version"] = current_version
 
-    # Update version to current
+    # Ensure version is at CHECKPOINT_VERSION (handles edge cases like missing migrations)
     checkpoint["version"] = CHECKPOINT_VERSION
     logger.debug(
         "Checkpoint migration complete (now at version %d)", CHECKPOINT_VERSION
