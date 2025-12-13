@@ -3,15 +3,15 @@
 Unittest-compatible tests for stdout/stderr flushing behavior.
 """
 
-import unittest
 import sys
-from pathlib import Path
+import unittest
 from dataclasses import dataclass
+from pathlib import Path
 
 try:
-    from tools.auto_prd.command import safe_popen, run_cmd, register_safe_cwd
+    from tools.auto_prd.command import register_safe_cwd, run_cmd, safe_popen
 except ImportError:
-    from ..command import safe_popen, run_cmd, register_safe_cwd
+    from ..command import register_safe_cwd, run_cmd, safe_popen
 
 
 @dataclass

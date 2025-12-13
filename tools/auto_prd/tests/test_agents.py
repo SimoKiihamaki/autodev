@@ -19,6 +19,9 @@ get_codex_exec_timeout = safe_import(
 get_claude_exec_timeout = safe_import(
     "tools.auto_prd.agents", "..agents", "get_claude_exec_timeout"
 )
+DEFAULT_CLAUDE_TIMEOUT_SECONDS = safe_import(
+    "tools.auto_prd.agents", "..agents", "DEFAULT_CLAUDE_TIMEOUT_SECONDS"
+)
 claude_exec_streaming = safe_import(
     "tools.auto_prd.agents", "..agents", "claude_exec_streaming"
 )
@@ -147,7 +150,9 @@ class TimeoutConfigurationTests(unittest.TestCase):
     def test_get_claude_exec_timeout_default(self):
         """Test get_claude_exec_timeout with no environment variable set."""
         result = get_claude_exec_timeout()
-        self.assertIsNone(result)  # Default is None for claude
+        # Default is 60 minutes (3600 seconds) to prevent infinite hangs
+        self.assertEqual(result, DEFAULT_CLAUDE_TIMEOUT_SECONDS)
+        self.assertEqual(result, 3600)
 
     def test_get_codex_exec_timeout_from_env(self):
         """Test get_codex_exec_timeout reads from environment variable."""
@@ -183,7 +188,8 @@ class TimeoutConfigurationTests(unittest.TestCase):
         """Test get_claude_exec_timeout with invalid value falls back to default."""
         with patch.dict(os.environ, {"AUTO_PRD_CLAUDE_TIMEOUT_SECONDS": "invalid"}):
             result = get_claude_exec_timeout()
-            self.assertIsNone(result)  # Falls back to default (None)
+            # Falls back to default (3600 seconds)
+            self.assertEqual(result, DEFAULT_CLAUDE_TIMEOUT_SECONDS)
 
     def test_timeout_functions_isolated(self):
         """Test that codex and claude timeout functions are independent."""
@@ -202,9 +208,9 @@ class TimeoutConfigurationTests(unittest.TestCase):
 
     def test_timeout_functions_runtime_evaluation(self):
         """Test that timeout functions evaluate at runtime, not import time."""
-        # Initially no environment variables
+        # Initially no environment variables - codex returns None, claude returns default
         self.assertIsNone(get_codex_exec_timeout())
-        self.assertIsNone(get_claude_exec_timeout())
+        self.assertEqual(get_claude_exec_timeout(), DEFAULT_CLAUDE_TIMEOUT_SECONDS)
 
         # Set environment variables after import
         with patch.dict(

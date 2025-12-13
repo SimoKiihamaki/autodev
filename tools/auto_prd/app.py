@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .checkpoint import (
     create_checkpoint,
@@ -16,6 +16,7 @@ from .checkpoint import (
 )
 from .command import ensure_claude_debug_dir, register_safe_cwd, run_cmd
 from .constants import DEFAULT_LOG_DIR_NAME, PHASES_WITH_COMMIT_RISK, VALID_PHASES
+from .executor import resolve_executor_policy
 from .gh_ops import get_pr_number_for_head, post_final_comment
 from .git_ops import (
     StashConflictError,
@@ -37,15 +38,31 @@ from .git_ops import (
 )
 from .local_loop import orchestrate_local_loop
 from .logging_utils import logger, setup_file_logging
-from .executor import resolve_executor_policy
 from .policy import policy_runner
-from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .pr_flow import open_or_get_pr
 from .review_loop import review_fix_loop
+from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .utils import extract_called_process_error_details, now_stamp, slugify
 
 PRD_NOT_FOUND_ERROR = "PRD path not found: {path}"
 PRD_NOT_FILE_ERROR = "PRD path must be a file: {path}"
+
+
+def _is_path_within(path: Path, parent: Path) -> bool:
+    """Check if path is within parent directory (security helper).
+
+    Args:
+        path: The path to check (should be resolved/absolute).
+        parent: The parent directory to check against.
+
+    Returns:
+        True if path is within parent directory.
+    """
+    try:
+        # Use is_relative_to (available in Python 3.9+; Python 3.10+ is required for this project)
+        return path.is_relative_to(parent.resolve())
+    except (ValueError, OSError):
+        return False
 
 
 def run(args) -> None:
@@ -112,13 +129,31 @@ def run(args) -> None:
             logger.error("Resolved PRD path is not a file: %s", prd_path)
             raise SystemExit(PRD_NOT_FILE_ERROR.format(path=prd_path))
 
+        # Security: Validate PRD path is within allowed directories to prevent
+        # path traversal attacks (e.g., ../../../etc/passwd). The resolved path
+        # must be within the repo root, original working directory, or home directory.
+        allowed_dirs = [repo_root, original_cwd, Path.home()]
+        prd_in_allowed_dir = any(
+            _is_path_within(prd_path, allowed_dir) for allowed_dir in allowed_dirs
+        )
+        if not prd_in_allowed_dir:
+            logger.error(
+                "PRD path %s is outside allowed directories: %s",
+                prd_path,
+                [str(d) for d in allowed_dirs],
+            )
+            raise SystemExit(
+                f"PRD path must be within repository, working directory, "
+                f"or home: {prd_path}"
+            )
+
         print(f"Repository root: {repo_root}")
         print(f"Using PRD: {prd_path}")
         logger.info("Resolved repository root to %s", repo_root)
         logger.info("Resolved PRD path to %s", prd_path)
 
         # Initialize or load checkpoint
-        checkpoint: Optional[dict[str, Any]] = getattr(args, "checkpoint", None)
+        checkpoint: dict[str, Any] | None = getattr(args, "checkpoint", None)
         if checkpoint:
             # Resuming from existing checkpoint
             session_id = checkpoint["session_id"]
@@ -160,7 +195,7 @@ def run(args) -> None:
         perform_auto_pr_commit = (
             include("pr") and not include("local") and not args.dry_run
         )
-        stash_selector: Optional[str] = None
+        stash_selector: str | None = None
         branch_pushed = False
         if not args.dry_run:
             dirty_entries = git_status_snapshot(repo_root)
@@ -403,7 +438,7 @@ def run(args) -> None:
                             logger.warning(
                                 "Failed to stage/commit tracker: %s", details
                             )
-                except (IOError, OSError) as exc:
+                except OSError as exc:
                     logger.warning(
                         "Tracker generation I/O error: %s", exc, exc_info=True
                     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import random
@@ -11,9 +12,8 @@ import shutil
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 from collections.abc import Sequence
-from typing import Optional
+from pathlib import Path
 
 from .constants import (
     COMMAND_ALLOWLIST,
@@ -69,7 +69,7 @@ SENSITIVE_KEYS = {
 CLAUDE_DEBUG_LOG_NAME = "claude_code_debug.log"
 
 
-def find_repo_root(start_path: Optional[Path] = None) -> Path:
+def find_repo_root(start_path: Path | None = None) -> Path:
     """Find the repository root by searching for a .git entry (dir or file).
 
     Args:
@@ -179,7 +179,7 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         is permitted by the validation logic because subprocess is always run with shell=False,
         so backticks are not interpreted by the shell and do not pose a risk in this context.
     """
-    if not isinstance(cmd, Sequence) or isinstance(cmd, (str, bytes)) or not cmd:
+    if not isinstance(cmd, Sequence) or isinstance(cmd, str | bytes) or not cmd:
         raise ValueError("cmd must be a non-empty sequence of strings")
     for arg in cmd:
         if not isinstance(arg, str):
@@ -205,7 +205,7 @@ def validate_command_args(cmd: Sequence[str]) -> None:
     raise SystemExit(f"Command not allowed: {binary}")
 
 
-def validate_cwd(cwd: Optional[Path]) -> None:
+def validate_cwd(cwd: Path | None) -> None:
     if cwd is None:
         return
     cwd = cwd.resolve()
@@ -215,7 +215,7 @@ def validate_cwd(cwd: Optional[Path]) -> None:
     raise SystemExit(f"CWD {cwd} outside registered safe roots: {SAFE_CWD_ROOTS}")
 
 
-def validate_stdin(stdin: Optional[str]) -> None:
+def validate_stdin(stdin: str | None) -> None:
     if stdin is None:
         return
     encoded = stdin.encode("utf-8")
@@ -226,7 +226,7 @@ def validate_stdin(stdin: Optional[str]) -> None:
             raise SystemExit("unsafe control characters in stdin payload")
 
 
-def validate_extra_env(extra_env: Optional[dict]) -> None:
+def validate_extra_env(extra_env: dict | None) -> None:
     if not extra_env:
         return
     for key, value in extra_env.items():
@@ -347,10 +347,8 @@ def ensure_claude_debug_dir() -> Path:
 
     # As a last resort, force the repo-local path even if touch failed earlier.
     fallback = repo_candidate
-    try:
+    with contextlib.suppress(OSError):
         fallback.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
     try:
         fallback.touch(exist_ok=True)
     except OSError:
@@ -362,17 +360,17 @@ def ensure_claude_debug_dir() -> Path:
 def run_cmd(
     cmd: Sequence[str],
     *,
-    cwd: Optional[Path] = None,
+    cwd: Path | None = None,
     check: bool = True,
     capture: bool = True,
-    timeout: Optional[int] = None,
-    extra_env: Optional[dict] = None,
-    stdin: Optional[str] = None,
+    timeout: int | None = None,
+    extra_env: dict | None = None,
+    stdin: str | None = None,
     sanitize_args: bool = True,
     # Retry parameters (backward compatible defaults)
     retries: int = 0,
-    retry_on_codes: Optional[set[int]] = None,
-    retry_on_stderr: Optional[list[str]] = None,
+    retry_on_codes: set[int] | None = None,
+    retry_on_stderr: list[str] | None = None,
     backoff_base: float = 1.0,
     backoff_max: float = 60.0,
     backoff_jitter: float = 0.5,
@@ -414,7 +412,7 @@ def run_cmd(
         # Log the diff between original and sanitized arguments for debugging.
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
-            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd))
+            for i, (orig, san) in enumerate(zip(cmd, sanitized_cmd, strict=False))
             if orig != san
         ]
         if diffs:
@@ -435,7 +433,7 @@ def run_cmd(
     env = env_with_zsh(extra_env)
     cmd_display = shlex.join(sanitized_cmd)
 
-    stdin_bytes: Optional[bytes] = None
+    stdin_bytes: bytes | None = None
     if stdin is not None:
         stdin_bytes = stdin.encode("utf-8")
 
@@ -552,7 +550,7 @@ def run_cmd(
 
 
 def safe_popen(
-    cmd: Sequence[str], *, text=True, bufsize=1, extra_env: Optional[dict] = None
+    cmd: Sequence[str], *, text=True, bufsize=1, extra_env: dict | None = None
 ) -> subprocess.Popen[str]:
     """Safe wrapper for subprocess.Popen using validation from command.py.
 
@@ -600,11 +598,11 @@ def safe_popen(
 def run_sh(
     script: str,
     *,
-    cwd: Optional[Path] = None,
+    cwd: Path | None = None,
     check: bool = True,
     capture: bool = True,
-    timeout: Optional[int] = None,
-    extra_env: Optional[dict] = None,
+    timeout: int | None = None,
+    extra_env: dict | None = None,
 ) -> tuple[str, str, int]:
     verify_unsafe_execution_ready()
     return run_cmd(
@@ -620,8 +618,8 @@ def run_sh(
 def popen_streaming(
     cmd: Sequence[str],
     *,
-    cwd: Optional[Path] = None,
-    extra_env: Optional[dict] = None,
+    cwd: Path | None = None,
+    extra_env: dict | None = None,
     sanitize: bool = True,
 ) -> tuple[subprocess.Popen[str], list[str]]:
     """Create a Popen for streaming output with validated args and environment.
@@ -738,8 +736,8 @@ def popen_streaming(
     repo_root_path = find_repo_root()
     try:
         repo_root_path = repo_root_path.resolve(strict=True)
-    except FileNotFoundError:
-        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
+    except FileNotFoundError as err:
+        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path)) from err
     if not repo_root_path.is_dir():
         raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
     # Verify .git entry exists (directory for normal repos, file for worktrees/submodules)

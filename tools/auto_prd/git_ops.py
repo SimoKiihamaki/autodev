@@ -5,13 +5,11 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 from .command import run_cmd
 from .constants import SAFE_ENV_VAR
 from .logging_utils import logger
-
 
 PARSE_OWNER_REPO_ERROR = "Cannot parse owner/repo from: {}"
 
@@ -130,7 +128,7 @@ def git_branch_exists(repo_root: Path, branch: str) -> bool:
     return False
 
 
-def git_default_branch(repo_root: Path) -> Optional[str]:
+def git_default_branch(repo_root: Path) -> str | None:
     out, _, rc = run_cmd(
         ["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
         cwd=repo_root,
@@ -150,7 +148,7 @@ def git_default_branch(repo_root: Path) -> Optional[str]:
     return None
 
 
-def git_stash_worktree(repo_root: Path, message: str) -> Optional[str]:
+def git_stash_worktree(repo_root: Path, message: str) -> str | None:
     status_out, _, _ = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
     if not status_out.strip():
         return None
@@ -311,7 +309,7 @@ def git_fetch_with_retry(
 def git_pull_with_retry(
     repo_root: Path,
     remote: str = "origin",
-    branch: Optional[str] = None,
+    branch: str | None = None,
     retries: int = 3,
 ) -> None:
     """Pull from remote with retry for transient network failures.

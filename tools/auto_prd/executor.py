@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Set, Tuple
 
 from .command_checks import require_cmd
 from .logging_utils import logger
@@ -24,8 +23,8 @@ class AutoPrdError(RuntimeError):
 def _verify_required_commands(
     required: list[str],
     executor_policy: str,
-    verified_commands: Set[str],
-) -> Tuple[bool, str, Set[str]]:
+    verified_commands: set[str],
+) -> tuple[bool, str, set[str]]:
     policy_changed = False
     for cmd_name in required:
         try:
@@ -46,18 +45,20 @@ def _verify_required_commands(
                     )
                     executor_policy = fallback_policy
                     break
-            raise AutoPrdError(f"{executor_policy}: command verification failed for '{cmd_name}': {err}") from err
+            raise AutoPrdError(
+                f"{executor_policy}: command verification failed for '{cmd_name}': {err}"
+            ) from err
     return policy_changed, executor_policy, verified_commands
 
 
-def resolve_executor_policy(policy_arg: str | None) -> Tuple[str, str, Set[str]]:
+def resolve_executor_policy(policy_arg: str | None) -> tuple[str, str, set[str]]:
     policy_from_env = os.getenv("AUTO_PRD_EXECUTOR_POLICY")
     executor_policy = policy_arg or policy_from_env or EXECUTOR_POLICY_DEFAULT
     if executor_policy not in EXECUTOR_CHOICES:
         raise AutoPrdError(f"Invalid executor policy: {executor_policy}")
     set_executor_policy(executor_policy)
 
-    verified_commands: Set[str] = set()
+    verified_commands: set[str] = set()
     fallback_attempts = 0
     executor_policy_chain = []
     initial_executor_policy = executor_policy
@@ -72,18 +73,22 @@ def resolve_executor_policy(policy_arg: str | None) -> Tuple[str, str, Set[str]]
         fallback_attempts += 1
         if fallback_attempts >= MAX_FALLBACK_ATTEMPTS:
             last_required = build_required_list(executor_policy)
-            failed_commands = [cmd for cmd in last_required if cmd not in verified_commands]
+            failed_commands = [
+                cmd for cmd in last_required if cmd not in verified_commands
+            ]
 
             cycle_detected = False
             cycle_info = ""
             if len(executor_policy_chain) != len(set(executor_policy_chain)):
-                seen_indices = {}
+                seen_indices: dict[str, int] = {}
                 for i, policy in enumerate(executor_policy_chain):
                     if policy in seen_indices:
                         cycle_start = seen_indices[policy]
                         cycle_policies = executor_policy_chain[cycle_start:i]
                         cycle_detected = True
-                        cycle_info = f"Detected cycle: {' -> '.join(cycle_policies)} -> {policy}"
+                        cycle_info = (
+                            f"Detected cycle: {' -> '.join(cycle_policies)} -> {policy}"
+                        )
                         break
                     seen_indices[policy] = i
 
@@ -100,6 +105,10 @@ def resolve_executor_policy(policy_arg: str | None) -> Tuple[str, str, Set[str]]
     logger.info(
         "Using executor policy: %s%s",
         executor_policy,
-        f" (fallback from {initial_executor_policy})" if executor_policy != initial_executor_policy else "",
+        (
+            f" (fallback from {initial_executor_policy})"
+            if executor_policy != initial_executor_policy
+            else ""
+        ),
     )
     return executor_policy, initial_executor_policy, verified_commands

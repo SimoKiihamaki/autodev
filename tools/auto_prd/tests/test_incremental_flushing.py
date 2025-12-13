@@ -9,18 +9,18 @@ import unittest
 from unittest.mock import patch
 
 try:
+    from tools.auto_prd import logging_utils
     from tools.auto_prd.logging_utils import (
         install_print_logger,
-        uninstall_print_logger,
         print_flush,
-        PRINT_HOOK_INSTALLED,
+        uninstall_print_logger,
     )
 except ImportError:
+    from .. import logging_utils
     from ..logging_utils import (
         install_print_logger,
-        uninstall_print_logger,
         print_flush,
-        PRINT_HOOK_INSTALLED,
+        uninstall_print_logger,
     )
 
 
@@ -40,7 +40,7 @@ class IncrementalLogFlushingTests(unittest.TestCase):
     def test_print_hook_installs_and_uninstalls(self):
         """Test that print hook can be installed and uninstalled."""
         # Initially should not be installed
-        self.assertFalse(PRINT_HOOK_INSTALLED)
+        self.assertFalse(logging_utils.PRINT_HOOK_INSTALLED)
 
         # Install should set the flag and change behavior
         install_print_logger()
@@ -53,7 +53,7 @@ class IncrementalLogFlushingTests(unittest.TestCase):
 
         # Uninstall should reset the flag
         uninstall_print_logger()
-        self.assertFalse(PRINT_HOOK_INSTALLED)
+        self.assertFalse(logging_utils.PRINT_HOOK_INSTALLED)
 
     def test_print_flush_utility(self):
         """Test the print_flush utility function."""
@@ -101,7 +101,7 @@ class IncrementalLogFlushingTests(unittest.TestCase):
 
                 # Uninstall and test
                 uninstall_print_logger()
-                self.assertFalse(PRINT_HOOK_INSTALLED)
+                self.assertFalse(logging_utils.PRINT_HOOK_INSTALLED)
 
     def test_flush_behavior_with_stderr(self):
         """Test flush behavior with stderr output."""

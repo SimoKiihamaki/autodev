@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from .agents import codex_exec
 from .command import run_cmd
@@ -63,7 +62,7 @@ def open_or_get_pr(
     *,
     skip_runner: bool = False,
     already_pushed: bool = False,
-) -> Optional[int]:
+) -> int | None:
     pr_title_raw = f"Implement: {prd_path.name}"
     pr_body_raw = f"Implements tasks from {prd_path} via automated executor (Codex/Claude) + CodeRabbit iterative loop."
     pr_title = scrub_cli_text(pr_title_raw)

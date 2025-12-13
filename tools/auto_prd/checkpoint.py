@@ -12,9 +12,123 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, TypedDict
 
 from .logging_utils import logger
+
+# TypedDict definitions for checkpoint structure.
+# These provide type hints and IDE support for checkpoint dictionaries.
+# The actual checkpoint is still a plain dict for JSON serialization compatibility.
+#
+# IMPORTANT: Runtime validation note
+# ----------------------------------
+# These TypedDict classes are documentation-only type hints. They provide:
+# - Static type checking via mypy/pyright
+# - IDE autocompletion and type information
+# - Clear documentation of the checkpoint schema
+#
+# Actual runtime validation is handled through:
+# 1. The checkpoint migration system (_migrate_checkpoint, _MIGRATIONS)
+#    which validates and transforms checkpoints from older schema versions
+# 2. The JSON serialization layer which ensures type compatibility
+# 3. Field presence checks in code that accesses checkpoint data
+#
+# For complex validation needs, consider using pydantic models in the future.
+# The current approach balances simplicity with type safety for this use case.
+
+
+class LocalPhaseState(TypedDict, total=False):
+    """State for the local implementation phase."""
+
+    status: str  # "pending", "in_progress", "completed"
+    started_at: str | None
+    completed_at: str | None
+    iteration: int
+    max_iters: int | None
+    tasks_left: int
+    no_findings_streak: int
+    empty_change_streak: int
+    skipped_review_streak: int
+    qa_context_shared: bool
+    last_head_sha: str | None
+    last_status_snapshot: list[str]
+
+
+class PRPhaseState(TypedDict, total=False):
+    """State for the PR creation phase."""
+
+    status: str  # "pending", "in_progress", "completed"
+    started_at: str | None
+    completed_at: str | None
+    pr_number: int | None
+    branch_pushed: bool
+
+
+class ReviewFixPhaseState(TypedDict, total=False):
+    """State for the review/fix phase."""
+
+    status: str  # "pending", "in_progress", "completed"
+    started_at: str | None
+    completed_at: str | None
+    processed_comment_ids: list[int]
+    last_activity_wall_clock: float | None
+    cycles: int
+    terminated_early: bool  # Set when review loop fails consecutively
+
+
+class PhasesDict(TypedDict):
+    """Container for all phase states."""
+
+    local: LocalPhaseState
+    pr: PRPhaseState
+    review_fix: ReviewFixPhaseState
+
+
+class GitState(TypedDict, total=False):
+    """Git-related state for session recovery."""
+
+    stash_selector: str | None
+    original_branch: str | None
+
+
+class CheckpointError(TypedDict, total=False):
+    """Error entry in checkpoint."""
+
+    timestamp: str
+    message: str
+
+
+class Checkpoint(TypedDict, total=False):
+    """Full checkpoint structure for session persistence.
+
+    This TypedDict documents the expected structure of checkpoint dictionaries.
+    Use this for type hints when working with checkpoint data.
+
+    Example:
+        def process_checkpoint(cp: Checkpoint) -> None:
+            session_id = cp["session_id"]
+            local_phase = cp["phases"]["local"]
+            if local_phase["status"] == "in_progress":
+                # Resume from last iteration
+                pass
+    """
+
+    version: int
+    session_id: str
+    created_at: str
+    updated_at: str
+    status: str  # "in_progress", "completed", "failed"
+    prd_path: str
+    prd_hash: str
+    repo_root: str
+    base_branch: str
+    feature_branch: str
+    selected_phases: list[str]
+    current_phase: str | None
+    phases: PhasesDict
+    git_state: GitState
+    errors: list[CheckpointError]
+
 
 # Checkpoint schema version for future migrations
 CHECKPOINT_VERSION = 1
@@ -170,9 +284,11 @@ def create_checkpoint(
 
 
 def save_checkpoint(checkpoint: dict[str, Any]) -> None:
-    """Atomically save checkpoint to disk.
+    """Atomically save checkpoint to disk with restricted permissions.
 
-    Uses write-to-temp-then-rename pattern for atomicity.
+    Uses write-to-temp-then-rename pattern for atomicity. Checkpoint files are
+    created with 0600 permissions (owner read/write only) since they may contain
+    sensitive data such as PRD paths, session state, and repository information.
 
     Args:
         checkpoint: Checkpoint dictionary to save.
@@ -181,41 +297,50 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
     session_id = checkpoint["session_id"]
     target_path = get_checkpoint_path(session_id)
 
-    # Write to temp file then rename for atomicity.
-    # fd is wrapped in try-finally immediately to prevent fd leak if an exception
-    # occurs before os.fdopen takes ownership of the file descriptor.
-    fd, temp_path = tempfile.mkstemp(
-        suffix=".json.tmp",
-        prefix=f"{session_id}-",
-        dir=target_path.parent,
-    )
-    fd_closed = False
+    # Set restrictive umask for temp file creation (0077 = owner only).
+    # This ensures the temp file is created with 0600 permissions by default.
+    old_umask = os.umask(0o077)
     try:
-        # os.fdopen takes ownership; fd will be closed by context manager.
-        # We only mark fd_closed = True AFTER os.fdopen succeeds to ensure
-        # we close the fd manually if os.fdopen itself raises an exception.
-        with os.fdopen(fd, "w") as f:
-            fd_closed = True
-            json.dump(checkpoint, f, indent=2, sort_keys=True)
-            f.flush()
-            os.fsync(f.fileno())
-        os.rename(temp_path, target_path)
-        logger.debug("Saved checkpoint to %s", target_path)
-    except Exception:
-        # Close fd if os.fdopen was never called (prevents fd leak)
-        if not fd_closed:
-            try:
-                os.close(fd)
-            except OSError:
-                # Ignore errors closing fd; it may already be closed or invalid during cleanup.
-                pass
-        # Clean up temp file on failure
+        # Write to temp file then rename for atomicity.
+        # fd is wrapped in try-finally immediately to prevent fd leak if an exception
+        # occurs before os.fdopen takes ownership of the file descriptor.
+        fd, temp_path = tempfile.mkstemp(
+            suffix=".json.tmp",
+            prefix=f"{session_id}-",
+            dir=target_path.parent,
+        )
+        fd_closed = False
         try:
-            os.unlink(temp_path)
-        except OSError:
-            # Ignore errors deleting temp file; it may not exist or may have already been removed.
-            pass
-        raise
+            # os.fdopen takes ownership; fd will be closed by context manager.
+            # We only mark fd_closed = True AFTER os.fdopen succeeds to ensure
+            # we close the fd manually if os.fdopen itself raises an exception.
+            with os.fdopen(fd, "w") as f:
+                fd_closed = True
+                json.dump(checkpoint, f, indent=2, sort_keys=True)
+                f.flush()
+                os.fsync(f.fileno())
+            os.rename(temp_path, target_path)
+            # Ensure final file has restrictive permissions (0600)
+            os.chmod(target_path, 0o600)
+            logger.debug("Saved checkpoint to %s", target_path)
+        except Exception:
+            # Close fd if os.fdopen was never called (prevents fd leak)
+            if not fd_closed:
+                try:
+                    os.close(fd)
+                except OSError:
+                    # Ignore errors closing fd; it may already be closed or invalid during cleanup.
+                    pass
+            # Clean up temp file on failure
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                # Ignore errors deleting temp file; it may not exist or may have already been removed.
+                pass
+            raise
+    finally:
+        # Restore original umask
+        os.umask(old_umask)
 
 
 def _migrate_v0_to_v1(checkpoint: dict[str, Any]) -> None:
@@ -328,7 +453,7 @@ def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
     return checkpoint
 
 
-def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
+def load_checkpoint(session_id: str) -> dict[str, Any] | None:
     """Load checkpoint from disk.
 
     Args:
@@ -356,7 +481,7 @@ def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def find_resumable_session(prd_path: Path, repo_root: Path) -> Optional[dict[str, Any]]:
+def find_resumable_session(prd_path: Path, repo_root: Path) -> dict[str, Any] | None:
     """Find the most recent in-progress session matching PRD and repo.
 
     Args:
@@ -402,7 +527,7 @@ def find_resumable_session(prd_path: Path, repo_root: Path) -> Optional[dict[str
 
 
 def list_sessions(
-    status_filter: Optional[str] = None, limit: int = 20
+    status_filter: str | None = None, limit: int = 20
 ) -> list[dict[str, Any]]:
     """List all sessions, optionally filtered by status.
 

@@ -4,14 +4,14 @@ Tests for stdout/stderr flushing behavior to ensure incremental output appears i
 This validates that the Python automation pipeline doesn't buffer output unexpectedly.
 """
 
+import os
+import queue
 import sys
-import time
 import tempfile
 import threading
-import queue
-import os
-from pathlib import Path
+import time
 from dataclasses import dataclass
+from pathlib import Path
 
 # Constants for assertion messages to ensure consistency
 ASSERTION_MSG_TEMPLATES = {
@@ -20,16 +20,16 @@ ASSERTION_MSG_TEMPLATES = {
 
 try:
     from tools.auto_prd.command import (
+        register_safe_cwd,
         run_cmd,
         safe_popen,
-        register_safe_cwd,
     )
     from tools.auto_prd.tests import safe_cleanup
 except ImportError:
     from ..command import (
+        register_safe_cwd,
         run_cmd,
         safe_popen,
-        register_safe_cwd,
     )
     from . import safe_cleanup
 
@@ -150,7 +150,7 @@ def create_flush_test_script():
     fixture_path = Path(__file__).parent / "fixtures" / "flush_test_script.py"
 
     # Read the fixture script content
-    with open(fixture_path, "r") as f:
+    with open(fixture_path) as f:
         script_content = f.read()
 
     # Create temporary script file

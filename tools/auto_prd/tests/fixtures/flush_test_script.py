@@ -5,8 +5,8 @@ This script tests various flushing scenarios to ensure incremental output appear
 """
 
 import sys
-import time
 import tempfile
+import time
 from dataclasses import dataclass
 
 
@@ -33,7 +33,7 @@ def test_basic_flushing():
     print("=== STARTING BASIC FLUSH TEST ===", flush=True)
 
     for i in range(10):
-        print(f"Basic line {i+1}/10", flush=True)
+        print(f"Basic line {i + 1}/10", flush=True)
         time.sleep(0.1)
 
     print("=== BASIC FLUSH TEST COMPLETED ===", flush=True)
@@ -44,7 +44,7 @@ def test_no_flush():
     print("=== STARTING NO-FLUSH TEST ===")
 
     for i in range(5):
-        print(f"No-flush line {i+1}/5")  # No explicit flush
+        print(f"No-flush line {i + 1}/5")  # No explicit flush
         time.sleep(0.1)
 
     print("=== NO-FLUSH TEST COMPLETED ===")
@@ -55,8 +55,8 @@ def test_mixed_output():
     print("=== STARTING MIXED OUTPUT TEST ===", flush=True)
 
     for i in range(5):
-        print(f"STDOUT line {i+1}/5", flush=True)
-        print(f"STDERR line {i+1}/5", file=sys.stderr, flush=True)
+        print(f"STDOUT line {i + 1}/5", flush=True)
+        print(f"STDERR line {i + 1}/5", file=sys.stderr, flush=True)
         time.sleep(0.1)
 
     print("=== MIXED OUTPUT TEST COMPLETED ===", flush=True)
@@ -69,7 +69,7 @@ def test_large_output():
     large_text = "x" * 1000  # 1KB of text
 
     for i in range(5):
-        print(f"Large block {i+1}/5: {large_text[:100]}...", flush=True)
+        print(f"Large block {i + 1}/5: {large_text[:100]}...", flush=True)
         time.sleep(0.05)
 
     print("=== LARGE OUTPUT TEST COMPLETED ===", flush=True)
@@ -80,7 +80,7 @@ def test_rapid_succession():
     print("=== STARTING RAPID SUCCESSION TEST ===", flush=True)
 
     for i in range(50):
-        print(f"Rapid line {i+1}/50", flush=True)
+        print(f"Rapid line {i + 1}/50", flush=True)
         # No delay - should still appear immediately
 
     print("=== RAPID SUCCESSION TEST COMPLETED ===", flush=True)
@@ -126,7 +126,6 @@ def test_subprocess_output():
 
 
 if __name__ == "__main__":
-
     print("=== COMPREHENSIVE FLUSH TESTING STARTED ===", flush=True)
 
     test_basic_flushing()

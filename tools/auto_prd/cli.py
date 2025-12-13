@@ -10,13 +10,13 @@ from .app import run
 from .checkpoint import find_resumable_session, list_sessions, load_checkpoint
 from .constants import ACCEPTED_LOG_LEVELS, SAFE_ENV_VAR
 from .executor import AutoPrdError
-from .policy import EXECUTOR_CHOICES
 from .logging_utils import (
     CURRENT_LOG_PATH,
     ORIGINAL_PRINT,
-    logger,
     initialize_output_buffering,
+    logger,
 )
+from .policy import EXECUTOR_CHOICES
 
 
 def build_parser() -> argparse.ArgumentParser:

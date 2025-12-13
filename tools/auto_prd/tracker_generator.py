@@ -17,7 +17,7 @@ from typing import Any
 
 # jsonschema is optional - we implement fallback validation if not available
 try:
-    import jsonschema
+    import jsonschema  # type: ignore[import-untyped]
 
     HAS_JSONSCHEMA = True
 except ImportError:

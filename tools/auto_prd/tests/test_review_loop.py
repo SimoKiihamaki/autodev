@@ -1,18 +1,17 @@
 import subprocess
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 try:
-    from tools.auto_prd.gh_ops import should_stop_review_after_push
     from tools.auto_prd import review_loop
+    from tools.auto_prd.gh_ops import should_stop_review_after_push
 except ImportError:
-    from ..gh_ops import should_stop_review_after_push
     from .. import review_loop
+    from ..gh_ops import should_stop_review_after_push
 
 
-class ShouldStopReviewAfterPushTests(unittest.TestCase):
+class ShouldStopReviewAfterPushTests(TestCase):
     def setUp(self) -> None:
         self.repo_root = Path("/tmp/dummy")
         self.commit_sha = "abc123"
@@ -208,7 +207,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
         self.assertFalse(should_stop)
 
 
-class ReviewFixLoopTests(unittest.TestCase):
+class ReviewFixLoopTests(TestCase):
     @mock.patch(
         "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=True
     )
@@ -264,21 +263,23 @@ class ReviewFixLoopTests(unittest.TestCase):
         mock_policy_runner.return_value = (mock_runner, "claude")
 
         # Return feedback so the loop tries to fix it
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                result = review_loop.review_fix_loop(
-                    pr_number=13,
-                    owner_repo="owner/repo",
-                    repo_root=Path(tmpdir),
-                    idle_grace=0,
-                    poll_interval=1,
-                    codex_model="gpt",
-                    allow_unsafe_execution=True,
-                    dry_run=False,
-                )
+            result = review_loop.review_fix_loop(
+                pr_number=13,
+                owner_repo="owner/repo",
+                repo_root=Path(tmpdir),
+                idle_grace=0,
+                poll_interval=1,
+                codex_model="gpt",
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
 
         # Should return False due to consecutive failures
         self.assertFalse(result)
@@ -308,21 +309,23 @@ class ReviewFixLoopTests(unittest.TestCase):
         )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                result = review_loop.review_fix_loop(
-                    pr_number=13,
-                    owner_repo="owner/repo",
-                    repo_root=Path(tmpdir),
-                    idle_grace=0,
-                    poll_interval=1,
-                    codex_model="gpt",
-                    allow_unsafe_execution=True,
-                    dry_run=False,
-                )
+            result = review_loop.review_fix_loop(
+                pr_number=13,
+                owner_repo="owner/repo",
+                repo_root=Path(tmpdir),
+                idle_grace=0,
+                poll_interval=1,
+                codex_model="gpt",
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
 
         self.assertFalse(result)
         self.assertEqual(mock_runner.call_count, review_loop.MAX_CONSECUTIVE_FAILURES)
@@ -381,21 +384,23 @@ class ReviewFixLoopTests(unittest.TestCase):
             [],  # Exit condition
         ]
 
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            side_effect=feedback_sequence,
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                side_effect=feedback_sequence,
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                result = review_loop.review_fix_loop(
-                    pr_number=13,
-                    owner_repo="owner/repo",
-                    repo_root=Path(tmpdir),
-                    idle_grace=0,
-                    poll_interval=1,
-                    codex_model="gpt",
-                    allow_unsafe_execution=True,
-                    dry_run=False,
-                )
+            result = review_loop.review_fix_loop(
+                pr_number=13,
+                owner_repo="owner/repo",
+                repo_root=Path(tmpdir),
+                idle_grace=0,
+                poll_interval=1,
+                codex_model="gpt",
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
 
         # Should return True since the loop completed normally (counter was reset)
         self.assertTrue(result)
@@ -423,22 +428,24 @@ class ReviewFixLoopTests(unittest.TestCase):
         )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                with self.assertRaises(PermissionError):
-                    review_loop.review_fix_loop(
-                        pr_number=13,
-                        owner_repo="owner/repo",
-                        repo_root=Path(tmpdir),
-                        idle_grace=0,
-                        poll_interval=1,
-                        codex_model="gpt",
-                        allow_unsafe_execution=True,
-                        dry_run=False,
-                    )
+            with self.assertRaises(PermissionError):
+                review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
 
         # Should only be called once - no retry on unrecoverable errors
         self.assertEqual(mock_runner.call_count, 1)
@@ -458,22 +465,24 @@ class ReviewFixLoopTests(unittest.TestCase):
         )
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                with self.assertRaises(FileNotFoundError):
-                    review_loop.review_fix_loop(
-                        pr_number=13,
-                        owner_repo="owner/repo",
-                        repo_root=Path(tmpdir),
-                        idle_grace=0,
-                        poll_interval=1,
-                        codex_model="gpt",
-                        allow_unsafe_execution=True,
-                        dry_run=False,
-                    )
+            with self.assertRaises(FileNotFoundError):
+                review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
 
         self.assertEqual(mock_runner.call_count, 1)
 
@@ -490,22 +499,24 @@ class ReviewFixLoopTests(unittest.TestCase):
         mock_runner = mock.MagicMock(side_effect=MemoryError("out of memory"))
         mock_policy_runner.return_value = (mock_runner, "claude")
 
-        with mock.patch(
-            "tools.auto_prd.review_loop.get_unresolved_feedback",
-            return_value=[{"summary": "Fix this", "comment_id": 1}],
+        with (
+            mock.patch(
+                "tools.auto_prd.review_loop.get_unresolved_feedback",
+                return_value=[{"summary": "Fix this", "comment_id": 1}],
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                with self.assertRaises(MemoryError):
-                    review_loop.review_fix_loop(
-                        pr_number=13,
-                        owner_repo="owner/repo",
-                        repo_root=Path(tmpdir),
-                        idle_grace=0,
-                        poll_interval=1,
-                        codex_model="gpt",
-                        allow_unsafe_execution=True,
-                        dry_run=False,
-                    )
+            with self.assertRaises(MemoryError):
+                review_loop.review_fix_loop(
+                    pr_number=13,
+                    owner_repo="owner/repo",
+                    repo_root=Path(tmpdir),
+                    idle_grace=0,
+                    poll_interval=1,
+                    codex_model="gpt",
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
 
         self.assertEqual(mock_runner.call_count, 1)
 
@@ -578,4 +589,4 @@ class ReviewFixLoopTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

@@ -4,7 +4,6 @@ This module consolidates common patterns used across test files to maintain DRY 
 """
 
 
-
 def safe_import(relative_module_path, fallback_module_path, item_names=None):
     """
     Safely import from a relative module with fallback to an absolute import.
@@ -100,4 +99,4 @@ def assert_threads_cleanly_terminated(
     alive_threads = [t for t in threads if t.is_alive()]
     if alive_threads:
         alive_status = ", ".join(f"{t.name or 'unnamed'} alive" for t in alive_threads)
-        assert False, f"{timeout_msg}: {alive_status}"
+        raise AssertionError(f"{timeout_msg}: {alive_status}")
