@@ -838,13 +838,19 @@ def claude_exec_streaming(
 
     Returns:
         Tuple of (stdout, stderr) containing all accumulated output.
-        Note: Unlike claude_exec which preserves exact output formatting,
-        this function normalizes line endings by joining lines with single
-        newlines. This means:
-        - Trailing newlines from the original output are not preserved
-        - Empty lines (consecutive newlines) are preserved as empty strings
-          in the lines list and joined back with single newlines, maintaining
-          the visual structure of blank lines in the output
+
+        **LINE ENDING NORMALIZATION**: Unlike claude_exec which preserves exact
+        output formatting, this function normalizes line endings for streaming
+        efficiency. Output is collected line-by-line and rejoined with single
+        newlines ("\\n".join(lines)). This means:
+
+        - Trailing newlines from the original output are NOT preserved
+        - CRLF line endings (\\r\\n) are converted to LF (\\n)
+        - Empty lines (consecutive newlines) ARE preserved as empty strings
+          in the lines list, maintaining visual blank line structure
+
+        If exact output preservation is required (e.g., for binary-like text
+        or format-sensitive processing), use claude_exec instead.
 
     Raises:
         PermissionError: If allow_unsafe_execution is False and dry_run is False
@@ -1062,7 +1068,13 @@ def claude_exec_streaming(
                 # naturally in the time between checking elapsed >= timeout and now.
                 # We check this BEFORE logging the error to avoid misleading error
                 # messages when the process completes naturally just as timeout is reached.
-                if proc.poll() is None:
+                #
+                # IMPORTANT: Capture poll() result once and use it consistently to avoid
+                # a race window where the process terminates between poll() and subsequent
+                # operations. Using a single poll result ensures we make decisions based
+                # on a consistent process state snapshot.
+                poll_result = proc.poll()
+                if poll_result is None:
                     # Process is still running - log timeout error and terminate it.
                     # Log timeout metadata only - avoid logging actual stdout/stderr content
                     # to prevent persisting potentially sensitive model output (secrets, PII)
@@ -1104,6 +1116,7 @@ def claude_exec_streaming(
                     )
                 else:
                     # Process exited naturally just as timeout was reached.
+                    # poll_result contains the exit code (captured above to avoid race).
                     #
                     # Behavior depends on exit code:
                     # - Exit code 0: Return success (no TimeoutExpired raised)
@@ -1117,13 +1130,13 @@ def claude_exec_streaming(
                     logger.debug(
                         "Process exited naturally (code=%d) just as timeout was reached; "
                         "using exit code to determine success/failure (not raising TimeoutExpired)",
-                        proc.returncode,
+                        poll_result,
                     )
                     # Close fds BEFORE returning since this is an early return path.
-                    # Unlike the normal success path (which closes fds after the main loop
-                    # at lines ~1383-1386), early returns must clean up explicitly here
-                    # to prevent resource leaks. This is the same pattern used by all
-                    # other early exit points (timeout kill, BrokenPipeError, etc.).
+                    # Unlike the normal success path (which closes fds after the main streaming
+                    # loop below), early returns must clean up explicitly here to prevent
+                    # resource leaks. This is the same pattern used by all other early exit
+                    # points (timeout kill, BrokenPipeError, etc.).
                     if proc.stdin and not proc.stdin.closed:
                         proc.stdin.close()
                     if proc.stdout:
@@ -1131,9 +1144,10 @@ def claude_exec_streaming(
                     if proc.stderr:
                         proc.stderr.close()
                     # If process exited with non-zero code, raise CalledProcessError
-                    if proc.returncode != 0:
+                    # Note: Use poll_result (captured above) for consistency
+                    if poll_result != 0:
                         raise subprocess.CalledProcessError(
-                            proc.returncode,
+                            poll_result,
                             sanitized_args,
                             output=stdout_so_far.encode(),
                             stderr=stderr_so_far.encode(),
