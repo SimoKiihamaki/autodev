@@ -623,13 +623,15 @@ def _set_nonblocking(fd: int) -> None:
         OSError: If fcntl is not available (Windows) or fcntl operations fail.
     """
     if not HAS_FCNTL:
-        raise OSError("Non-blocking I/O requires fcntl.")
+        msg = "Non-blocking I/O requires fcntl."
+        raise OSError(msg)
     try:
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
     except (OSError, ValueError) as e:
         logger.error("Failed to set non-blocking mode on fd %d: %s", fd, e)
-        raise OSError("Failed to configure non-blocking I/O.") from e
+        msg = "Failed to configure non-blocking I/O."
+        raise OSError(msg) from e
 
 
 def _process_buffer(
@@ -693,12 +695,14 @@ def _drain_fds_best_effort(
     proc_stderr: IO[str] | None,
     stdout_buffer: str,
     stderr_buffer: str,
+    max_drain_bytes: int = 65536,
 ) -> tuple[str, str]:
     """Best-effort drain of file descriptors into buffers.
 
     Used during error recovery to capture any remaining data before breaking
-    out of the streaming loop. Errors are logged at warning level since this
-    is a best-effort operation during abnormal termination.
+    out of the streaming loop. Uses select() with zero timeout to avoid blocking
+    on processes that may still be alive, and caps total bytes read to prevent
+    unbounded memory usage.
 
     Args:
         fds: List of file descriptors to drain.
@@ -706,6 +710,7 @@ def _drain_fds_best_effort(
         proc_stderr: The process stderr file object for comparison.
         stdout_buffer: Current stdout buffer contents.
         stderr_buffer: Current stderr buffer contents.
+        max_drain_bytes: Maximum total bytes to drain per fd (default 64KB).
 
     Returns:
         Tuple of (updated_stdout_buffer, updated_stderr_buffer).
@@ -714,12 +719,22 @@ def _drain_fds_best_effort(
         try:
             if fd.closed:
                 continue
-            remaining = fd.read()
-            if remaining:
+            # Use select with zero timeout to check if data is available
+            # without blocking. This is critical because the process may
+            # still be alive (e.g., during error recovery after timeout).
+            bytes_read = 0
+            while bytes_read < max_drain_bytes:
+                readable, _, _ = select.select([fd], [], [], 0)
+                if not readable:
+                    break
+                chunk = fd.read(STREAMING_READ_CHUNK_SIZE)
+                if not chunk:
+                    break
+                bytes_read += len(chunk)
                 if fd == proc_stdout:
-                    stdout_buffer += remaining
+                    stdout_buffer += chunk
                 elif fd == proc_stderr:
-                    stderr_buffer += remaining
+                    stderr_buffer += chunk
         except (OSError, IOError, ValueError) as drain_exc:
             # Expected exceptions during best-effort drain operations:
             # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
