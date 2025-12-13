@@ -1,13 +1,27 @@
-"""Local iteration loop coordinating Codex and CodeRabbit."""
+"""Local iteration loop coordinating implementation agents and CodeRabbit.
+
+This module orchestrates the local implementation phase, running either Codex or
+Claude (based on policy configuration) to implement features, with CodeRabbit
+providing automated code review feedback between iterations.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from .agents import coderabbit_has_findings, coderabbit_prompt_only, codex_exec
+from .agents import (
+    claude_exec,
+    coderabbit_has_findings,
+    coderabbit_prompt_only,
+    codex_exec,
+)
 from .checkpoint import save_checkpoint, update_phase_state
-from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
+from .constants import (
+    CODERABBIT_FINDINGS_CHAR_LIMIT,
+    CODEX_READONLY_ERROR_MSG,
+    get_tool_allowlist,
+)
 from .git_ops import git_head_sha, git_status_snapshot
 from .logging_utils import logger
 from .policy import policy_runner
@@ -152,7 +166,7 @@ At the end, print: TASKS_LEFT=<N>
 """
         runner, runner_name = policy_runner(None, i=i, phase="implement")
         print("→ Launching implementation pass with", runner_name, "…", flush=True)
-        runner_kwargs = {
+        runner_kwargs: dict[str, Any] = {
             "repo_root": repo_root,
             "enable_search": True,
             "allow_unsafe_execution": allow_unsafe_execution,
@@ -160,9 +174,12 @@ At the end, print: TASKS_LEFT=<N>
         }
         if runner is codex_exec:
             runner_kwargs["model"] = codex_model
+        elif runner is claude_exec:
+            # Add phase-specific tool restrictions for Claude
+            runner_kwargs["allowed_tools"] = get_tool_allowlist("implement")
 
         impl_output, _ = runner(impl_prompt, **runner_kwargs)
-        print("✓ Codex implementation pass completed.", flush=True)
+        print(f"✓ {runner_name} implementation pass completed.", flush=True)
         readonly_indicator = detect_readonly_block(impl_output)
         if readonly_indicator:
             raise RuntimeError(
@@ -228,8 +245,12 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     "based on CodeRabbit feedback…",
                     flush=True,
                 )
-                fix_output, _ = runner(fix_prompt, **runner_kwargs)
-                print("✓ Codex fix pass completed.", flush=True)
+                # Use "fix" phase tool restrictions for the fix pass
+                fix_kwargs = runner_kwargs.copy()
+                if runner is claude_exec:
+                    fix_kwargs["allowed_tools"] = get_tool_allowlist("fix")
+                fix_output, _ = runner(fix_prompt, **fix_kwargs)
+                print(f"✓ {runner_name} fix pass completed.", flush=True)
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:
                     raise RuntimeError(

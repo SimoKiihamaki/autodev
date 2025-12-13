@@ -19,7 +19,7 @@ from .agents import (
     get_claude_exec_timeout,
 )
 from .checkpoint import save_checkpoint, update_phase_state
-from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
+from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, get_tool_allowlist
 from .gh_ops import (
     acknowledge_review_items,
     get_unresolved_feedback,
@@ -37,6 +37,13 @@ JITTER_MAX_SECONDS = 3.0
 # This prevents infinite retry loops on persistent errors (e.g., auth failures,
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
+
+# Maximum number of iteration summaries to keep for context compaction.
+# These summaries are passed via --append-system-prompt to give Claude context
+# about what was fixed in prior iterations without using session resumption.
+# Value of 5 balances context continuity with token limits - each summary is
+# ~200-400 chars depending on item count, keeping total context injection under ~3KB.
+MAX_COMPACTED_HISTORY = 5
 
 # Bounded FIFO cache for deduplicating warnings about malformed comment entries.
 # Prevents log spam when the same malformed comment appears in every poll cycle.
@@ -401,12 +408,51 @@ def review_fix_loop(
     last_activity = time.monotonic()
     print("\n=== Entering review/fix loop (continues while feedback exists) ===")
 
-    # Track processed comment IDs - restore from checkpoint if resuming
-    review_state = (
-        checkpoint.get("phases", {}).get("review_fix", {}) if checkpoint else {}
-    )
-    processed_comment_ids: set[int] = set(review_state.get("processed_comment_ids", []))
-    cycles = review_state.get("cycles", 0)
+    # Track processed comment IDs - restore from checkpoint if resuming.
+    # Defensive type checking handles corrupted checkpoints gracefully.
+    review_state: dict[str, Any] = {}
+    if checkpoint and isinstance(checkpoint, dict):
+        phases = checkpoint.get("phases")
+        if isinstance(phases, dict):
+            review_fix_state = phases.get("review_fix")
+            if isinstance(review_fix_state, dict):
+                review_state = review_fix_state
+
+    # Extract values with type validation to handle corrupted checkpoint data
+    raw_comment_ids = review_state.get("processed_comment_ids", [])
+    if isinstance(raw_comment_ids, list):
+        # Filter to only valid integer IDs
+        processed_comment_ids: set[int] = {
+            cid for cid in raw_comment_ids if isinstance(cid, int)
+        }
+    else:
+        logger.warning(
+            "Checkpoint 'processed_comment_ids' has invalid type %s; resetting to empty",
+            type(raw_comment_ids).__name__,
+        )
+        processed_comment_ids = set()
+
+    raw_cycles = review_state.get("cycles", 0)
+    cycles = int(raw_cycles) if isinstance(raw_cycles, (int, float)) else 0
+
+    # Context compaction: maintain summaries of previous fixes for continuity.
+    # This is passed via --append-system-prompt to give Claude context about
+    # what was fixed in prior iterations without using --resume (which could
+    # conflict with other Claude instances).
+    raw_history = review_state.get("compacted_history", [])
+    if isinstance(raw_history, list):
+        # Filter to only valid string entries
+        compacted_history: list[str] = [s for s in raw_history if isinstance(s, str)]
+        if len(compacted_history) != len(raw_history):
+            logger.warning(
+                "Checkpoint 'compacted_history' contained non-string elements; filtered"
+            )
+    else:
+        logger.warning(
+            "Checkpoint 'compacted_history' has invalid type %s; resetting to empty",
+            type(raw_history).__name__,
+        )
+        compacted_history = []
 
     if processed_comment_ids:
         logger.info(
@@ -458,7 +504,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 """
             review_runner, runner_name = policy_runner(None, phase="review_fix")
 
-            runner_kwargs = {
+            runner_kwargs: dict[str, Any] = {
                 "repo_root": repo_root,
                 "enable_search": True,
                 "allow_unsafe_execution": allow_unsafe_execution,
@@ -466,6 +512,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             }
             if review_runner is codex_exec:
                 runner_kwargs["model"] = codex_model
+            elif review_runner is claude_exec:
+                # Add phase-specific tool restrictions for Claude
+                runner_kwargs["allowed_tools"] = get_tool_allowlist("review_fix")
+                # Add context compaction: inject history of previous fixes
+                if compacted_history:
+                    context_suffix = (
+                        "\n\n<previous_fixes>\n"
+                        "Context from prior fix iterations (most recent last):\n"
+                        + "\n---\n".join(compacted_history[-MAX_COMPACTED_HISTORY:])
+                        + "\n</previous_fixes>"
+                    )
+                    runner_kwargs["system_prompt_suffix"] = context_suffix
 
             # Use streaming variant for claude_exec to show real-time progress.
             # When the policy selects claude_exec, we switch to claude_exec_streaming
@@ -674,7 +732,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
-                # (e.g., malformed JSON responses). See lines 90-100 for detailed rationale.
+                # (e.g., malformed JSON responses). See _PROGRAMMING_ERROR_TYPES definition
+                # and the comment block above it for detailed rationale.
                 #
                 # Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
                 # earlier explicit handler and re-raised immediately. This catch-all only
@@ -698,7 +757,21 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 owner_repo, pr_number, unresolved, processed_comment_ids
             )
 
-            # Persist checkpoint with updated processed comment IDs
+            # Add compact summary for context continuity in future iterations.
+            # This creates a brief summary of what was fixed, passed to Claude
+            # via --append-system-prompt to maintain context without session resumption.
+            num_items = len(unresolved)
+            summary_items = [item.get("summary", "")[:100] for item in unresolved[:3]]
+            compact_summary = (
+                f"Iteration {cycles + 1}: Fixed {num_items} item(s). "
+                f"Examples: {'; '.join(s for s in summary_items if s)}"
+            )
+            compacted_history.append(compact_summary)
+            # Keep only the most recent summaries to limit context size
+            if len(compacted_history) > MAX_COMPACTED_HISTORY:
+                compacted_history[:] = compacted_history[-MAX_COMPACTED_HISTORY:]
+
+            # Persist checkpoint with updated processed comment IDs and compacted history
             cycles += 1
             if checkpoint:
                 update_phase_state(
@@ -707,6 +780,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     {
                         "processed_comment_ids": list(processed_comment_ids),
                         "cycles": cycles,
+                        "compacted_history": compacted_history,
                         # Wall-clock timestamp for operational visibility - see checkpoint.py
                         # for rationale on why this is included in persistent state.
                         "last_activity_wall_clock": time.time(),
