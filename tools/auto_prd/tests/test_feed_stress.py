@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 try:
-    from ..logging_utils import print_flush, setup_file_logging
+    from ..logging_utils import setup_file_logging
 except ImportError:
     # Fallback if we can't import from the main module
     def setup_file_logging(*args, **kwargs):
@@ -19,9 +19,6 @@ except ImportError:
             "Warning: logging_utils not available, setup_file_logging is no-op",
             file=sys.stderr,
         )
-
-    def print_flush(*args, **kwargs):
-        print(*args, **kwargs)
 
 
 def simulate_bursty_output(

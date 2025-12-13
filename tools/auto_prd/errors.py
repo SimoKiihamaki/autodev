@@ -201,10 +201,8 @@ def classify_error(
             break
 
     # Determine severity
-    if (
-        category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT)
-        or category == ErrorCategory.API
-        and "rate limit" in message.lower()
+    if category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT) or (
+        category == ErrorCategory.API and "rate limit" in message.lower()
     ):
         severity = ErrorSeverity.WARNING
         retryable = True
