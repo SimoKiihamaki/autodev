@@ -299,20 +299,27 @@ def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
                 current_version,
                 current_version + 1,
             )
-            break
+            # Keep version at the last successfully applied version and return early.
+            # Do NOT set version to CHECKPOINT_VERSION - that would "bless" an
+            # unmigrated structure as if it were fully migrated.
+            checkpoint["version"] = current_version
+            return checkpoint
         migration_fn(checkpoint)
         current_version += 1
-        # Update version after each successful migration step so that if the process
-        # crashes during a multi-step migration (e.g., v0 -> v3), the checkpoint will
-        # be at an intermediate version (e.g., v1) on disk rather than v0. This allows
-        # recovery to resume from the last successful migration instead of re-applying
-        # all migrations from the beginning.
+        # Update version after each successful migration step. This ensures the
+        # in-memory checkpoint reflects the current migration state, which will be
+        # persisted on the next save_checkpoint() call.
         #
-        # Note: Migrations are idempotent (guarded by field presence checks), so
-        # re-applying them is safe but wasteful. This update avoids unnecessary work.
+        # Note: The checkpoint is NOT automatically persisted here - persistence only
+        # occurs when save_checkpoint() is explicitly called (typically after phase
+        # state updates). If the process crashes mid-migration, the next load will
+        # re-apply migrations from the on-disk version.
+        #
+        # Migrations are idempotent (guarded by field presence checks), so
+        # re-applying them is safe but wasteful. This in-memory update avoids
+        # unnecessary work within the same session.
         checkpoint["version"] = current_version
 
-    # Ensure version is at CHECKPOINT_VERSION (handles edge cases like missing migrations)
     checkpoint["version"] = CHECKPOINT_VERSION
     logger.debug(
         "Checkpoint migration complete (now at version %d)", CHECKPOINT_VERSION

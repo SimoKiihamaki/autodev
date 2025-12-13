@@ -606,28 +606,41 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 #
                 # For fatal exit codes (2, 126, 127, 130), see _FATAL_EXIT_CODES at module level.
                 #
-                # SystemExit(other non-zero) = execution failure, treat as potentially recoverable.
+                # SystemExit(non-int code) = policy/validation abort, NOT retryable.
+                # Examples: SystemExit("Command not allowed: ...") from safety utilities.
+                # These are intentional aborts from our code, not transient failures.
+                #
+                # SystemExit(other non-zero int) = execution failure, treat as potentially recoverable.
                 # This differs from PermissionError/FileNotFoundError/MemoryError (which are
                 # re-raised immediately) because:
-                # 1. SystemExit(non-zero) typically comes from safety utilities in command.py
+                # 1. SystemExit(non-zero int) typically comes from safety utilities in command.py
                 #    that abort on transient conditions (e.g., resource checks, rate limits)
                 # 2. These conditions may clear on retry (unlike permission issues or missing
                 #    files which require user intervention)
                 # 3. subprocess.CalledProcessError (non-zero exit from child process) is also
-                #    treated as recoverable, and SystemExit(non-zero) is semantically similar
+                #    treated as recoverable, and SystemExit(non-zero int) is semantically similar
                 #    when it indicates "this run failed" rather than "this is misconfigured"
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate immediately without retry.
                     raise
-                if isinstance(exit_code, int) and exit_code in _FATAL_EXIT_CODES:
+                if not isinstance(exit_code, int):
+                    # Non-numeric SystemExit codes are typically error messages from our own
+                    # safety/validation utilities (e.g., SystemExit("Command not allowed: ..."))
+                    # and are not expected to become retryable. Propagate immediately.
+                    logger.error(
+                        "Review runner received SystemExit with non-integer code %r - not retrying",
+                        exit_code,
+                    )
+                    raise
+                if exit_code in _FATAL_EXIT_CODES:
                     # Fatal exit code - do not retry, propagate immediately.
                     logger.error(
                         "Review runner received fatal SystemExit code %d - not retrying",
                         exit_code,
                     )
                     raise
-                # Non-zero exit code: treat as execution failure (potentially recoverable).
+                # Non-zero int exit code: treat as execution failure (potentially recoverable).
                 consecutive_failures += 1
                 logger.error(
                     "Review runner received SystemExit with code %s - treating as failure",
