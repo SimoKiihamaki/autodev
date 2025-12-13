@@ -19,6 +19,22 @@ from .logging_utils import logger
 # TypedDict definitions for checkpoint structure.
 # These provide type hints and IDE support for checkpoint dictionaries.
 # The actual checkpoint is still a plain dict for JSON serialization compatibility.
+#
+# IMPORTANT: Runtime validation note
+# ----------------------------------
+# These TypedDict classes are documentation-only type hints. They provide:
+# - Static type checking via mypy/pyright
+# - IDE autocompletion and type information
+# - Clear documentation of the checkpoint schema
+#
+# Actual runtime validation is handled through:
+# 1. The checkpoint migration system (_migrate_checkpoint, _MIGRATIONS)
+#    which validates and transforms checkpoints from older schema versions
+# 2. The JSON serialization layer which ensures type compatibility
+# 3. Field presence checks in code that accesses checkpoint data
+#
+# For complex validation needs, consider using pydantic models in the future.
+# The current approach balances simplicity with type safety for this use case.
 
 
 class LocalPhaseState(TypedDict, total=False):
