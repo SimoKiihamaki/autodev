@@ -251,22 +251,29 @@ def get_codex_exec_timeout() -> int | None:
     return _timeout_from_env("AUTO_PRD_CODEX_TIMEOUT_SECONDS", None)
 
 
+# Default timeout for Claude execution: 60 minutes (3600 seconds).
+# This prevents infinite hangs while allowing long-running operations.
+# Can be overridden via AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable.
+DEFAULT_CLAUDE_TIMEOUT_SECONDS = 3600
+
+
 def get_claude_exec_timeout() -> int | None:
     """Get the Claude execution timeout from environment variables.
 
     Returns:
-        The timeout in seconds from AUTO_PRD_CLAUDE_TIMEOUT_SECONDS, or None if:
-        - The environment variable is not set (default: no timeout)
-        - The value is explicitly "none", "no", "off", "disable", or "disabled"
-        - The value is <= 0 (treated as "no timeout")
+        The timeout in seconds from AUTO_PRD_CLAUDE_TIMEOUT_SECONDS, or:
+        - DEFAULT_CLAUDE_TIMEOUT_SECONDS (3600 = 60 minutes) if env var is not set
+        - None if the value is explicitly "none", "no", "off", "disable", or "disabled"
+        - None if the value is <= 0 (treated as "no timeout")
 
     Note:
-        When this function returns None, claude_exec and claude_exec_streaming
-        will run without any time limit. This is intentional for long-running
-        operations where timeout is not desired. Callers who need guaranteed
-        timeout enforcement should pass an explicit timeout parameter.
+        The default 60-minute timeout prevents infinite hangs during review loops
+        while allowing ample time for complex operations. To disable the timeout
+        entirely, set AUTO_PRD_CLAUDE_TIMEOUT_SECONDS=off in your environment.
     """
-    return _timeout_from_env("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", None)
+    return _timeout_from_env(
+        "AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", DEFAULT_CLAUDE_TIMEOUT_SECONDS
+    )
 
 
 # Use a cryptographically secure RNG for backoff jitter to avoid predictable retry cadences.

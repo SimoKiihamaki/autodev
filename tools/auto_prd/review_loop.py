@@ -441,9 +441,15 @@ def review_fix_loop(
                 "\nUnresolved feedback detected, asking the bot to fix...", flush=True
             )
             fix_prompt = f"""
-Resolve ALL items below, commit fixes, ensure QA passes, and push to the SAME PR (do not create a new one).
-Before every push, run `make ci` locally and confirm it succeeds; only push after `make ci` passes cleanly.
-Tag the relevant code areas and keep changes minimal.
+Resolve ALL items below, commit fixes, and push to the SAME PR (do not create a new one).
+
+Instructions:
+1. Address each unresolved item with minimal, targeted changes.
+2. If a CI command exists (check for `make ci`, `npm test`, `pytest`, etc.), run it.
+   - If CI passes, great. If it fails on issues unrelated to your changes, proceed anyway.
+   - Do NOT get stuck in an infinite loop trying to fix pre-existing CI failures.
+3. Commit your changes with a clear message describing the fixes.
+4. Push to the current branch. This is mandatory - always push your changes.
 
 Unresolved review items:
 {bullets}
