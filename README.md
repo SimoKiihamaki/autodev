@@ -24,8 +24,11 @@ Shows live logs from the underlying Python process.
 ## Requirements
 
 - Go 1.21+
-- Python 3.9+
+- Python 3.10+ (required for `zip(strict=True)` and modern type hints)
 - CLIs: `codex` (for codex-first|codex-only), `claude` (for claude-only|codex-first), `coderabbit`, `git`, `gh`
+
+> **Note:** The Python requirement is enforced in `tools/auto_prd/pyproject.toml` via `requires-python = ">=3.10"`.
+> This prevents installation on unsupported Python versions.
 
 ## Quick start
 

@@ -1,6 +1,10 @@
 import os
+import subprocess
+import sys
+import tempfile
 import unittest
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from .test_helpers import safe_import
 
@@ -14,6 +18,22 @@ get_codex_exec_timeout = safe_import(
 )
 get_claude_exec_timeout = safe_import(
     "tools.auto_prd.agents", "..agents", "get_claude_exec_timeout"
+)
+claude_exec_streaming = safe_import(
+    "tools.auto_prd.agents", "..agents", "claude_exec_streaming"
+)
+_process_buffer = safe_import("tools.auto_prd.agents", "..agents", "_process_buffer")
+_drain_fds_best_effort = safe_import(
+    "tools.auto_prd.agents", "..agents", "_drain_fds_best_effort"
+)
+_resolve_unsafe_flag = safe_import(
+    "tools.auto_prd.agents", "..agents", "_resolve_unsafe_flag"
+)
+_build_claude_args = safe_import(
+    "tools.auto_prd.agents", "..agents", "_build_claude_args"
+)
+register_safe_cwd = safe_import(
+    "tools.auto_prd.command", "..command", "register_safe_cwd"
 )
 
 
@@ -197,6 +217,466 @@ class TimeoutConfigurationTests(unittest.TestCase):
             # Functions should pick up the new values
             self.assertEqual(get_codex_exec_timeout(), 700)
             self.assertEqual(get_claude_exec_timeout(), 900)
+
+
+@unittest.skipIf(sys.platform == "win32", "claude_exec_streaming requires Unix fcntl")
+class ClaudeExecStreamingTests(unittest.TestCase):
+    """Test suite for claude_exec_streaming function."""
+
+    def setUp(self):
+        """Set up test environment."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_root = Path(self.temp_dir)
+        register_safe_cwd(self.repo_root)
+
+    def tearDown(self):
+        """Clean up test environment."""
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    def test_dry_run_returns_dry_run_output(self, _mock_verify, mock_popen):
+        """Test that dry_run=True returns ('DRY_RUN', '') without execution."""
+        stdout, stderr = claude_exec_streaming(
+            prompt="Test prompt",
+            repo_root=self.repo_root,
+            allow_unsafe_execution=True,
+            dry_run=True,
+        )
+        self.assertEqual(stdout, "DRY_RUN")
+        self.assertEqual(stderr, "")
+        # Verify no subprocess was spawned (the key behavior for dry_run)
+        mock_popen.assert_not_called()
+        # Note: verify_unsafe_execution_ready IS called even in dry_run mode when
+        # allow_unsafe_execution=True, to provide consistent error messaging about
+        # environment configuration. This is intentional behavior.
+
+    def test_permission_error_without_allow_unsafe_execution(self):
+        """Test that PermissionError is raised when allow_unsafe_execution=False."""
+        with self.assertRaises(PermissionError) as context:
+            claude_exec_streaming(
+                prompt="Test prompt",
+                repo_root=self.repo_root,
+                allow_unsafe_execution=False,
+                dry_run=False,
+            )
+        self.assertIn("requires allow_unsafe_execution=True", str(context.exception))
+
+    def test_os_error_when_fcntl_unavailable(self):
+        """Test that OSError is raised when fcntl is not available.
+
+        This test simulates the missing-fcntl code path on Unix-like platforms
+        by patching fcntl to None. Since this test class is skipped on Windows,
+        we're testing that Unix systems correctly raise OSError when fcntl is
+        unavailable (a scenario that would require explicit patching to trigger).
+        """
+        with patch("tools.auto_prd.agents.fcntl", None):
+            with self.assertRaises(OSError) as context:
+                claude_exec_streaming(
+                    prompt="Test prompt",
+                    repo_root=self.repo_root,
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                )
+            self.assertIn("fcntl", str(context.exception))
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    def test_broken_pipe_error_handling(self, _mock_verify, mock_popen):
+        """Test that BrokenPipeError during stdin write raises CalledProcessError."""
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write.side_effect = BrokenPipeError("Broken pipe")
+        mock_proc.wait.return_value = None
+        mock_proc.returncode = 1
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.return_value = "Process died early"
+        mock_proc.stderr.close = MagicMock()
+        mock_popen.return_value = (mock_proc, ["claude", "--print"])
+
+        with self.assertRaises(subprocess.CalledProcessError) as context:
+            claude_exec_streaming(
+                prompt="Test prompt",
+                repo_root=self.repo_root,
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
+        self.assertEqual(context.exception.returncode, 1)
+        self.assertIn(b"terminated unexpectedly", context.exception.stderr)
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("tools.auto_prd.agents._set_nonblocking")
+    @patch("tools.auto_prd.agents.select.select")
+    def test_timeout_handling(
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
+    ):
+        """Test that timeout raises TimeoutExpired with partial output."""
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.fileno.return_value = 3
+        mock_proc.stdout.read.return_value = "partial output"
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.fileno.return_value = 4
+        mock_proc.stderr.read.return_value = ""
+        mock_proc.stderr.close = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.kill = MagicMock()
+        mock_proc.wait = MagicMock()
+        mock_popen.return_value = (mock_proc, ["claude", "--print"])
+
+        # Simulate timeout by returning readable fds but no actual data
+        mock_select.return_value = ([mock_proc.stdout], [], [])
+
+        with patch("tools.auto_prd.agents.time.monotonic") as mock_time:
+            # First call for start_time, subsequent calls show elapsed time > timeout
+            mock_time.side_effect = [
+                0,
+                0,
+                2,
+            ]  # start=0, check=0, check=2 (> 1s timeout)
+            with self.assertRaises(subprocess.TimeoutExpired) as context:
+                claude_exec_streaming(
+                    prompt="Test prompt",
+                    repo_root=self.repo_root,
+                    allow_unsafe_execution=True,
+                    dry_run=False,
+                    timeout=1,
+                )
+            self.assertEqual(context.exception.timeout, 1)
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("tools.auto_prd.agents._set_nonblocking")
+    @patch("tools.auto_prd.agents.select.select")
+    def test_successful_streaming_execution(
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
+    ):
+        """Test successful streaming execution with output callback."""
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.fileno.return_value = 3
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.fileno.return_value = 4
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr.close = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.wait = MagicMock()
+        mock_popen.return_value = (mock_proc, ["claude", "--print"])
+
+        # First poll returns None (process running), second returns 0 (process done)
+        mock_proc.poll.side_effect = [None, 0]
+        # First select returns stdout readable, second select with empty readable fds
+        mock_select.side_effect = [([mock_proc.stdout], [], []), ([], [], [])]
+        # First read returns output, second read returns empty (EOF)
+        mock_proc.stdout.read.side_effect = ["Hello, World!\n", ""]
+        mock_proc.stderr.read.return_value = ""
+
+        output_lines = []
+
+        def output_handler(line):
+            output_lines.append(line)
+
+        stdout, _stderr = claude_exec_streaming(
+            prompt="Test prompt",
+            repo_root=self.repo_root,
+            allow_unsafe_execution=True,
+            dry_run=False,
+            on_output=output_handler,
+        )
+
+        self.assertEqual(stdout, "Hello, World!")
+        self.assertEqual(output_lines, ["Hello, World!"])
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("tools.auto_prd.agents._set_nonblocking")
+    def test_io_error_handling_during_nonblocking_setup(
+        self, mock_nonblock, _mock_verify, mock_popen
+    ):
+        """Test that OSError during non-blocking setup is properly propagated."""
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.fileno.return_value = 3
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.fileno.return_value = 4
+        mock_proc.stderr.close = MagicMock()
+        mock_proc.kill = MagicMock()
+        mock_proc.wait = MagicMock()
+        mock_popen.return_value = (mock_proc, ["claude", "--print"])
+
+        mock_nonblock.side_effect = OSError("Failed to set non-blocking")
+
+        with self.assertRaises(OSError) as context:
+            claude_exec_streaming(
+                prompt="Test prompt",
+                repo_root=self.repo_root,
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
+        self.assertIn("non-blocking", str(context.exception))
+        mock_proc.kill.assert_called_once()
+        mock_proc.wait.assert_called_once()
+
+    @patch("tools.auto_prd.agents.popen_streaming")
+    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("tools.auto_prd.agents._set_nonblocking")
+    @patch("tools.auto_prd.agents.select.select")
+    def test_nonzero_exit_code_raises_called_process_error(
+        self, mock_select, _mock_nonblock, _mock_verify, mock_popen
+    ):
+        """Test that non-zero exit code raises CalledProcessError."""
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = MagicMock()
+        mock_proc.stdout.fileno.return_value = 3
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.fileno.return_value = 4
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr.close = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.wait = MagicMock()
+        mock_popen.return_value = (mock_proc, ["claude", "--print"])
+
+        mock_proc.poll.return_value = 1
+        mock_select.return_value = ([], [], [])
+        mock_proc.stdout.read.return_value = ""
+        mock_proc.stderr.read.return_value = "Error occurred"
+
+        with self.assertRaises(subprocess.CalledProcessError) as context:
+            claude_exec_streaming(
+                prompt="Test prompt",
+                repo_root=self.repo_root,
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
+        self.assertEqual(context.exception.returncode, 1)
+
+
+class ProcessBufferTests(unittest.TestCase):
+    """Test suite for _process_buffer helper function."""
+
+    def test_empty_buffer_returns_empty(self):
+        """Test _process_buffer with empty buffer returns empty string."""
+        lines: list[str] = []
+        result = _process_buffer("", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, [])
+
+    def test_no_newlines_returns_input_unchanged(self):
+        """Test _process_buffer with no newlines returns input unchanged."""
+        lines: list[str] = []
+        result = _process_buffer("incomplete", lines)
+        self.assertEqual(result, "incomplete")
+        self.assertEqual(lines, [])
+
+    def test_single_complete_line(self):
+        """Test _process_buffer extracts single complete line."""
+        lines: list[str] = []
+        result = _process_buffer("complete\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["complete"])
+
+    def test_multiple_complete_lines(self):
+        """Test _process_buffer extracts all complete lines."""
+        lines: list[str] = []
+        result = _process_buffer("line1\nline2\nline3\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "line2", "line3"])
+
+    def test_with_trailing_incomplete_line(self):
+        """Test _process_buffer returns incomplete trailing line."""
+        lines: list[str] = []
+        result = _process_buffer("complete\nincomplete", lines)
+        self.assertEqual(result, "incomplete")
+        self.assertEqual(lines, ["complete"])
+
+    def test_with_output_handler(self):
+        """Test _process_buffer calls output handler for each line."""
+        lines: list[str] = []
+        handler_calls: list[str] = []
+
+        def handler(line: str) -> None:
+            handler_calls.append(line)
+
+        result = _process_buffer("line1\nline2\n", lines, handler)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "line2"])
+        self.assertEqual(handler_calls, ["line1", "line2"])
+
+    def test_empty_lines_preserved(self):
+        """Test _process_buffer preserves empty lines (consecutive newlines)."""
+        lines: list[str] = []
+        result = _process_buffer("line1\n\nline3\n", lines)
+        self.assertEqual(result, "")
+        self.assertEqual(lines, ["line1", "", "line3"])
+
+
+class DrainFdsBestEffortTests(unittest.TestCase):
+    """Test suite for _drain_fds_best_effort helper function."""
+
+    def test_drains_remaining_data_from_stdout(self):
+        """Test _drain_fds_best_effort captures remaining stdout data."""
+        mock_stdout = MagicMock()
+        mock_stdout.closed = False
+        mock_stdout.read.return_value = "remaining"
+
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_stdout], mock_stdout, None, "existing", ""
+        )
+        self.assertEqual(stdout_buf, "existingremaining")
+        self.assertEqual(stderr_buf, "")
+
+    def test_drains_remaining_data_from_stderr(self):
+        """Test _drain_fds_best_effort captures remaining stderr data."""
+        mock_stderr = MagicMock()
+        mock_stderr.closed = False
+        mock_stderr.read.return_value = "error_remaining"
+
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_stderr], None, mock_stderr, "", "existing_error"
+        )
+        self.assertEqual(stdout_buf, "")
+        self.assertEqual(stderr_buf, "existing_errorerror_remaining")
+
+    def test_skips_closed_file_descriptors(self):
+        """Test _drain_fds_best_effort skips closed file descriptors."""
+        mock_fd = MagicMock()
+        mock_fd.closed = True
+
+        stdout_buf, _stderr_buf = _drain_fds_best_effort(
+            [mock_fd], None, None, "original", ""
+        )
+        self.assertEqual(stdout_buf, "original")
+        mock_fd.read.assert_not_called()
+
+    def test_handles_empty_fd_list(self):
+        """Test _drain_fds_best_effort with empty fd list."""
+        stdout_buf, stderr_buf = _drain_fds_best_effort([], None, None, "buf1", "buf2")
+        self.assertEqual(stdout_buf, "buf1")
+        self.assertEqual(stderr_buf, "buf2")
+
+    def test_handles_read_exception_gracefully(self):
+        """Test _drain_fds_best_effort catches read exceptions."""
+        mock_fd = MagicMock()
+        mock_fd.closed = False
+        mock_fd.read.side_effect = OSError("Read failed")
+
+        # Should not raise - errors are logged and ignored
+        stdout_buf, stderr_buf = _drain_fds_best_effort(
+            [mock_fd], mock_fd, None, "", ""
+        )
+        self.assertEqual(stdout_buf, "")
+        self.assertEqual(stderr_buf, "")
+
+
+class ResolveUnsafeFlagTests(unittest.TestCase):
+    """Test suite for _resolve_unsafe_flag helper function."""
+
+    def test_allow_unsafe_execution_true(self):
+        """Test _resolve_unsafe_flag with allow_unsafe_execution=True."""
+        result = _resolve_unsafe_flag(True, None, "test_caller")
+        self.assertTrue(result)
+
+    def test_allow_unsafe_execution_false(self):
+        """Test _resolve_unsafe_flag with allow_unsafe_execution=False."""
+        result = _resolve_unsafe_flag(False, None, "test_caller")
+        self.assertFalse(result)
+
+    def test_both_none_returns_false(self):
+        """Test _resolve_unsafe_flag with both None returns False."""
+        result = _resolve_unsafe_flag(None, None, "test_caller")
+        self.assertFalse(result)
+
+    def test_yolo_alone_returns_true(self):
+        """Test _resolve_unsafe_flag with yolo=True alone."""
+        with patch("tools.auto_prd.agents.logger") as mock_logger:
+            result = _resolve_unsafe_flag(None, True, "test_caller")
+            self.assertTrue(result)
+            mock_logger.warning.assert_called()
+
+    def test_yolo_false_returns_false(self):
+        """Test _resolve_unsafe_flag with yolo=False returns False."""
+        with patch("tools.auto_prd.agents.logger"):
+            result = _resolve_unsafe_flag(None, False, "test_caller")
+            self.assertFalse(result)
+
+    def test_both_set_uses_or_logic(self):
+        """Test _resolve_unsafe_flag ORs both values when both set."""
+        with patch("tools.auto_prd.agents.logger"):
+            # False OR True = True
+            result = _resolve_unsafe_flag(False, True, "test_caller")
+            self.assertTrue(result)
+
+            # True OR False = True
+            result = _resolve_unsafe_flag(True, False, "test_caller")
+            self.assertTrue(result)
+
+
+class BuildClaudeArgsTests(unittest.TestCase):
+    """Test suite for _build_claude_args helper function."""
+
+    def test_basic_args_without_flags(self):
+        """Test _build_claude_args generates basic args."""
+        args = _build_claude_args(
+            allow_flag=False, model=None, enable_search=True, extra=None
+        )
+        self.assertEqual(args, ["claude", "-p", "-"])
+
+    def test_with_allow_flag(self):
+        """Test _build_claude_args adds --dangerously-skip-permissions."""
+        args = _build_claude_args(
+            allow_flag=True, model=None, enable_search=True, extra=None
+        )
+        self.assertIn("--dangerously-skip-permissions", args)
+        self.assertEqual(args[0], "claude")
+        self.assertEqual(args[-2:], ["-p", "-"])
+
+    def test_with_model(self):
+        """Test _build_claude_args adds model flag."""
+        args = _build_claude_args(
+            allow_flag=False, model="claude-3-opus", enable_search=True, extra=None
+        )
+        self.assertIn("--model", args)
+        model_idx = args.index("--model")
+        self.assertEqual(args[model_idx + 1], "claude-3-opus")
+
+    def test_with_extra_args(self):
+        """Test _build_claude_args appends extra args."""
+        args = _build_claude_args(
+            allow_flag=False, model=None, enable_search=True, extra=["--verbose", "-v"]
+        )
+        self.assertIn("--verbose", args)
+        self.assertIn("-v", args)
+        # Extra args should be before the final -p -
+        self.assertEqual(args[-2:], ["-p", "-"])
+
+    def test_p_stdin_always_at_end(self):
+        """Test _build_claude_args always ends with -p -."""
+        args = _build_claude_args(
+            allow_flag=True,
+            model="claude-3-sonnet",
+            enable_search=True,
+            extra=["--debug"],
+        )
+        self.assertEqual(args[-2:], ["-p", "-"])
 
 
 if __name__ == "__main__":

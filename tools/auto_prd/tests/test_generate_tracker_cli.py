@@ -4,7 +4,6 @@ This module tests the standalone CLI tool for generating implementation trackers
 """
 
 import io
-import subprocess
 import sys
 import tempfile
 import unittest

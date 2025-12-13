@@ -27,6 +27,27 @@ from .constants import (
 from .logging_utils import decode_output, logger, truncate_for_log
 from .utils import scrub_cli_text
 
+
+def _repo_root_not_found_msg(repo_root: Path) -> str:
+    """Return an error message for a missing repository root directory.
+
+    This function replaces a message template constant to ensure the placeholder
+    is always formatted correctly and to comply with TRY003 (no string literals
+    in exception raise statements).
+
+    Args:
+        repo_root: The expected repository root path.
+
+    Returns:
+        A formatted error message string.
+    """
+    return (
+        f"Repository root directory does not exist: {repo_root}. "
+        "This may indicate the repository was deleted or moved. "
+        "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
+    )
+
+
 # Re-export subprocess exceptions for consistent imports across the codebase
 CalledProcessError = subprocess.CalledProcessError
 TimeoutExpired = subprocess.TimeoutExpired
@@ -554,8 +575,11 @@ def safe_popen(
     env["PYTHONUNBUFFERED"] = "1"
     # Note: Appending repo_root to PYTHONPATH allows project modules to be imported
     # without shadowing system packages.
-    env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(
-        os.pathsep
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{existing_pythonpath}{os.pathsep}{repo_root}"
+        if existing_pythonpath
+        else repo_root
     )
     env["AUTO_PRD_ROOT"] = repo_root
 
@@ -591,3 +615,157 @@ def run_sh(
         timeout=timeout,
         extra_env=extra_env,
     )
+
+
+def popen_streaming(
+    cmd: Sequence[str],
+    *,
+    cwd: Optional[Path] = None,
+    extra_env: Optional[dict] = None,
+    sanitize: bool = True,
+) -> tuple[subprocess.Popen[str], list[str]]:
+    """Create a Popen for streaming output with validated args and environment.
+
+    This is the policy-compliant wrapper for subprocess.Popen used in streaming
+    contexts (e.g., claude_exec_streaming). All subprocess spawning in
+    tools/auto_prd/** must go through command.py helpers.
+
+    Args:
+        cmd: Command sequence to execute.
+        cwd: Working directory for the command.
+        extra_env: Additional environment variables to merge.
+        sanitize: If True (default), sanitize shell-sensitive characters in args.
+
+    Returns:
+        Tuple of (Popen object, sanitized_args list used for the process).
+
+    Raises:
+        FileNotFoundError: If command executable not found.
+        ValueError: If cmd contains unsafe shell metacharacters.
+        SystemExit: If command is not in allowlist or cwd is outside safe roots.
+    """
+    # IMPORTANT: We validate the ORIGINAL command BEFORE sanitization to catch security
+    # issues (shell metacharacters like |, ;, >, <) that would otherwise be hidden
+    # by the sanitization step. This is a security-conscious design decision:
+    #
+    # - Validating BEFORE sanitization: Ensures malicious input is rejected upfront,
+    #   making attack attempts visible rather than silently sanitizing them away.
+    #   This treats potentially malicious input as an error to investigate.
+    #
+    # - Validating AFTER sanitization would allow: Commands with backticks or other
+    #   suspicious patterns to pass through undetected, with the metacharacters
+    #   quietly converted to safe equivalents. While subprocess with shell=False
+    #   prevents actual injection, the original suspicious input warrants attention.
+    #
+    # Note: Backticks receive special treatment in validate_command_args() - they're
+    # logged but allowed because shell=False prevents shell interpretation.
+    validate_command_args(cmd)
+
+    # Sanitize args via scrub_cli_text when sanitize=True
+    sanitized_cmd: list[str] = (
+        [scrub_cli_text(arg) for arg in cmd] if sanitize else list(cmd)
+    )
+
+    if sanitize and list(cmd) != sanitized_cmd:
+        # Redact sensitive arguments before logging to avoid exposing API keys, tokens, etc.
+        # We use sanitize_args() to redact both original and sanitized versions.
+        redacted_cmd = sanitize_args(cmd)
+        redacted_sanitized_cmd = sanitize_args(sanitized_cmd)
+        # Compare original vs sanitized args to show what changed. Using strict=True
+        # enforces the invariant that sanitize_args produces same-length output (a list
+        # comprehension over a sequence always preserves length). If lengths ever differ,
+        # zip raises ValueError immediately, catching any future bug in sanitize_args.
+        #
+        # NOTE: strict=True requires Python 3.10+. See README.md for version requirements.
+        diffs = [
+            f"arg[{i}]: {orig!r} -> {san!r}"
+            for i, (orig, san) in enumerate(
+                zip(redacted_cmd, redacted_sanitized_cmd, strict=True)
+            )
+            if orig != san
+        ]
+        if diffs:
+            logger.debug(
+                "Sanitized command arguments before Popen: %s", redacted_sanitized_cmd
+            )
+            logger.debug("Sanitization diff:\n%s", "\n".join(diffs))
+
+    validate_cwd(cwd)
+    validate_extra_env(extra_env)
+
+    exe = shutil.which(sanitized_cmd[0])
+    if not exe:
+        raise FileNotFoundError(f"Command not found: {sanitized_cmd[0]}")
+
+    env = env_with_zsh(extra_env or {})
+    env["PYTHONUNBUFFERED"] = "1"
+    # Set PYTHONPATH and AUTO_PRD_ROOT so project modules can be imported by the subprocess.
+    #
+    # Why these are set for ALL popen_streaming calls (even non-Python commands like 'claude'):
+    # 1. PYTHONPATH: The 'claude' CLI spawns Python subprocesses internally (hooks, plugins,
+    #    MCP servers) that need to import tools.auto_prd modules for consistent behavior.
+    #    Evidence: Claude Code's hook system runs Python scripts that import project modules.
+    # 2. AUTO_PRD_ROOT: Used by various tools/scripts to locate the project root reliably
+    #    without re-running git-based detection. Setting it unconditionally is simpler and
+    #    faster than checking whether each specific command needs it.
+    # 3. The overhead is negligible (two string assignments to the env dict) and avoids the
+    #    complexity of conditional setup based on command type detection.
+    #
+    # Alternative considered: Making this conditional based on command type (e.g., only for
+    # Python commands). This was rejected because:
+    # - It requires maintaining a list of commands that spawn Python subprocesses
+    # - The cost of unconditional setup is trivial (no I/O, just dict operations)
+    # - Missing PYTHONPATH causes hard-to-debug import errors in subprocess hooks
+    #
+    # find_repo_root() always returns a valid Path (falls back to cwd() if no .git found),
+    # so repo_root_path will never be None.
+    #
+    # SECURITY: We validate that repo_root_path exists, is a directory, and contains a .git
+    # entry to mitigate PYTHONPATH injection attacks. By requiring a .git entry, we ensure
+    # the path is a legitimate repository root rather than an arbitrary directory.
+    #
+    # LIMITATION: This validation does NOT protect against malicious code within a valid
+    # repository. If an attacker has write access to the repository (e.g., via a malicious
+    # commit), they could inject Python code that gets executed via PYTHONPATH. This is
+    # by design: if the repository itself is compromised, the attacker already has code
+    # execution capability through normal Python imports. The .git check prevents a
+    # different attack class: pointing PYTHONPATH at arbitrary non-repo directories.
+    #
+    # We use resolve(strict=True) to:
+    # 1. Convert to absolute path to prevent relative path traversal
+    # 2. Raise FileNotFoundError if path doesn't exist (the strict=True behavior)
+    # 3. Resolve symlinks to prevent symlink-based attacks to untrusted locations
+    repo_root_path = find_repo_root()
+    try:
+        repo_root_path = repo_root_path.resolve(strict=True)
+    except FileNotFoundError:
+        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
+    if not repo_root_path.is_dir():
+        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
+    # Verify .git entry exists (directory for normal repos, file for worktrees/submodules)
+    git_entry = repo_root_path / ".git"
+    if not git_entry.exists():
+        raise FileNotFoundError(  # noqa: TRY003
+            f"Repository root {repo_root_path} does not contain a .git directory or file. "
+            "This may indicate an invalid repository path."
+        )
+    repo_root: str = str(repo_root_path)  # Explicit str type for clarity
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{existing_pythonpath}{os.pathsep}{repo_root}"
+        if existing_pythonpath
+        else repo_root  # repo_root is already str, no conversion needed
+    )
+    env["AUTO_PRD_ROOT"] = repo_root
+
+    proc = subprocess.Popen(
+        sanitized_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        bufsize=1,
+    )
+    return proc, sanitized_cmd

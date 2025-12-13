@@ -148,7 +148,16 @@ def create_checkpoint(
                 "started_at": None,
                 "completed_at": None,
                 "processed_comment_ids": [],
-                "last_activity_time": None,
+                # Wall-clock timestamp for operational visibility (e.g., user checking
+                # "when was the last activity?") and for future resume heuristics.
+                # NOT used for idle timeout computation - that uses in-process
+                # time.monotonic() which cannot persist across process restarts.
+                #
+                # Rationale for inclusion in checkpoint:
+                # - Helps users diagnose stalled sessions ("last activity was 3 hours ago")
+                # - Could inform future "resume stale session?" prompts
+                # - Minimal overhead (single float per checkpoint save)
+                "last_activity_wall_clock": None,
                 "cycles": 0,
             },
         },
@@ -209,6 +218,116 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
         raise
 
 
+def _migrate_v0_to_v1(checkpoint: dict[str, Any]) -> None:
+    """Migrate checkpoint from v0 (unversioned) to v1.
+
+    Changes in v1:
+    - Added 'version' field
+    - Renamed review_fix.last_activity_time -> last_activity_wall_clock
+
+    Note: Modifies checkpoint in place.
+    """
+    review_fix = checkpoint.get("phases", {}).get("review_fix", {})
+    if (
+        "last_activity_time" in review_fix
+        and "last_activity_wall_clock" not in review_fix
+    ):
+        review_fix["last_activity_wall_clock"] = review_fix.pop("last_activity_time")
+        logger.debug(
+            "Migrated checkpoint field: last_activity_time -> last_activity_wall_clock"
+        )
+
+
+# Migration functions keyed by source version.
+# Each function takes a checkpoint dict and modifies it in place to the next version.
+# To add a new migration:
+# 1. Define a function _migrate_vN_to_vM(checkpoint) that modifies checkpoint in place
+# 2. Add entry N: _migrate_vN_to_vM to _MIGRATIONS
+# 3. Increment CHECKPOINT_VERSION at the top of this file
+_MIGRATIONS: dict[int, Any] = {
+    0: _migrate_v0_to_v1,
+    # Future migrations:
+    # 1: _migrate_v1_to_v2,
+}
+
+
+def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """Migrate checkpoint from older schema versions to current version.
+
+    This function handles backward compatibility for checkpoints created by older
+    versions of the software. It applies migrations sequentially from the checkpoint's
+    version to CHECKPOINT_VERSION.
+
+    Migration versioning:
+    - Checkpoints without a 'version' field are treated as version 0
+    - Each migration function handles one version increment
+    - Migrations are applied in sequence until reaching CHECKPOINT_VERSION
+    - The 'version' field is updated after all migrations complete
+
+    Args:
+        checkpoint: Checkpoint dictionary to migrate.
+
+    Returns:
+        The migrated checkpoint (same object, modified in place).
+    """
+    # Checkpoints without a version field are from before versioning was added (v0)
+    current_version = checkpoint.get("version", 0)
+
+    if current_version > CHECKPOINT_VERSION:
+        logger.warning(
+            "Checkpoint version %d is newer than supported version %d. "
+            "Some features may not work correctly.",
+            current_version,
+            CHECKPOINT_VERSION,
+        )
+        return checkpoint
+
+    if current_version == CHECKPOINT_VERSION:
+        return checkpoint
+
+    # Apply migrations sequentially
+    logger.debug(
+        "Migrating checkpoint from version %d to %d",
+        current_version,
+        CHECKPOINT_VERSION,
+    )
+    while current_version < CHECKPOINT_VERSION:
+        migration_fn = _MIGRATIONS.get(current_version)
+        if migration_fn is None:
+            logger.warning(
+                "No migration function for version %d to %d; skipping remaining migrations",
+                current_version,
+                current_version + 1,
+            )
+            # Keep version at the last successfully applied version and return early.
+            # Do NOT set version to CHECKPOINT_VERSION - that would "bless" an
+            # unmigrated structure as if it were fully migrated.
+            checkpoint["version"] = current_version
+            return checkpoint
+        migration_fn(checkpoint)
+        current_version += 1
+        # Update version after each successful migration step. This ensures the
+        # in-memory checkpoint reflects the current migration state, which will be
+        # persisted on the next save_checkpoint() call.
+        #
+        # Note: The checkpoint is NOT automatically persisted here - persistence only
+        # occurs when save_checkpoint() is explicitly called (typically after phase
+        # state updates). If the process crashes mid-migration, the next load will
+        # re-apply migrations from the on-disk version.
+        #
+        # Migrations are idempotent (guarded by field presence checks), so
+        # re-applying them is safe but wasteful. This in-memory update avoids
+        # unnecessary work within the same session.
+        checkpoint["version"] = current_version
+
+    checkpoint["version"] = CHECKPOINT_VERSION
+    logger.debug(
+        "Checkpoint migration complete (now at version %d)", CHECKPOINT_VERSION
+    )
+
+    return checkpoint
+
+
 def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
     """Load checkpoint from disk.
 
@@ -217,6 +336,9 @@ def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
 
     Returns:
         Checkpoint dictionary or None if not found.
+
+    Note:
+        Automatically migrates checkpoints from older schema versions.
     """
     checkpoint_path = get_checkpoint_path(session_id)
     if not checkpoint_path.exists():
@@ -225,6 +347,8 @@ def load_checkpoint(session_id: str) -> Optional[dict[str, Any]]:
     try:
         with open(checkpoint_path) as f:
             checkpoint = json.load(f)
+        # Migrate from older schema versions if needed
+        checkpoint = _migrate_checkpoint(checkpoint)
         logger.debug("Loaded checkpoint from %s", checkpoint_path)
         return checkpoint
     except (json.JSONDecodeError, OSError) as e:

@@ -475,11 +475,13 @@ def run(args) -> None:
                     )
 
         # Review/fix phase
+        # Track whether review phase succeeded for session completion decision (default for skipped phase)
+        review_succeeded = True
         if include("review_fix"):
             mark_phase_started(checkpoint, "review_fix")
             save_checkpoint(checkpoint)
 
-            review_fix_loop(
+            review_succeeded = review_fix_loop(
                 pr_number=pr_number,
                 owner_repo=owner_repo,
                 repo_root=repo_root,
@@ -493,22 +495,45 @@ def run(args) -> None:
                 checkpoint=checkpoint,  # Pass checkpoint for comment tracking
             )
 
-            mark_phase_complete(checkpoint, "review_fix")
+            if not review_succeeded:
+                logger.warning(
+                    "Review loop terminated due to consecutive failures; "
+                    "marking phase as incomplete"
+                )
+                update_phase_state(checkpoint, "review_fix", {"terminated_early": True})
+                save_checkpoint(checkpoint)
+                # Skip final success comment when review loop failed
+            else:
+                mark_phase_complete(checkpoint, "review_fix")
+                save_checkpoint(checkpoint)
+                # Only post final success comment when review loop completed successfully
+                post_final_comment(
+                    pr_number=pr_number,
+                    owner_repo=owner_repo,
+                    prd_path=prd_path,
+                    repo_root=repo_root,
+                    dry_run=args.dry_run,
+                )
+
+        # Mark session complete only if all phases succeeded.
+        # When review_succeeded is False, the session terminated early due to
+        # consecutive failures, so we mark it with partial_completion instead.
+        if review_succeeded:
+            mark_session_complete(checkpoint)
             save_checkpoint(checkpoint)
-
-        post_final_comment(
-            pr_number=pr_number,
-            owner_repo=owner_repo,
-            prd_path=prd_path,
-            repo_root=repo_root,
-            dry_run=args.dry_run,
-        )
-
-        # Mark session complete
-        mark_session_complete(checkpoint)
-        save_checkpoint(checkpoint)
-        print(f"Session {session_id} completed successfully.")
-        logger.info("Session %s completed", session_id)
+            print(f"Session {session_id} completed successfully.")
+            logger.info("Session %s completed", session_id)
+        else:
+            update_phase_state(checkpoint, "session", {"partial_completion": True})
+            save_checkpoint(checkpoint)
+            print(
+                f"Session {session_id} completed with partial success "
+                "(review phase terminated early)."
+            )
+            logger.warning(
+                "Session %s completed with partial success (review terminated early)",
+                session_id,
+            )
 
         if appears_complete:
             print(f"Final TASKS_LEFT={tasks_left}", flush=True)

@@ -89,7 +89,22 @@ COPILOT_REVIEW_LOGINS = {
     }
 }
 
-REVIEW_BOT_LOGINS = CODERABBIT_REVIEW_LOGINS | COPILOT_REVIEW_LOGINS
+# Codex CLI review bot logins (the standalone `codex` CLI tool from OpenAI, distinct
+# from GitHub Copilot which is handled by COPILOT_REVIEW_LOGINS above).
+# These are the GitHub account names used by the Codex CLI when posting PR comments.
+CODEX_REVIEW_LOGINS = {
+    login.lower()
+    for login in {
+        "chatgpt-codex-connector",
+        "chatgpt-codex-connector[bot]",
+        "codex",
+        "codex[bot]",
+    }
+}
+
+REVIEW_BOT_LOGINS = (
+    CODERABBIT_REVIEW_LOGINS | COPILOT_REVIEW_LOGINS | CODEX_REVIEW_LOGINS
+)
 REVIEW_FALLBACK_MENTION = "@reviewer"
 
 _ZSH_LOCK = threading.Lock()

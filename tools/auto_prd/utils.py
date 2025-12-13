@@ -131,9 +131,32 @@ def _extract_stdout_stderr(exc: subprocess.CalledProcessError) -> tuple[str, str
 
 
 def extract_called_process_error_details(exc: subprocess.CalledProcessError) -> str:
+    """Extract error details from CalledProcessError using stderr only.
+
+    Returns stderr content if available; otherwise returns "exit code N".
+    Stdout is never included to prevent sensitive model output from appearing
+    in error messages.
+
+    Args:
+        exc: The CalledProcessError exception to extract details from.
+
+    Returns:
+        A string containing stderr content if available, otherwise "exit code N".
+    """
     stdout, stderr = _extract_stdout_stderr(exc)
-    text = (stderr or stdout or "").strip()
-    return text or f"exit code {exc.returncode}"
+    text = (stderr or "").strip()
+    if not text:
+        # Log at DEBUG level when falling back to exit code - this helps identify
+        # cases where callers might have previously relied on stdout content.
+        # The stdout length is logged (not content) to indicate if data was available.
+        if stdout and stdout.strip():
+            logger.debug(
+                "extract_called_process_error_details: stderr empty, stdout has %d chars "
+                "(not used for security; returning exit code fallback)",
+                len(stdout),
+            )
+        return f"exit code {exc.returncode}"
+    return text
 
 
 def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> Any:
