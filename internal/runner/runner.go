@@ -124,6 +124,9 @@ func sendLine(logs chan Line, line Line) {
 }
 
 // makeTempPRD optionally prepends an initial prompt into a temp PRD file.
+// The temp file is created in ~/.config/aprd/tmp/ to ensure it passes the
+// Python script's security validation (which requires PRD files to be within
+// the repository, working directory, or home directory).
 func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if strings.TrimSpace(prompt) == "" {
 		return prdPath, func() {}, nil
@@ -132,7 +135,18 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("reading PRD %s: %w", prdPath, err)
 	}
-	tmpDir := os.TempDir()
+
+	// Use ~/.config/aprd/tmp/ instead of system temp to pass Python validation.
+	// The Python script validates PRD paths are within repo, cwd, or home.
+	configDir, err := config.EnsureDir()
+	if err != nil {
+		return "", nil, fmt.Errorf("getting config directory: %w", err)
+	}
+	tmpDir := filepath.Join(configDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
+		return "", nil, fmt.Errorf("creating temp directory %s: %w", tmpDir, err)
+	}
+
 	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("aprd_%d.md", time.Now().UnixNano()))
 	header := fmt.Sprintf("<!-- OPERATOR_INSTRUCTION (added by autodev TUI)\n%s\n-->\n\n", prompt)
 	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o600); err != nil {
