@@ -38,37 +38,15 @@ JITTER_MAX_SECONDS = 3.0
 # rate limits, or process crashes). The counter resets on any successful execution.
 MAX_CONSECUTIVE_FAILURES = 3
 
-# Module-level bounded FIFO cache to track comment_ids that have already been warned
-# about for malformed data. This prevents duplicate warnings across multiple invocations
-# of format_unresolved_bullets() for the same persistent API bug or malformed entry.
-# Note: This is intentionally session-scoped (module-level), not call-scoped,
-# to avoid log spam when the same malformed comment appears in every poll cycle.
+# Bounded FIFO cache for deduplicating warnings about malformed comment entries.
+# Prevents log spam when the same malformed comment appears in every poll cycle.
 #
-# Why OrderedDict instead of functools.lru_cache:
-# This is a SET membership cache (deduplication), not a function memoization cache.
-# We need to check "have we seen this ID before?" and track up to N unique IDs.
-# lru_cache is designed for caching function return values keyed by arguments, which
-# doesn't fit this use case. OrderedDict provides the exact semantics we need:
-# - O(1) membership test (key in dict)
-# - Bounded size via manual eviction
-# - FIFO eviction order (oldest first, not LRU) which is simpler and sufficient
-#
-# Uses OrderedDict as a bounded FIFO cache: when max size is reached, oldest entries
-# (by insertion order) are evicted to make room for new ones. Keys are NOT refreshed
-# on access, so eviction is strictly insertion-order FIFO, not LRU. This is intentional:
-# for deduplication purposes, we only care whether a key exists, not how recently it
-# was accessed. FIFO eviction is simpler and sufficient for this use case.
-#
-# TTL mechanism: Each entry stores {comment_id: timestamp} to support time-based eviction.
-# Entries older than _WARNED_MALFORMED_TTL_SECONDS are eligible for cleanup. This prevents
-# unbounded memory growth in long-running processes/services while still providing
-# effective deduplication within the TTL window.
-#
-# Thread safety: Protected by _WARNED_MALFORMED_LOCK to prevent race conditions
-# during concurrent access from multiple threads (e.g., parallel format_unresolved_bullets calls).
+# Design: Uses OrderedDict (not lru_cache) because this is a set membership check,
+# not function memoization. Bounded to MAX_SIZE entries with 1-hour TTL.
+# Thread-safe via lock for potential concurrent format_unresolved_bullets calls.
 _warned_malformed_comment_ids: OrderedDict[str, float] = OrderedDict()
 _WARNED_MALFORMED_MAX_SIZE = 1000
-_WARNED_MALFORMED_TTL_SECONDS = 60 * 60  # 1 hour TTL for cache entries
+_WARNED_MALFORMED_TTL_SECONDS = 60 * 60  # 1 hour TTL
 _WARNED_MALFORMED_LOCK = threading.Lock()
 
 
@@ -131,6 +109,20 @@ _PROGRAMMING_ERROR_TYPES: tuple[type[Exception], ...] = (
     AssertionError,
     ImportError,
 )
+
+# FATAL EXIT CODES: Certain non-zero exit codes indicate permanent failures
+# that should not be retried. These are conventionally non-recoverable:
+#   - 2: Misuse of shell command (bad arguments) - requires code/config fix
+#   - 126: Command cannot execute (permission denied) - requires intervention
+#   - 127: Command not found (missing binary) - requires installation
+#   - 130: Script terminated by Ctrl+C (user intent) - should propagate
+#
+# Exit code 1 is intentionally NOT in this set because it's used for
+# general errors that may be transient (rate limits, resource issues, etc.).
+#
+# Defined at module level (not inside exception handler) to avoid repeated
+# frozenset allocation on every SystemExit exception.
+_FATAL_EXIT_CODES: frozenset[int] = frozenset({2, 126, 127, 130})
 
 # Box-drawing characters for streaming output formatting.
 # Cached at module level after first access for performance. The environment
@@ -612,16 +604,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # SystemExit(0) or SystemExit(None) = clean exit, propagate immediately.
                 # This represents intentional program termination (not an error).
                 #
-                # FATAL EXIT CODES: Certain non-zero exit codes indicate permanent failures
-                # that should not be retried. These are conventionally non-recoverable:
-                #   - 2: Misuse of shell command (bad arguments) - requires code/config fix
-                #   - 126: Command cannot execute (permission denied) - requires intervention
-                #   - 127: Command not found (missing binary) - requires installation
-                #   - 130: Script terminated by Ctrl+C (user intent) - should propagate
-                #
-                # Exit code 1 is intentionally NOT in this list because it's used for
-                # general errors that may be transient (rate limits, resource issues, etc.).
-                _FATAL_EXIT_CODES = frozenset({2, 126, 127, 130})
+                # For fatal exit codes (2, 126, 127, 130), see _FATAL_EXIT_CODES at module level.
                 #
                 # SystemExit(other non-zero) = execution failure, treat as potentially recoverable.
                 # This differs from PermissionError/FileNotFoundError/MemoryError (which are

@@ -106,6 +106,12 @@ _SENSITIVE_STDERR_PATTERNS = [
     # - Users can match sanitized paths to their original error messages
     # - Cross-platform code (pathlib) commonly uses forward slashes on Windows
     # - The sanitized output format matches what the user actually saw
+    #
+    # NOTE: These use literal replacements (not capture group backreferences like \1)
+    # because the entire match is replaced with a fixed pattern. The patterns above
+    # (Bearer, Basic, key=value) use backreferences to preserve the prefix/key name
+    # while redacting only the sensitive value. For Windows paths, we redact everything
+    # (drive letter and username) with fixed placeholders, so no backreferences needed.
     (
         re.compile(r"[A-Za-z]:\\+Users\\[^\\]+\\?", re.IGNORECASE),
         r"<DRIVE>:\\Users\\<USER>\\",
@@ -159,7 +165,6 @@ def _sanitize_stderr_for_exception(stderr: str, max_chars: int) -> str:
 # The default 4KB chunk size balances memory usage with system call overhead
 # for typical streaming scenarios.
 _raw_chunk_size = os.getenv("AUTO_PRD_STREAMING_CHUNK_SIZE")
-_chunk_size_val: int | None = None  # Initialize before try block for clean deletion
 if _raw_chunk_size is None:
     STREAMING_READ_CHUNK_SIZE = 4096
 else:
@@ -173,18 +178,19 @@ else:
                 _raw_chunk_size,
             )
             STREAMING_READ_CHUNK_SIZE = 4096
+        del _chunk_size_val  # Clean up immediately after use
     except ValueError:
         logger.warning(
             "Invalid AUTO_PRD_STREAMING_CHUNK_SIZE value %r; using default 4096",
             _raw_chunk_size,
         )
         STREAMING_READ_CHUNK_SIZE = 4096
+del _raw_chunk_size  # Clean up raw string
 
 # Read streaming poll timeout from environment once at import time.
 # The default 100ms timeout provides a balance between responsive streaming
 # and CPU efficiency. Lower values increase responsiveness but consume more CPU.
 _raw_poll_timeout = os.getenv("AUTO_PRD_STREAMING_POLL_TIMEOUT")
-_timeout_val: float | None = None  # Initialize before try block for clean deletion
 if _raw_poll_timeout is None:
     STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
 else:
@@ -198,16 +204,14 @@ else:
                 _raw_poll_timeout,
             )
             STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
+        del _timeout_val  # Clean up immediately after use
     except ValueError:
         logger.warning(
             "Invalid AUTO_PRD_STREAMING_POLL_TIMEOUT value %r; using default 0.1",
             _raw_poll_timeout,
         )
         STREAMING_SELECT_TIMEOUT_SECONDS = 0.1
-
-# Clean up module-level temporaries to avoid polluting namespace.
-# Variables are initialized to None above so they always exist for deletion.
-del _raw_chunk_size, _raw_poll_timeout, _chunk_size_val, _timeout_val
+del _raw_poll_timeout  # Clean up raw string
 
 
 def _timeout_from_env(env_key: str, default: int | None) -> int | None:
@@ -1028,22 +1032,27 @@ def claude_exec_streaming(
                 captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
             )
             error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
-        # Determine appropriate return code - proc.wait() was called above so
-        # returncode should be set. If still None, something is very wrong with
-        # the subprocess module or OS (e.g., zombie process, kernel bug).
+        # DEFENSIVE CHECK: After _cleanup_failed_process() calls proc.wait(), returncode
+        # should always be set. This check guards against a hypothetical race condition where:
+        # 1. proc.wait() completes but the returncode attribute update is somehow delayed
+        # 2. The OS/kernel has issues with zombie process handling
+        # 3. There's a bug in the subprocess module implementation
+        #
+        # In practice, this condition should never trigger because wait() is synchronous
+        # and sets returncode before returning. If it does trigger, it indicates a serious
+        # system-level issue that warrants investigation, not silent recovery.
         if proc.returncode is None:
+            # Re-poll to confirm the process state (purely diagnostic, won't change outcome)
             poll_result = proc.poll()
-            # Log detailed diagnostics for debugging - these help diagnose the issue
-            # but are too technical for end users
             logger.error(
-                "UNEXPECTED SUBPROCESS STATE: returncode is None after proc.wait(). "
-                "This suggests a deeper issue with the subprocess module or OS. "
+                "UNEXPECTED SUBPROCESS STATE: returncode is None after _cleanup_failed_process() "
+                "called proc.wait(). This should never happen under normal conditions. "
+                "Possible causes: OS kernel bug, subprocess module bug, or zombie process leak. "
                 "Diagnostics: command=%s, pid=%s, poll()=%r",
                 sanitized_args[0],
                 getattr(proc, "pid", None),
                 poll_result,
             )
-            # User-facing message is simple; detailed diagnostics are in the log above
             raise RuntimeError("Subprocess did not terminate as expected.") from None
         raise subprocess.CalledProcessError(
             proc.returncode,

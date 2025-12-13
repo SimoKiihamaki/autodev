@@ -27,13 +27,26 @@ from .constants import (
 from .logging_utils import decode_output, logger, truncate_for_log
 from .utils import scrub_cli_text
 
-# Error message template for missing repository root.
-# Defined as a constant to comply with TRY003 (no string literals in exceptions).
-_REPO_ROOT_NOT_FOUND_MSG = (
-    "Repository root directory does not exist: {repo_root}. "
-    "This may indicate the repository was deleted or moved. "
-    "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
-)
+
+def _repo_root_not_found_msg(repo_root: Path) -> str:
+    """Return an error message for a missing repository root directory.
+
+    This function replaces a message template constant to ensure the placeholder
+    is always formatted correctly and to comply with TRY003 (no string literals
+    in exception raise statements).
+
+    Args:
+        repo_root: The expected repository root path.
+
+    Returns:
+        A formatted error message string.
+    """
+    return (
+        f"Repository root directory does not exist: {repo_root}. "
+        "This may indicate the repository was deleted or moved. "
+        "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
+    )
+
 
 # Re-export subprocess exceptions for consistent imports across the codebase
 CalledProcessError = subprocess.CalledProcessError
@@ -660,8 +673,7 @@ def popen_streaming(
         # comprehension over a sequence always preserves length). If lengths ever differ,
         # zip raises ValueError immediately, catching any future bug in sanitize_args.
         #
-        # NOTE: strict=True requires Python 3.10+. This codebase targets Python 3.10+
-        # as indicated by the use of modern type hints (e.g., list[str] | None).
+        # NOTE: strict=True requires Python 3.10+. See README.md for version requirements.
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
             for i, (orig, san) in enumerate(
@@ -706,9 +718,15 @@ def popen_streaming(
     # so repo_root_path will never be None.
     #
     # SECURITY: We validate that repo_root_path exists, is a directory, and contains a .git
-    # entry to prevent PYTHONPATH injection attacks. If an attacker could control repo_root_path
-    # to point to an untrusted directory, malicious Python code could be injected. By requiring
-    # a .git entry, we ensure the path is a legitimate repository root.
+    # entry to mitigate PYTHONPATH injection attacks. By requiring a .git entry, we ensure
+    # the path is a legitimate repository root rather than an arbitrary directory.
+    #
+    # LIMITATION: This validation does NOT protect against malicious code within a valid
+    # repository. If an attacker has write access to the repository (e.g., via a malicious
+    # commit), they could inject Python code that gets executed via PYTHONPATH. This is
+    # by design: if the repository itself is compromised, the attacker already has code
+    # execution capability through normal Python imports. The .git check prevents a
+    # different attack class: pointing PYTHONPATH at arbitrary non-repo directories.
     #
     # We use resolve(strict=True) to:
     # 1. Convert to absolute path to prevent relative path traversal
@@ -718,13 +736,9 @@ def popen_streaming(
     try:
         repo_root_path = repo_root_path.resolve(strict=True)
     except FileNotFoundError:
-        raise FileNotFoundError(
-            _REPO_ROOT_NOT_FOUND_MSG.format(repo_root=repo_root_path)
-        )
+        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
     if not repo_root_path.is_dir():
-        raise FileNotFoundError(
-            _REPO_ROOT_NOT_FOUND_MSG.format(repo_root=repo_root_path)
-        )
+        raise FileNotFoundError(_repo_root_not_found_msg(repo_root_path))
     # Verify .git entry exists (directory for normal repos, file for worktrees/submodules)
     git_entry = repo_root_path / ".git"
     if not git_entry.exists():
