@@ -11,9 +11,8 @@ import json
 import os
 import stat
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 from .test_helpers import safe_import
 
@@ -31,7 +30,7 @@ load_checkpoint = safe_import(
 )
 
 
-class CheckpointPermissionTests(unittest.TestCase):
+class CheckpointPermissionTests(TestCase):
     """Test suite for checkpoint file permission hardening."""
 
     def setUp(self) -> None:
@@ -251,7 +250,7 @@ class CheckpointPermissionTests(unittest.TestCase):
             self.assertIn("updated_at", loaded)  # Should be added by save_checkpoint
 
 
-class CheckpointLoadTests(unittest.TestCase):
+class CheckpointLoadTests(TestCase):
     """Test suite for loading checkpoints with proper permissions."""
 
     def setUp(self) -> None:
@@ -295,4 +294,4 @@ class CheckpointLoadTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

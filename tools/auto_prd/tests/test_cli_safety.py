@@ -1,9 +1,8 @@
 import os
 import subprocess
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 from .test_helpers import safe_import
 
@@ -36,7 +35,7 @@ scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text"
 open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
 
 
-class ScrubCliTextTests(unittest.TestCase):
+class ScrubCliTextTests(TestCase):
     def test_replaces_disallowed_characters(self) -> None:
         original = "Use `/tmp/foo|bar;baz<qux>`"
         cleaned = scrub_cli_text(original)
@@ -47,7 +46,7 @@ class ScrubCliTextTests(unittest.TestCase):
         self.assertIs(scrub_cli_text(text), text)
 
 
-class ValidateCommandArgsTests(unittest.TestCase):
+class ValidateCommandArgsTests(TestCase):
     def test_rejects_unsafe_arguments(self) -> None:
         with self.assertRaises(ValueError):
             validate_command_args(["gh", "pr", "create", "--body", "contains | pipe"])
@@ -66,7 +65,7 @@ class ValidateCommandArgsTests(unittest.TestCase):
         validate_command_args(["gh", "pr", "create", "--body", safe_body])
 
 
-class EnsureClaudeDebugDirTests(unittest.TestCase):
+class EnsureClaudeDebugDirTests(TestCase):
     def setUp(self) -> None:
         register_safe_cwd(Path(__file__).parent)
 
@@ -97,7 +96,7 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
                 os.chdir(original_cwd)
 
 
-class RequireCmdClaudeTests(unittest.TestCase):
+class RequireCmdClaudeTests(TestCase):
     def test_require_cmd_invokes_debug_dir_setup(self) -> None:
         with mock.patch.dict(os.environ, clear=True):
             with (
@@ -119,7 +118,7 @@ class RequireCmdClaudeTests(unittest.TestCase):
             )
 
 
-class RunCmdTests(unittest.TestCase):
+class RunCmdTests(TestCase):
     def setUp(self):
         register_safe_cwd(Path(__file__).parent)
 
@@ -149,7 +148,7 @@ class RunCmdTests(unittest.TestCase):
         self.assertNotIn("`", executed_cmd[body_index])
 
 
-class OpenOrGetPrTests(unittest.TestCase):
+class OpenOrGetPrTests(TestCase):
     def setUp(self):
         register_safe_cwd(Path(__file__).parent)
 
@@ -205,7 +204,7 @@ class OpenOrGetPrTests(unittest.TestCase):
             self.assertTrue(any(cmd[:2] == ["gh", "pr"] for cmd in call_sequence))
 
 
-class PopenStreamingTests(unittest.TestCase):
+class PopenStreamingTests(TestCase):
     """Test suite for popen_streaming function."""
 
     def setUp(self):
@@ -406,4 +405,4 @@ class PopenStreamingTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

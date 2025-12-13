@@ -69,7 +69,3 @@ exclude = "tests/"
 module = ["auto_prd.tests.*", "tests.*"]
 ignore_errors = true
 
-[[tool.mypy.overrides]]
-# jsonschema doesn't have type stubs
-module = ["jsonschema", "jsonschema.*"]
-ignore_missing_imports = true

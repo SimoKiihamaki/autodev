@@ -1,8 +1,7 @@
 import subprocess
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 try:
     from tools.auto_prd import review_loop
@@ -12,7 +11,7 @@ except ImportError:
     from ..gh_ops import should_stop_review_after_push
 
 
-class ShouldStopReviewAfterPushTests(unittest.TestCase):
+class ShouldStopReviewAfterPushTests(TestCase):
     def setUp(self) -> None:
         self.repo_root = Path("/tmp/dummy")
         self.commit_sha = "abc123"
@@ -208,7 +207,7 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
         self.assertFalse(should_stop)
 
 
-class ReviewFixLoopTests(unittest.TestCase):
+class ReviewFixLoopTests(TestCase):
     @mock.patch(
         "tools.auto_prd.review_loop.should_stop_review_after_push", return_value=True
     )
@@ -590,4 +589,4 @@ class ReviewFixLoopTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

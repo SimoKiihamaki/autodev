@@ -6,16 +6,15 @@ are within allowed directories (repo root, working directory, or home).
 """
 
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 from .test_helpers import safe_import
 
 _is_path_within = safe_import("tools.auto_prd.app", "..app", "_is_path_within")
 
 
-class IsPathWithinTests(unittest.TestCase):
+class IsPathWithinTests(TestCase):
     """Test suite for the _is_path_within helper function."""
 
     def setUp(self) -> None:
@@ -104,7 +103,7 @@ class IsPathWithinTests(unittest.TestCase):
             self.assertFalse(result)
 
 
-class PRDPathValidationIntegrationTests(unittest.TestCase):
+class PRDPathValidationIntegrationTests(TestCase):
     """Integration tests for PRD path validation in the run() function."""
 
     def setUp(self) -> None:
@@ -198,7 +197,7 @@ class PRDPathValidationIntegrationTests(unittest.TestCase):
         self.assertFalse(_is_path_within(resolved_path, self.repo_root))
 
 
-class PRDValidationEdgeCases(unittest.TestCase):
+class PRDValidationEdgeCases(TestCase):
     """Edge case tests for PRD path validation."""
 
     def test_empty_path_handling(self) -> None:
@@ -241,4 +240,4 @@ class PRDValidationEdgeCases(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
