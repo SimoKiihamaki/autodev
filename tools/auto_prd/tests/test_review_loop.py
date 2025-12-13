@@ -78,9 +78,10 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
         def fake_graphql(query, variables):
             return next(graphql_responses)
 
-        with mock.patch(
-            "tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd
-        ), mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql):
+        with (
+            mock.patch("tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd),
+            mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql),
+        ):
             should_stop = should_stop_review_after_push(
                 "owner/repo", 13, self.commit_sha, self.repo_root
             )
@@ -135,9 +136,10 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
         def fake_graphql(query, variables):
             return next(graphql_responses)
 
-        with mock.patch(
-            "tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd
-        ), mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql):
+        with (
+            mock.patch("tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd),
+            mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql),
+        ):
             should_stop = should_stop_review_after_push(
                 "owner/repo", 13, self.commit_sha, self.repo_root
             )
@@ -195,9 +197,10 @@ class ShouldStopReviewAfterPushTests(unittest.TestCase):
         def fake_graphql(query, variables):
             return next(graphql_responses)
 
-        with mock.patch(
-            "tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd
-        ), mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql):
+        with (
+            mock.patch("tools.auto_prd.gh_ops.run_cmd", side_effect=fake_run_cmd),
+            mock.patch("tools.auto_prd.gh_ops.gh_graphql", side_effect=fake_graphql),
+        ):
             should_stop = should_stop_review_after_push(
                 "owner/repo", 13, self.commit_sha, self.repo_root
             )
@@ -523,33 +526,50 @@ class ReviewFixLoopTests(unittest.TestCase):
         """
         for error_class in [AttributeError, TypeError, NameError]:
             with self.subTest(error_class=error_class):
-                # Create fresh mock per error type for isolated call counts and side_effects.
-                # Named 'fresh_runner' to emphasize each iteration gets a new instance.
-                # Note: We don't call mock_policy_runner.reset_mock() here because we create
-                # a new fresh_runner anyway, making the reset redundant.
-                fresh_runner = mock.MagicMock(
-                    side_effect=error_class("programming error")
-                )
+                # Reset mock_policy_runner at start of each subTest for cleaner
+                # isolation. While each iteration creates a fresh_runner, resetting
+                # the parent mock prevents accumulation of call history.
+                mock_policy_runner.reset_mock()
+
+                # Create a specific error instance to verify identity preservation
+                original_error = error_class("programming error")
+
+                # Create fresh mock per error type for isolated call counts.
+                fresh_runner = mock.MagicMock(side_effect=original_error)
                 mock_policy_runner.return_value = (fresh_runner, "claude")
 
-                with mock.patch(
-                    "tools.auto_prd.review_loop.get_unresolved_feedback",
-                    return_value=[{"summary": "Fix this", "comment_id": 1}],
+                with (
+                    mock.patch(
+                        "tools.auto_prd.review_loop.get_unresolved_feedback",
+                        return_value=[{"summary": "Fix this", "comment_id": 1}],
+                    ),
+                    tempfile.TemporaryDirectory() as tmpdir,
                 ):
-                    with tempfile.TemporaryDirectory() as tmpdir:
-                        with self.assertRaises(error_class):
-                            review_loop.review_fix_loop(
-                                pr_number=13,
-                                owner_repo="owner/repo",
-                                repo_root=Path(tmpdir),
-                                idle_grace=0,
-                                poll_interval=1,
-                                codex_model="gpt",
-                                allow_unsafe_execution=True,
-                                dry_run=False,
-                            )
+                    raised_error = None
+                    try:
+                        review_loop.review_fix_loop(
+                            pr_number=13,
+                            owner_repo="owner/repo",
+                            repo_root=Path(tmpdir),
+                            idle_grace=0,
+                            poll_interval=1,
+                            codex_model="gpt",
+                            allow_unsafe_execution=True,
+                            dry_run=False,
+                        )
+                        self.fail(f"Expected {error_class.__name__} to be raised")
+                    except error_class as e:
+                        raised_error = e
 
-                # Use assertEqual with msg as third arg for proper display on failure
+                # Verify the SAME exception instance is re-raised unchanged
+                self.assertIs(
+                    raised_error,
+                    original_error,
+                    f"{error_class.__name__} should be re-raised unchanged, "
+                    f"but got different instance: {raised_error!r}",
+                )
+
+                # Use assertEqual with msg as third arg for proper display
                 self.assertEqual(
                     fresh_runner.call_count,
                     1,

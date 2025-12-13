@@ -749,12 +749,12 @@ def popen_streaming(
             f"Repository root {repo_root_path} does not contain a .git directory or file. "
             "This may indicate an invalid repository path."
         )
-    repo_root = str(repo_root_path)
+    repo_root: str = str(repo_root_path)  # Explicit str type for clarity
     existing_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
         f"{existing_pythonpath}{os.pathsep}{repo_root}"
         if existing_pythonpath
-        else repo_root
+        else repo_root  # repo_root is already str, no conversion needed
     )
     env["AUTO_PRD_ROOT"] = repo_root
 
