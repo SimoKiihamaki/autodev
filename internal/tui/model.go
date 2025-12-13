@@ -39,11 +39,21 @@ func (m model) cleanup() {
 	m.closeLogFile("cleanup")
 }
 
-// Flag name constants to maintain single source of truth
+// Flag name constants for TUI toggle labels and internal state tracking.
+// These are display/UI identifiers, NOT the phase names sent to the Python CLI.
+//
+// Phase name mapping (TUI → Python CLI):
+//   - FlagNameLocal  ("local")  → --phases local
+//   - FlagNamePR     ("pr")     → --phases pr
+//   - FlagNameReview ("review") → --phases review_fix  (NOTE: different name!)
+//
+// The actual mapping is implemented in runner.go BuildArgs() which uses
+// cfg.RunPhases.ReviewFix → "review_fix" for the --phases CLI argument.
+// See tools/auto_prd/constants.py VALID_PHASES for Python-side definitions.
 const (
 	FlagNameLocal    = "local"
 	FlagNamePR       = "pr"
-	FlagNameReview   = "review"
+	FlagNameReview   = "review" // Maps to Python phase "review_fix"
 	FlagNameUnsafe   = "unsafe"
 	FlagNameDryRun   = "dryrun"
 	FlagNameSyncGit  = "syncgit"

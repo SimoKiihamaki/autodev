@@ -4,18 +4,18 @@ Integration smoke test to verify that the Go runner captures incremental logs co
 This script simulates the Python subprocess emitting incremental logs with timestamps.
 """
 
-import subprocess
-import sys
-import time
-import tempfile
 import os
 import shutil
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 
-from tools.auto_prd.tests import safe_cleanup, get_project_root
+from tools.auto_prd.tests import get_project_root, safe_cleanup
 from tools.auto_prd.tests.test_helpers import (
-    safe_import,
     assert_threads_cleanly_terminated,
+    safe_import,
 )
 
 run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
@@ -132,8 +132,8 @@ This is a test PRD for integration testing.
             )
 
             # Use non-blocking readers with threading and queue
-            import threading
             import queue
+            import threading
 
             def pump(stream, q, prefix=""):
                 """Read from stream and push lines to queue."""
@@ -215,7 +215,7 @@ This is a test PRD for integration testing.
             # Show sample of captured output for debugging
             print("\nSample captured output:")
             for i, line in enumerate(output_lines[:10]):
-                print(f"  {i+1:2d}: {line}")
+                print(f"  {i + 1:2d}: {line}")
             if len(output_lines) > 10:
                 print(f"  ... and {len(output_lines) - 10} more lines")
 
@@ -282,8 +282,8 @@ def test_simple_log_streaming():
         process = safe_popen(cmd, extra_env={"PWD": str(get_project_root())})
 
         # Use non-blocking readers with threading and queue
-        import threading
         import queue
+        import threading
 
         def pump(stream, q, prefix=""):
             """Read from stream and push lines to queue."""
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     # Overall result
     overall_success = simple_success and go_success
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("Integration Test Summary:")
     print(f"Simple streaming test: {'PASS' if simple_success else 'FAIL'}")
     print(f"Go runner test: {'PASS' if go_success else 'FAIL'}")

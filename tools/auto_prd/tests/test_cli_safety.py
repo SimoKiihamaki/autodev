@@ -100,11 +100,14 @@ class EnsureClaudeDebugDirTests(unittest.TestCase):
 class RequireCmdClaudeTests(unittest.TestCase):
     def test_require_cmd_invokes_debug_dir_setup(self) -> None:
         with mock.patch.dict(os.environ, clear=True):
-            with mock.patch(
-                "tools.auto_prd.command_checks.shutil.which",
-                return_value="/usr/bin/claude",
-            ), mock.patch(
-                "tools.auto_prd.command_checks.run_cmd", return_value=("", "", 0)
+            with (
+                mock.patch(
+                    "tools.auto_prd.command_checks.shutil.which",
+                    return_value="/usr/bin/claude",
+                ),
+                mock.patch(
+                    "tools.auto_prd.command_checks.run_cmd", return_value=("", "", 0)
+                ),
             ):
                 from ..command_checks import require_cmd
 
@@ -178,13 +181,13 @@ class OpenOrGetPrTests(unittest.TestCase):
                     return None
                 return 101
 
-            with mock.patch(
-                "tools.auto_prd.pr_flow.run_cmd", side_effect=fake_run_cmd
-            ), mock.patch(
-                "tools.auto_prd.pr_flow.get_pr_number_for_head",
-                side_effect=fake_get_pr_number,
-            ), mock.patch(
-                "tools.auto_prd.pr_flow.git_push_branch"
+            with (
+                mock.patch("tools.auto_prd.pr_flow.run_cmd", side_effect=fake_run_cmd),
+                mock.patch(
+                    "tools.auto_prd.pr_flow.get_pr_number_for_head",
+                    side_effect=fake_get_pr_number,
+                ),
+                mock.patch("tools.auto_prd.pr_flow.git_push_branch"),
             ):
                 pr_number = open_or_get_pr(
                     new_branch="feature/test",

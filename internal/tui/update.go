@@ -178,7 +178,12 @@ func (m *model) handleLogBatch(msg logBatchMsg) (tea.Model, tea.Cmd) {
 
 			m.logBuf = append(m.logBuf, display)
 			if len(m.logBuf) > maxLines {
-				m.logBuf = m.logBuf[len(m.logBuf)-maxLines:]
+				// Copy to a new slice to release old memory from the underlying array.
+				// Simply re-slicing (m.logBuf = m.logBuf[n:]) retains the old backing
+				// array, leading to gradual memory growth in long-running sessions.
+				newBuf := make([]string, maxLines)
+				copy(newBuf, m.logBuf[len(m.logBuf)-maxLines:])
+				m.logBuf = newBuf
 			}
 			m.handleRunFeedLine(display, plain)
 		}

@@ -10,16 +10,17 @@ import select
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import IO, Any, Callable, Optional
+from typing import IO, Any
 
 from .command import (
-    run_cmd,
-    verify_unsafe_execution_ready,
     popen_streaming,
+    run_cmd,
     validate_stdin,
+    verify_unsafe_execution_ready,
 )
 from .logging_utils import logger
 from .utils import extract_called_process_error_details
@@ -277,10 +278,10 @@ def codex_exec(
     repo_root: Path,
     model: str = "gpt-5-codex",
     enable_search: bool = True,
-    yolo: Optional[bool] = None,
-    allow_unsafe_execution: Optional[bool] = None,
+    yolo: bool | None = None,
+    allow_unsafe_execution: bool | None = None,
     dry_run: bool = False,
-    extra: Optional[list[str]] = None,
+    extra: list[str] | None = None,
 ) -> tuple[str, str]:
     os.environ.setdefault("CI", "1")
     allow_flag = allow_unsafe_execution
@@ -288,10 +289,7 @@ def codex_exec(
         logger.warning(
             "codex_exec: 'yolo' is deprecated; use allow_unsafe_execution instead"
         )
-        if allow_flag is None:
-            allow_flag = yolo
-        else:
-            allow_flag = allow_flag or yolo
+        allow_flag = yolo if allow_flag is None else allow_flag or yolo
     allow_flag = bool(allow_flag)
     args: list[str] = ["codex"]
     if enable_search:
@@ -329,7 +327,7 @@ def codex_exec(
     return out, stderr
 
 
-def parse_rate_limit_sleep(message: str) -> Optional[int]:
+def parse_rate_limit_sleep(message: str) -> int | None:
     if not message:
         return None
 
@@ -470,18 +468,15 @@ def coderabbit_has_findings(text: str) -> bool:
 
 
 def _resolve_unsafe_flag(
-    allow_unsafe_execution: Optional[bool],
-    yolo: Optional[bool],
+    allow_unsafe_execution: bool | None,
+    yolo: bool | None,
     caller: str,
 ) -> bool:
     """Resolve the allow_unsafe_execution flag, handling deprecated yolo parameter."""
     allow_flag = allow_unsafe_execution
     if yolo is not None:
         logger.warning("%s: 'yolo' is deprecated; use allow_unsafe_execution", caller)
-        if allow_flag is None:
-            allow_flag = yolo
-        else:
-            allow_flag = allow_flag or yolo
+        allow_flag = yolo if allow_flag is None else allow_flag or yolo
     return bool(allow_flag)
 
 
@@ -541,7 +536,7 @@ def _build_claude_args(
     # Validate 'extra' first, before any argument construction.
     # Early validation ensures clear error messages with caller stack context.
     if extra is not None:
-        if not isinstance(extra, (list, tuple)):
+        if not isinstance(extra, list | tuple):
             msg = f"{caller}: 'extra' must be a list or tuple of strings, got {_safe_typename(extra)}"
             raise TypeError(msg)
         if not all(isinstance(x, str) for x in extra):
@@ -570,10 +565,10 @@ def claude_exec(
     repo_root: Path,
     model: str | None = None,
     enable_search: bool = True,
-    yolo: Optional[bool] = None,
-    allow_unsafe_execution: Optional[bool] = None,
+    yolo: bool | None = None,
+    allow_unsafe_execution: bool | None = None,
     dry_run: bool = False,
-    extra: Optional[list[str]] = None,
+    extra: list[str] | None = None,
 ) -> tuple[str, str]:
     """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
@@ -642,7 +637,7 @@ def _set_nonblocking(fd: int) -> None:
 def _process_buffer(
     buffer: str,
     lines: list[str],
-    output_handler: Optional[Callable[[str], None]] = None,
+    output_handler: Callable[[str], None] | None = None,
 ) -> str:
     """Process complete lines from buffer, returning remainder.
 
@@ -740,7 +735,7 @@ def _drain_fds_best_effort(
                     stdout_buffer += chunk
                 elif fd == proc_stderr:
                     stderr_buffer += chunk
-        except (OSError, IOError, ValueError) as drain_exc:
+        except (OSError, ValueError) as drain_exc:
             # Expected exceptions during best-effort drain operations:
             # - OSError/IOError: fd already closed, pipe broken, or other I/O failures
             # - ValueError: fd invalid or in an unusable state (e.g., closed fd passed
@@ -825,7 +820,7 @@ def _cleanup_failed_process(
                         "select() timed out reading stderr during cleanup - "
                         "no data available or fd in unexpected state"
                     )
-            except (OSError, IOError, ValueError) as stderr_exc:
+            except (OSError, ValueError) as stderr_exc:
                 logger.warning(
                     "Failed to capture stderr during cleanup: %s (%s)",
                     stderr_exc,
@@ -849,12 +844,12 @@ def claude_exec_streaming(
     repo_root: Path,
     model: str | None = None,
     enable_search: bool = True,
-    yolo: Optional[bool] = None,
-    allow_unsafe_execution: Optional[bool] = None,
+    yolo: bool | None = None,
+    allow_unsafe_execution: bool | None = None,
     dry_run: bool = False,
-    extra: Optional[list[str]] = None,
-    on_output: Optional[Callable[[str], None]] = None,
-    timeout: Optional[int] = None,
+    extra: list[str] | None = None,
+    on_output: Callable[[str], None] | None = None,
+    timeout: int | None = None,
 ) -> tuple[str, str]:
     """Execute Claude with real-time output streaming.
 
@@ -1349,7 +1344,7 @@ def claude_exec_streaming(
                 elif fd == proc.stderr:
                     stderr_buffer += chunk
                     stderr_buffer = _process_buffer(stderr_buffer, stderr_lines)
-            except (IOError, OSError) as e:
+            except OSError as e:
                 # EAGAIN/EWOULDBLOCK are expected with non-blocking I/O
                 if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
                     continue

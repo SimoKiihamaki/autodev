@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/SimoKiihamaki/autodev/internal/config"
 	"github.com/google/shlex"
+	"golang.org/x/sync/errgroup"
 )
 
 // bufferPool reuses byte buffers to reduce allocations.
@@ -136,7 +138,12 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 	if err := os.WriteFile(tmpPath, []byte(header+string(origBytes)), 0o600); err != nil {
 		return "", nil, fmt.Errorf("writing temporary PRD %s: %w", tmpPath, err)
 	}
-	cleanup := func() { _ = os.Remove(tmpPath) }
+	cleanup := func() {
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			// Log cleanup failures at debug level for troubleshooting temp file issues
+			log.Printf("debug: failed to remove temp PRD %s: %v", tmpPath, err)
+		}
+	}
 	return tmpPath, cleanup, nil
 }
 
@@ -1016,10 +1023,28 @@ func (o Options) Run(ctx context.Context) error {
 		return fmt.Errorf("starting runner process: %w", err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); stream(stdout, false, o.Logs) }()
-	go func() { defer wg.Done(); stream(stderr, true, o.Logs) }()
+	// Use sync.Once to ensure the log channel is only closed once, preventing
+	// panics from double-close if multiple goroutines attempt cleanup.
+	var closeOnce sync.Once
+	closeLogs := func() {
+		closeOnce.Do(func() {
+			if o.Logs != nil {
+				close(o.Logs)
+			}
+		})
+	}
+
+	// Use errgroup for better error propagation and cleaner goroutine management.
+	// The errgroup context is not used here because we manage cancellation separately.
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		stream(stdout, false, o.Logs)
+		return nil
+	})
+	g.Go(func() error {
+		stream(stderr, true, o.Logs)
+		return nil
+	})
 
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
@@ -1039,18 +1064,14 @@ func (o Options) Run(ctx context.Context) error {
 			}
 			<-waitCh
 		}
-		wg.Wait()
+		_ = g.Wait() // Wait for stream goroutines to complete
 		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
-		if o.Logs != nil {
-			close(o.Logs)
-		}
+		closeLogs()
 		return fmt.Errorf("run canceled: %w", ctx.Err())
 	case err := <-waitCh:
-		wg.Wait()
+		_ = g.Wait() // Wait for stream goroutines to complete
 		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
-		if o.Logs != nil {
-			close(o.Logs)
-		}
+		closeLogs()
 		if err != nil {
 			return fmt.Errorf("runner exited with error: %w", err)
 		}

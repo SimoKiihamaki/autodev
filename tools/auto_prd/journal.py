@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .logging_utils import logger
 
@@ -42,7 +42,7 @@ class Journal:
     Writes structured JSONL entries to a journal file for each session.
     """
 
-    def __init__(self, session_id: str, journal_dir: Optional[Path] = None):
+    def __init__(self, session_id: str, journal_dir: Path | None = None):
         """Initialize journal for a session.
 
         Args:
@@ -83,11 +83,11 @@ class Journal:
         action_type: ActionType,
         message: str,
         *,
-        phase: Optional[str] = None,
-        iteration: Optional[int] = None,
-        details: Optional[dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        success: Optional[bool] = None,
+        phase: str | None = None,
+        iteration: int | None = None,
+        details: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        success: bool | None = None,
     ) -> None:
         """Log an action to the journal.
 
@@ -139,7 +139,7 @@ class Journal:
             },
         )
 
-    def session_end(self, success: bool, summary: Optional[str] = None) -> None:
+    def session_end(self, success: bool, summary: str | None = None) -> None:
         """Log session end."""
         self.log(
             ActionType.SESSION_END,
@@ -157,9 +157,7 @@ class Journal:
             phase=phase,
         )
 
-    def phase_end(
-        self, phase: str, success: bool, summary: Optional[str] = None
-    ) -> None:
+    def phase_end(self, phase: str, success: bool, summary: str | None = None) -> None:
         """Log phase end."""
         self.log(
             ActionType.PHASE_END,
@@ -183,7 +181,7 @@ class Journal:
         phase: str,
         iteration: int,
         *,
-        tasks_left: Optional[int] = None,
+        tasks_left: int | None = None,
         has_findings: bool = False,
         repo_changed: bool = False,
     ) -> None:
@@ -221,7 +219,7 @@ class Journal:
         runner_name: str,
         phase: str,
         success: bool,
-        duration_ms: Optional[int] = None,
+        duration_ms: int | None = None,
         output_preview: str = "",
     ) -> None:
         """Log runner execution end."""
@@ -243,7 +241,7 @@ class Journal:
         self,
         operation: str,
         success: bool,
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Log a git operation."""
         self.log(
@@ -257,8 +255,8 @@ class Journal:
         self,
         endpoint: str,
         success: bool,
-        duration_ms: Optional[int] = None,
-        details: Optional[dict[str, Any]] = None,
+        duration_ms: int | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Log an API call."""
         self.log(
@@ -289,8 +287,8 @@ class Journal:
         self,
         message: str,
         *,
-        phase: Optional[str] = None,
-        exception_type: Optional[str] = None,
+        phase: str | None = None,
+        exception_type: str | None = None,
         recoverable: bool = True,
     ) -> None:
         """Log an error."""
@@ -305,7 +303,7 @@ class Journal:
             },
         )
 
-    def warning(self, message: str, *, phase: Optional[str] = None) -> None:
+    def warning(self, message: str, *, phase: str | None = None) -> None:
         """Log a warning."""
         self.log(
             ActionType.WARNING,
@@ -313,7 +311,7 @@ class Journal:
             phase=phase,
         )
 
-    def milestone(self, message: str, *, phase: Optional[str] = None) -> None:
+    def milestone(self, message: str, *, phase: str | None = None) -> None:
         """Log a significant milestone."""
         self.log(
             ActionType.MILESTONE,
@@ -333,7 +331,7 @@ class Journal:
 
 
 def load_journal(
-    session_id: str, journal_dir: Optional[Path] = None
+    session_id: str, journal_dir: Path | None = None
 ) -> list[dict[str, Any]]:
     """Load all entries from a session journal.
 
@@ -373,7 +371,7 @@ def load_journal(
 
 
 def summarize_journal(
-    entries: list[dict[str, Any]], journal_path: Optional[Path] = None
+    entries: list[dict[str, Any]], journal_path: Path | None = None
 ) -> dict[str, Any]:
     """Generate a summary of journal entries.
 

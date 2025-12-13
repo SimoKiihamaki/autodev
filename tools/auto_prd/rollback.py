@@ -317,10 +317,7 @@ def rollback_feature(
     # Extract SHAs (handle both string and dict formats)
     shas = []
     for commit in commits:
-        if isinstance(commit, dict):
-            sha = commit.get("sha", "")
-        else:
-            sha = str(commit)
+        sha = commit.get("sha", "") if isinstance(commit, dict) else str(commit)
         if sha:
             shas.append(sha)
 

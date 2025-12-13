@@ -8,7 +8,6 @@ import shutil
 import threading
 from pathlib import Path
 
-
 CHECKBOX_ANY_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", flags=re.MULTILINE)
 CHECKBOX_UNCHECKED_RE = re.compile(r"^\s*[-*]\s*\[\s\]", flags=re.MULTILINE)
 TASKS_LEFT_RE = re.compile(r"TASKS_LEFT\s*=\s*(\d+)", flags=re.IGNORECASE)
@@ -52,6 +51,15 @@ STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
 SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
 SAFE_CWD_ROOTS: set[Path] = {Path(__file__).resolve().parent}
+# Valid phase names for the --phases CLI argument.
+# These are the authoritative phase identifiers used in CLI args and checkpoints.
+#
+# Phase name mapping (Python CLI ← Go TUI):
+#   - "local"      ← FlagNameLocal ("local")
+#   - "pr"         ← FlagNamePR ("pr")
+#   - "review_fix" ← FlagNameReview ("review")  (NOTE: different display name in TUI!)
+#
+# See internal/tui/model.go for Go-side definitions.
 VALID_PHASES = ("local", "pr", "review_fix")
 PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 

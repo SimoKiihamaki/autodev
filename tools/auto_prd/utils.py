@@ -8,12 +8,12 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from .constants import (
-    CLI_ARG_REPLACEMENTS,
     CHECKBOX_ANY_RE,
     CHECKBOX_UNCHECKED_RE,
+    CLI_ARG_REPLACEMENTS,
     CODEX_READONLY_ERROR_MSG,
     CODEX_READONLY_PATTERNS,
     RATE_LIMIT_STATUS,
@@ -68,7 +68,7 @@ def now_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
-def checkbox_stats(md: Path) -> Tuple[int, int]:
+def checkbox_stats(md: Path) -> tuple[int, int]:
     if not md.exists():
         return 0, 0
     txt = md.read_text(encoding="utf-8", errors="ignore")
@@ -77,7 +77,7 @@ def checkbox_stats(md: Path) -> Tuple[int, int]:
     return unchecked, total
 
 
-def parse_tasks_left(output: str) -> Optional[int]:
+def parse_tasks_left(output: str) -> int | None:
     if not output:
         return None
     match = TASKS_LEFT_RE.search(output)
@@ -89,7 +89,7 @@ def parse_tasks_left(output: str) -> Optional[int]:
     return None
 
 
-def extract_http_status(exc: subprocess.CalledProcessError) -> Optional[str]:
+def extract_http_status(exc: subprocess.CalledProcessError) -> str | None:
     stdout, stderr = _extract_stdout_stderr(exc)
     text = (stderr or "") + "\n" + (stdout or "")
     match = re.search(r"HTTP\s+(\d{3})", text)
@@ -173,7 +173,7 @@ def call_with_backoff(action, *, retries: int = 3, base_delay: float = 1.0) -> A
             attempt += 1
 
 
-def detect_readonly_block(output: str) -> Optional[str]:
+def detect_readonly_block(output: str) -> str | None:
     if not output:
         return None
     lowered = output.lower()

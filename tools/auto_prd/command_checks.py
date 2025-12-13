@@ -9,7 +9,6 @@ from .command import ensure_claude_debug_dir, run_cmd
 from .constants import COMMAND_VERIFICATION_TIMEOUT_SECONDS
 from .logging_utils import logger
 
-
 MISSING_CMD_ERR = "'%s' command not found - not installed or not on PATH."
 
 
@@ -28,7 +27,12 @@ def require_cmd(name: str) -> None:
 
     for args in version_checks:
         try:
-            run_cmd(args, check=True, capture=True, timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS)
+            run_cmd(
+                args,
+                check=True,
+                capture=True,
+                timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS,
+            )
             return
         except (
             subprocess.CalledProcessError,
@@ -45,7 +49,11 @@ def require_cmd(name: str) -> None:
             timeout=COMMAND_VERIFICATION_TIMEOUT_SECONDS,
         )
         if returncode > 2:
-            logger.warning("Command '%s' returned unusual exit code %s; continuing.", name, returncode)
+            logger.warning(
+                "Command '%s' returned unusual exit code %s; continuing.",
+                name,
+                returncode,
+            )
         return
     except FileNotFoundError as exc:
         raise RuntimeError(MISSING_CMD_ERR % name) from exc

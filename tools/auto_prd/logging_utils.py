@@ -16,7 +16,6 @@ from .constants import (
     PRINT_LOGGER_NAME,
 )
 
-
 logger = logging.getLogger("auto_prd")
 
 CURRENT_LOG_PATH: Path | None = None
@@ -111,7 +110,8 @@ def ensure_line_buffering() -> None:
         # stdout is piped, ensure line buffering
         try:
             # Reopen stdout with line buffering (Python 3.7+)
-            sys.stdout.reconfigure(line_buffering=True)
+            # TextIOWrapper has reconfigure, but TextIO stub doesn't include it
+            sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
         except (AttributeError, io.UnsupportedOperation):
             # Fallback for older Python versions: already set PYTHONUNBUFFERED above
             # Note: This project requires Python 3.9+, so this path should not be hit
@@ -120,7 +120,8 @@ def ensure_line_buffering() -> None:
     if not sys.stderr.isatty():
         # stderr is piped, ensure line buffering
         try:
-            sys.stderr.reconfigure(line_buffering=True)
+            # TextIOWrapper has reconfigure, but TextIO stub doesn't include it
+            sys.stderr.reconfigure(line_buffering=True)  # type: ignore[union-attr]
         except (AttributeError, io.UnsupportedOperation):
             # Fallback for older Python versions: already set PYTHONUNBUFFERED above
             # Note: This project requires Python 3.9+, so this path should not be hit

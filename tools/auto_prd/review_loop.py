@@ -9,16 +9,15 @@ import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .agents import (
-    codex_exec,
+    _sanitize_stderr_for_exception,
     claude_exec,
     claude_exec_streaming,
+    codex_exec,
     get_claude_exec_timeout,
-    _sanitize_stderr_for_exception,
 )
-from .utils import extract_called_process_error_details
 from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT
 from .gh_ops import (
@@ -30,6 +29,7 @@ from .gh_ops import (
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
+from .utils import extract_called_process_error_details
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
@@ -159,7 +159,11 @@ def _get_box_chars() -> tuple[str, str]:
         return _BOX_CHARS_CACHE
 
 
-_JITTER_RNG = random.Random()  # jitter timing is not security-sensitive
+# Jitter RNG for randomizing poll intervals. Not security-sensitive, but seeded
+# with current time to prevent predictable patterns across concurrent instances
+# (avoiding thundering herd issues when multiple autodev processes start together).
+_JITTER_RNG = random.Random()
+_JITTER_RNG.seed()  # Uses current time by default for variety
 
 
 def _decode_stderr(stderr: bytes | str | None) -> str:
@@ -285,7 +289,7 @@ def _should_stop_after_failure(
 
 
 def review_fix_loop(
-    pr_number: Optional[int],
+    pr_number: int | None,
     owner_repo: str,
     repo_root: Path,
     idle_grace: int,
@@ -295,7 +299,7 @@ def review_fix_loop(
     dry_run: bool = False,
     initial_wait_minutes: int = 0,
     infinite_reviews: bool = False,
-    checkpoint: Optional[dict[str, Any]] = None,
+    checkpoint: dict[str, Any] | None = None,
 ) -> bool:
     """Run the review/fix loop for a PR.
 
@@ -488,7 +492,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 actual_runner = review_runner
 
             try:
-                _, stderr = actual_runner(fix_prompt, **runner_kwargs)
+                # mypy: runner_kwargs has mixed value types and actual_runner can be
+                # codex_exec or claude_exec_streaming with different signatures
+                _, stderr = actual_runner(
+                    fix_prompt, **runner_kwargs  # type: ignore[arg-type]
+                )
                 # Note: Stderr is logged at debug level for diagnostics, but still sanitized
                 # to redact secrets/PII even at debug level. Debug logs may be enabled during
                 # troubleshooting and could be shared in bug reports. Stdout is not logged at

@@ -33,6 +33,12 @@ from .utils import detect_readonly_block
 # Default model for Codex executor - used consistently across the module
 DEFAULT_CODEX_MODEL = "gpt-5-codex"
 
+# Default quality gates text for prompt generation (avoids backslash in f-string)
+_DEFAULT_QUALITY_GATES = """\
+  - All tests must pass
+  - Type checks must pass
+  - Linting must pass"""
+
 
 @dataclass
 class TaskResult:
@@ -412,27 +418,27 @@ class IncrementalWorker:
 
         prompt = f"""## Current Implementation Status
 
-You are working on feature {feature['id']}: {feature['name']}
+You are working on feature {feature["id"]}: {feature["name"]}
 
 ### Primary Goal
-{goals.get('primary', 'Implement the feature')}
+{goals.get("primary", "Implement the feature")}
 
 ### Current Task
-**{task['id']}**: {task['description']}
+**{task["id"]}**: {task["description"]}
 
 ### Acceptance Criteria
-{ac_text or '  - No specific criteria defined'}
+{ac_text or "  - No specific criteria defined"}
 
 ### Testing Requirements
 Unit Tests:
-{unit_text or '  - Write appropriate unit tests'}
+{unit_text or "  - Write appropriate unit tests"}
 
 ### Quality Gates
-{qg_text or '  - All tests must pass\n  - Type checks must pass\n  - Linting must pass'}
+{qg_text or _DEFAULT_QUALITY_GATES}
 
 ## Instructions
 
-1. Implement task {task['id']}: {task['description']}
+1. Implement task {task["id"]}: {task["description"]}
 2. Run relevant tests to verify your implementation
 3. Ensure all quality gates pass
 4. Commit your changes with a descriptive message

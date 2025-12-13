@@ -5,11 +5,10 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 from .agents import claude_exec, codex_exec
 from .logging_utils import logger
-
 
 EXECUTOR_CHOICES = {"codex-first", "codex-only", "claude-only"}
 EXECUTOR_POLICY_DEFAULT = "codex-first"
@@ -37,7 +36,7 @@ def _compute_max_fallback_attempts(fallback_policies: dict) -> int:
 MAX_FALLBACK_ATTEMPTS = _compute_max_fallback_attempts(FALLBACK_POLICIES)
 
 
-def get_fallback_policy(policy: str) -> Optional[str]:
+def get_fallback_policy(policy: str) -> str | None:
     return FALLBACK_POLICIES.get(policy)
 
 
@@ -68,7 +67,7 @@ def get_executor_policy() -> str:
 
 def policy_runner(
     policy: str | None, i: int | None = None, phase: str = "implement"
-) -> Tuple[Callable[..., tuple[str, str]], str]:
+) -> tuple[Callable[..., tuple[str, str]], str]:
     """Select an executor/label pair for the requested phase and iteration.
 
     The ``i`` parameter tracks the iteration number emitted by the orchestrator;

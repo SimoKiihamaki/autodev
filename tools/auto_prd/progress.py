@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .logging_utils import logger
 
@@ -18,8 +17,8 @@ class PhaseMetrics:
     """Metrics for a single phase."""
 
     name: str
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
+    started_at: float | None = None
+    completed_at: float | None = None
     iterations: int = 0
     runner_calls: int = 0
     runner_success: int = 0
@@ -29,7 +28,7 @@ class PhaseMetrics:
     errors: int = 0
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         """Get phase duration in seconds."""
         if self.started_at is None:
             return None
@@ -42,7 +41,7 @@ class PhaseMetrics:
         return self.started_at is not None and self.completed_at is None
 
     @property
-    def runner_success_rate(self) -> Optional[float]:
+    def runner_success_rate(self) -> float | None:
         """Get runner success rate as percentage."""
         total = self.runner_success + self.runner_failures
         if total == 0:
@@ -56,11 +55,11 @@ class SessionProgress:
 
     session_id: str
     started_at: float = field(default_factory=time.monotonic)
-    current_phase: Optional[str] = None
+    current_phase: str | None = None
     phases: dict[str, PhaseMetrics] = field(default_factory=dict)
     total_runner_calls: int = 0
     total_commits: int = 0
-    tasks_total: Optional[int] = None
+    tasks_total: int | None = None
     tasks_completed: int = 0
 
     def start_phase(self, phase: str) -> None:
@@ -92,7 +91,7 @@ class SessionProgress:
                 self.phases[phase].duration_seconds or 0,
             )
 
-    def increment_iteration(self, phase: Optional[str] = None) -> None:
+    def increment_iteration(self, phase: str | None = None) -> None:
         """Increment iteration count for a phase.
 
         Args:
@@ -103,7 +102,7 @@ class SessionProgress:
             self.phases[phase].iterations += 1
 
     def record_runner_call(
-        self, phase: Optional[str] = None, success: bool = True
+        self, phase: str | None = None, success: bool = True
     ) -> None:
         """Record a runner execution.
 
@@ -120,7 +119,7 @@ class SessionProgress:
             else:
                 self.phases[phase].runner_failures += 1
 
-    def record_findings(self, count: int = 1, phase: Optional[str] = None) -> None:
+    def record_findings(self, count: int = 1, phase: str | None = None) -> None:
         """Record detected findings.
 
         Args:
@@ -131,7 +130,7 @@ class SessionProgress:
         if phase and phase in self.phases:
             self.phases[phase].findings_detected += count
 
-    def record_commit(self, phase: Optional[str] = None) -> None:
+    def record_commit(self, phase: str | None = None) -> None:
         """Record a git commit.
 
         Args:
@@ -142,7 +141,7 @@ class SessionProgress:
         if phase and phase in self.phases:
             self.phases[phase].commits_made += 1
 
-    def record_error(self, phase: Optional[str] = None) -> None:
+    def record_error(self, phase: str | None = None) -> None:
         """Record an error.
 
         Args:
@@ -153,7 +152,7 @@ class SessionProgress:
             self.phases[phase].errors += 1
 
     def update_tasks(
-        self, total: Optional[int] = None, completed: Optional[int] = None
+        self, total: int | None = None, completed: int | None = None
     ) -> None:
         """Update task counts.
 
@@ -172,7 +171,7 @@ class SessionProgress:
         return time.monotonic() - self.started_at
 
     @property
-    def completion_percentage(self) -> Optional[float]:
+    def completion_percentage(self) -> float | None:
         """Get estimated completion percentage based on tasks."""
         if self.tasks_total is None or self.tasks_total == 0:
             return None
@@ -202,9 +201,9 @@ class SessionProgress:
         # Time elapsed
         elapsed = self.elapsed_seconds
         if elapsed >= 3600:
-            parts.append(f"{elapsed/3600:.1f}h")
+            parts.append(f"{elapsed / 3600:.1f}h")
         elif elapsed >= 60:
-            parts.append(f"{elapsed/60:.1f}m")
+            parts.append(f"{elapsed / 60:.1f}m")
         else:
             parts.append(f"{elapsed:.0f}s")
 

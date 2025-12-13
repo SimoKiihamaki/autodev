@@ -5,13 +5,13 @@ This script creates a long-running automation with various output patterns
 to stress-test the TUI's log ingestion and display system.
 """
 
+import argparse
 import sys
 import time
-import argparse
 from pathlib import Path
 
 try:
-    from ..logging_utils import setup_file_logging, print_flush
+    from ..logging_utils import print_flush, setup_file_logging
 except ImportError:
     # Fallback if we can't import from the main module
     def setup_file_logging(*args, **kwargs):

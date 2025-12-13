@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .logging_utils import logger
 
@@ -52,12 +52,12 @@ class StructuredError:
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-    phase: Optional[str] = None
-    operation: Optional[str] = None
-    exception_type: Optional[str] = None
-    exception_traceback: Optional[str] = None
+    phase: str | None = None
+    operation: str | None = None
+    exception_type: str | None = None
+    exception_traceback: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
-    recovery_hint: Optional[str] = None
+    recovery_hint: str | None = None
     retryable: bool = False
     retry_count: int = 0
 
@@ -168,8 +168,8 @@ RECOVERY_HINTS: dict[str, str] = {
 def classify_error(
     error: Exception | str,
     *,
-    operation: Optional[str] = None,
-    phase: Optional[str] = None,
+    operation: str | None = None,
+    phase: str | None = None,
 ) -> StructuredError:
     """Classify an error and create a structured error object.
 
@@ -201,10 +201,11 @@ def classify_error(
             break
 
     # Determine severity
-    if category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT):
-        severity = ErrorSeverity.WARNING
-        retryable = True
-    elif category == ErrorCategory.API and "rate limit" in message.lower():
+    if (
+        category in (ErrorCategory.NETWORK, ErrorCategory.TIMEOUT)
+        or category == ErrorCategory.API
+        and "rate limit" in message.lower()
+    ):
         severity = ErrorSeverity.WARNING
         retryable = True
     elif category in (ErrorCategory.GIT, ErrorCategory.RUNNER):
@@ -240,7 +241,7 @@ def classify_error(
 class ErrorLog:
     """Persistent error log for a session."""
 
-    def __init__(self, session_id: str, log_dir: Optional[Path] = None):
+    def __init__(self, session_id: str, log_dir: Path | None = None):
         """Initialize error log.
 
         Args:
@@ -295,9 +296,9 @@ class ErrorLog:
         self,
         error: Exception,
         *,
-        operation: Optional[str] = None,
-        phase: Optional[str] = None,
-        context: Optional[dict[str, Any]] = None,
+        operation: str | None = None,
+        phase: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> StructuredError:
         """Log an exception with automatic classification.
 
@@ -358,7 +359,7 @@ class ErrorLog:
 
 
 def load_error_log(
-    session_id: str, log_dir: Optional[Path] = None
+    session_id: str, log_dir: Path | None = None
 ) -> list[StructuredError]:
     """Load errors from a session's error log.
 

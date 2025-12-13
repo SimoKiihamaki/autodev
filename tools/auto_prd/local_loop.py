@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
-from .agents import codex_exec, coderabbit_has_findings, coderabbit_prompt_only
+from .agents import coderabbit_has_findings, coderabbit_prompt_only, codex_exec
 from .checkpoint import save_checkpoint, update_phase_state
 from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, CODEX_READONLY_ERROR_MSG
 from .git_ops import git_head_sha, git_status_snapshot
@@ -34,8 +34,8 @@ def should_stop_for_completion(
     done_by_checkboxes: bool,
     done_by_codex: bool,
     has_findings: bool,
-    tasks_left: Optional[int],
-) -> Tuple[bool, str]:
+    tasks_left: int | None,
+) -> tuple[bool, str]:
     if has_findings or not (done_by_checkboxes or done_by_codex):
         return False, ""
     if tasks_left is None and not done_by_checkboxes:
@@ -57,8 +57,8 @@ def orchestrate_local_loop(
     codex_model: str,
     allow_unsafe_execution: bool,
     dry_run: bool,
-    checkpoint: Optional[dict[str, Any]] = None,
-) -> Tuple[int, bool]:
+    checkpoint: dict[str, Any] | None = None,
+) -> tuple[int, bool]:
     """Orchestrate the local Codex/CodeRabbit iteration loop.
 
     Args:
@@ -101,13 +101,12 @@ def orchestrate_local_loop(
     # - Key missing: no checkpoint data (tasks_left = None)
     # - Key present with value >= 0: valid task count
     # - Key present with value -1: sentinel for "no tasks_left reported"
+    tasks_left: int | None
     if "tasks_left" in local_state:
         stored_tasks_left = local_state["tasks_left"]
-        tasks_left: Optional[int] = (
-            stored_tasks_left if stored_tasks_left >= 0 else None
-        )
+        tasks_left = stored_tasks_left if stored_tasks_left >= 0 else None
     else:
-        tasks_left: Optional[int] = None
+        tasks_left = None
     appears_complete = False
     no_findings_streak = local_state.get("no_findings_streak", 0)
     skipped_review_streak = local_state.get("skipped_review_streak", 0)

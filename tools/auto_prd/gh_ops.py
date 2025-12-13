@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Set, Tuple
 
 from .command import run_cmd
 from .constants import (
@@ -16,7 +15,6 @@ from .constants import (
 )
 from .logging_utils import logger
 from .utils import call_with_backoff, extract_called_process_error_details
-
 
 GATHER_THREAD_COMMENTS_QUERY = """
 query($threadId:ID!,$cursor:String){
@@ -147,7 +145,7 @@ def gh_graphql(query: str, variables: dict) -> dict:
     return call_with_backoff(action)
 
 
-def get_pr_number_for_head(head_branch: str, repo_root: Path) -> Optional[int]:
+def get_pr_number_for_head(head_branch: str, repo_root: Path) -> int | None:
     out, _, _ = run_cmd(
         [
             "gh",
@@ -203,9 +201,7 @@ def trigger_copilot(owner_repo: str, pr_number: int, repo_root: Path) -> None:
         )
 
 
-def _gather_thread_comments(
-    thread_id: str, initial_block: Optional[dict]
-) -> list[dict]:
+def _gather_thread_comments(thread_id: str, initial_block: dict | None) -> list[dict]:
     if not thread_id:
         return []
     comments_block = initial_block or {}
@@ -225,11 +221,11 @@ def _gather_thread_comments(
 
 
 def get_unresolved_feedback(
-    owner_repo: str, pr_number: int, commit_sha: Optional[str] = None
+    owner_repo: str, pr_number: int, commit_sha: str | None = None
 ) -> list[dict]:
     owner, name = _parse_owner_repo(owner_repo)
     threads: list[dict] = []
-    cursor: Optional[str] = None
+    cursor: str | None = None
     while True:
         data = gh_graphql(
             REVIEW_THREADS_QUERY,
@@ -326,8 +322,11 @@ def resolve_review_thread(thread_id: str) -> None:
 
 
 def acknowledge_review_items(
-    owner_repo: str, pr_number: int, items: list[dict], processed_ids: Set[int]
-) -> Set[int]:
+    owner_repo: str,
+    _pr_number: int,  # Kept for API consistency; may be used in future
+    items: list[dict],
+    processed_ids: set[int],
+) -> set[int]:
     """Reply to review items, mutating and returning the processed ID set.
 
     Tests can pass a pre-seeded ``processed_ids`` instance to maintain
@@ -349,11 +348,13 @@ def acknowledge_review_items(
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
-                logger.warning("Failed to resolve review thread %s: %s", thread_id, detail)
+                logger.warning(
+                    "Failed to resolve review thread %s: %s", thread_id, detail
+                )
     return processed_ids
 
 
-def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
+def _parse_iso8601(value: str | None) -> datetime | None:
     if not value:
         return None
     text = value.strip()
@@ -368,7 +369,7 @@ def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _commit_timestamp(repo_root: Path, commit_sha: str) -> Optional[datetime]:
+def _commit_timestamp(repo_root: Path, commit_sha: str) -> datetime | None:
     try:
         stdout, _stderr, _code = run_cmd(
             ["git", "show", "-s", "--format=%cI", commit_sha],
@@ -422,7 +423,7 @@ def _collect_commit_status_contexts(owner_repo: str, commit_sha: str) -> list[di
 
 def _recent_pr_activity(
     owner_repo: str, pr_number: int
-) -> Tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict]]:
     owner, name = _parse_owner_repo(owner_repo)
     try:
         data = gh_graphql(
@@ -443,7 +444,7 @@ def _recent_pr_activity(
 
 
 def should_stop_review_after_push(
-    owner_repo: str, pr_number: int, commit_sha: Optional[str], repo_root: Path
+    owner_repo: str, pr_number: int, commit_sha: str | None, repo_root: Path
 ) -> bool:
     if not commit_sha:
         return False
@@ -505,7 +506,7 @@ def should_stop_review_after_push(
 
 
 def post_final_comment(
-    pr_number: Optional[int],
+    pr_number: int | None,
     owner_repo: str,
     prd_path: Path,
     repo_root: Path,
