@@ -27,6 +27,14 @@ from .constants import (
 from .logging_utils import decode_output, logger, truncate_for_log
 from .utils import scrub_cli_text
 
+# Error message template for missing repository root.
+# Defined as a constant to comply with TRY003 (no string literals in exceptions).
+_REPO_ROOT_NOT_FOUND_MSG = (
+    "Repository root directory does not exist: {repo_root}. "
+    "This may indicate the repository was deleted or moved. "
+    "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
+)
+
 # Re-export subprocess exceptions for consistent imports across the codebase
 CalledProcessError = subprocess.CalledProcessError
 TimeoutExpired = subprocess.TimeoutExpired
@@ -651,6 +659,9 @@ def popen_streaming(
         # enforces the invariant that sanitize_args produces same-length output (a list
         # comprehension over a sequence always preserves length). If lengths ever differ,
         # zip raises ValueError immediately, catching any future bug in sanitize_args.
+        #
+        # NOTE: strict=True requires Python 3.10+. This codebase targets Python 3.10+
+        # as indicated by the use of modern type hints (e.g., list[str] | None).
         diffs = [
             f"arg[{i}]: {orig!r} -> {san!r}"
             for i, (orig, san) in enumerate(
@@ -676,23 +687,28 @@ def popen_streaming(
     # Set PYTHONPATH and AUTO_PRD_ROOT so project modules can be imported by the subprocess.
     #
     # Why these are set for ALL popen_streaming calls (even non-Python commands like 'claude'):
-    # 1. PYTHONPATH: The 'claude' CLI may spawn Python subprocesses internally (hooks, plugins)
-    #    that need to import tools.auto_prd modules for consistent behavior.
+    # 1. PYTHONPATH: The 'claude' CLI spawns Python subprocesses internally (hooks, plugins,
+    #    MCP servers) that need to import tools.auto_prd modules for consistent behavior.
+    #    Evidence: Claude Code's hook system runs Python scripts that import project modules.
     # 2. AUTO_PRD_ROOT: Used by various tools/scripts to locate the project root reliably
     #    without re-running git-based detection. Setting it unconditionally is simpler and
     #    faster than checking whether each specific command needs it.
     # 3. The overhead is negligible (two string assignments to the env dict) and avoids the
     #    complexity of conditional setup based on command type detection.
     #
+    # Alternative considered: Making this conditional based on command type (e.g., only for
+    # Python commands). This was rejected because:
+    # - It requires maintaining a list of commands that spawn Python subprocesses
+    # - The cost of unconditional setup is trivial (no I/O, just dict operations)
+    # - Missing PYTHONPATH causes hard-to-debug import errors in subprocess hooks
+    #
     # find_repo_root() always returns a valid Path (falls back to cwd() if no .git found),
     # so repo_root_path will never be None. We validate it exists to catch edge cases where
     # the fallback cwd was deleted between find_repo_root() and this check.
     repo_root_path = find_repo_root()
     if not repo_root_path.exists():
-        raise FileNotFoundError(  # noqa: TRY003
-            f"Repository root directory does not exist: {repo_root_path}. "
-            "This may indicate the repository was deleted or moved. "
-            "Consider running from the repository directory or setting AUTO_PRD_ROOT explicitly."
+        raise FileNotFoundError(
+            _REPO_ROOT_NOT_FOUND_MSG.format(repo_root=repo_root_path)
         )
     repo_root = str(repo_root_path)
     env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(

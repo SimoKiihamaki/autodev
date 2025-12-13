@@ -44,6 +44,15 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Note: This is intentionally session-scoped (module-level), not call-scoped,
 # to avoid log spam when the same malformed comment appears in every poll cycle.
 #
+# Why OrderedDict instead of functools.lru_cache:
+# This is a SET membership cache (deduplication), not a function memoization cache.
+# We need to check "have we seen this ID before?" and track up to N unique IDs.
+# lru_cache is designed for caching function return values keyed by arguments, which
+# doesn't fit this use case. OrderedDict provides the exact semantics we need:
+# - O(1) membership test (key in dict)
+# - Bounded size via manual eviction
+# - FIFO eviction order (oldest first, not LRU) which is simpler and sufficient
+#
 # Uses OrderedDict as a bounded FIFO cache: when max size is reached, oldest entries
 # (by insertion order) are evicted to make room for new ones. Keys are NOT refreshed
 # on access, so eviction is strictly insertion-order FIFO, not LRU. This is intentional:
@@ -96,7 +105,7 @@ _BOX_CHARS_LOCK = threading.Lock()
 
 
 def _get_box_chars() -> tuple[str, str]:
-    """Return (horizontal, vertical) box-drawing characters.
+    """Return (horizontal_char, vertical_char) box-drawing characters.
 
     Uses ASCII characters if AUTO_PRD_ASCII_OUTPUT is set to a truthy value
     (1, true, yes), otherwise uses Unicode box-drawing characters.
@@ -144,6 +153,18 @@ def _should_stop_after_failure(
     and returns True/False to indicate whether max retries have been exhausted.
     It does NOT manage the failure counter - callers MUST increment the counter
     BEFORE calling this function.
+
+    Design Decision - Why not return (should_stop, new_counter)?
+        Returning a tuple would encapsulate the increment logic, but this design
+        was intentionally rejected because:
+        1. The counter is also reset on SUCCESS (consecutive_failures = 0), which
+           this function would never see since it's only called on failures.
+        2. Callers use the counter value for other purposes (logging, checkpointing)
+           before and after calling this function.
+        3. The explicit increment before calling makes the failure-counting logic
+           visible at each call site, aiding code review and debugging.
+        The current pattern matches stdlib conventions (e.g., itertools.count where
+        callers manage state explicitly).
 
     Usage contract:
         1. Caller increments consecutive_failures BEFORE calling this function
@@ -397,33 +418,24 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             # Use streaming variant for claude_exec to show real-time progress.
             # When the policy selects claude_exec, we switch to claude_exec_streaming
             # which provides line-by-line output via the on_output callback.
+            #
+            # Variable naming:
+            # - review_runner: The runner selected by policy_runner() (claude_exec or codex_exec)
+            # - actual_runner: The function we actually call (may be claude_exec_streaming instead)
+            # After this block, only actual_runner is used for execution.
             use_claude_streaming = review_runner is claude_exec
             if use_claude_streaming:
-                box_h, box_v = _get_box_chars()
-                print(f"\n{box_h * 60}")
+                horizontal_char, vertical_char = _get_box_chars()
+                print(f"\n{horizontal_char * 60}")
                 print(f"  Running {runner_name or 'claude'} (streaming output)...")
-                print(f"{box_h * 60}", flush=True)
+                print(f"{horizontal_char * 60}", flush=True)
 
                 def output_handler(line: str) -> None:
-                    # Uses box_v from the enclosing scope (captured at closure creation).
-                    # box_v is assigned from _get_box_chars() above before this closure
-                    # is defined, so the value is stable for the duration of this handler.
-                    print(f"  {box_v} {line}", flush=True)
-                    # Security note: We print to stdout but intentionally do NOT log to files.
-                    #
-                    # Stdout printing is acceptable because:
-                    # - It's ephemeral (terminal scrollback clears)
-                    # - Users expect to see real-time model output for progress feedback
-                    # - If stdout IS captured (CI, redirects), that's the user's explicit choice
-                    #
-                    # File logging is avoided because:
-                    # - Log files persist indefinitely and may be shared in bug reports
-                    # - Structured logs may be shipped to centralized logging systems
-                    # - Model output can contain echoed secrets, PII, or code with credentials
-                    #
-                    # If debugging requires logged output, implement a custom output_handler
-                    # with sanitization (see _sanitize_stderr_for_exception) and use DEBUG level
-                    # with an opt-in environment flag.
+                    # Print streaming output with vertical box character.
+                    # Note: vertical_char is captured from enclosing scope (standard closure).
+                    # Security: Output is printed to stdout only (not logged to files) to avoid
+                    # persisting potentially sensitive model output. See _sanitize_stderr_for_exception.
+                    print(f"  {vertical_char} {line}", flush=True)
 
                 runner_kwargs["on_output"] = output_handler
                 # Pass timeout to streaming variant for consistent timeout behavior
@@ -459,10 +471,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     status_msg = "Review fix completed (with warnings)"
                 # Display completion status with appropriate formatting
                 if use_claude_streaming:
-                    box_h, box_v = _get_box_chars()
-                    print(f"{box_h * 60}")
+                    horizontal_char, _ = _get_box_chars()
+                    print(f"{horizontal_char * 60}")
                     print(f"  {status_msg}")
-                    print(f"{box_h * 60}\n", flush=True)
+                    print(f"{horizontal_char * 60}\n", flush=True)
                 else:
                     print(status_msg, flush=True)
             except subprocess.TimeoutExpired as exc:
@@ -583,11 +595,22 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 sleep_with_jitter(float(poll))
                 continue
             except Exception as exc:
-                # Defense-in-depth: Re-raise programming errors that should have been
-                # caught by the earlier except _PROGRAMMING_ERROR_TYPES block.
-                # If a programming error reaches here, it indicates that the exception
-                # handler ordering was changed during refactoring. Using the same
-                # _PROGRAMMING_ERROR_TYPES tuple ensures consistency.
+                # DEFENSE-IN-DEPTH CHECK (kept intentionally despite being unreachable):
+                #
+                # Under correct operation, programming errors are caught by the earlier
+                # `except _PROGRAMMING_ERROR_TYPES` block and this check is never reached.
+                # However, this defensive check is retained to guard against two scenarios:
+                #
+                # 1. Future refactoring: If someone reorders exception handlers or adds a
+                #    new handler above _PROGRAMMING_ERROR_TYPES, this catch-all would
+                #    inadvertently capture programming errors. This check ensures they're
+                #    still raised immediately rather than retried.
+                #
+                # 2. Exception chaining: A wrapped exception (e.g., from a library) could
+                #    contain a programming error as __cause__ or __context__. While Python
+                #    matches the outer exception type, this provides extra safety.
+                #
+                # The log message explicitly calls this out as a bug to aid debugging.
                 if isinstance(exc, _PROGRAMMING_ERROR_TYPES):
                     logger.error(
                         "Programming error %s reached fallback handler unexpectedly - "

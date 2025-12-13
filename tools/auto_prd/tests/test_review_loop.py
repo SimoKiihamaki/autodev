@@ -516,12 +516,13 @@ class ReviewFixLoopTests(unittest.TestCase):
         """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
         for error_class in [AttributeError, TypeError, NameError, KeyError]:
             with self.subTest(error_class=error_class):
-                # Fresh mock_runner per error type for isolated call counts and side_effects.
-                mock_runner = mock.MagicMock(
+                # Create fresh mock per error type for isolated call counts and side_effects.
+                # Named 'fresh_runner' to emphasize each iteration gets a new instance.
+                fresh_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )
                 mock_policy_runner.reset_mock()
-                mock_policy_runner.return_value = (mock_runner, "claude")
+                mock_policy_runner.return_value = (fresh_runner, "claude")
 
                 with mock.patch(
                     "tools.auto_prd.review_loop.get_unresolved_feedback",
@@ -542,7 +543,7 @@ class ReviewFixLoopTests(unittest.TestCase):
 
                 # Use assertEqual with msg as third arg for proper display on failure
                 self.assertEqual(
-                    mock_runner.call_count,
+                    fresh_runner.call_count,
                     1,
                     f"{error_class.__name__} should not retry",
                 )

@@ -47,6 +47,11 @@ CODERABBIT_PROMPT_TIMEOUT_SECONDS = 900
 # command run) - cleanup timeout bounds how long we wait for graceful termination.
 PROCESS_CLEANUP_TIMEOUT_SECONDS = 5.0
 
+# Shorter timeout for waiting after kill() signal. Since kill() is forceful,
+# the process should terminate quickly. A shorter timeout avoids unnecessarily
+# long waits for zombie processes while still allowing reasonable cleanup time.
+PROCESS_KILL_WAIT_TIMEOUT_SECONDS = 2.0
+
 # Maximum characters of stderr to include in error messages to prevent
 # excessively long exception messages. Stderr can contain binary data or
 # very long output from crashed processes.
@@ -54,6 +59,12 @@ STDERR_ERROR_MESSAGE_MAX_CHARS = 1000
 
 # Patterns for sanitizing sensitive information from stderr before including
 # in exception messages. These patterns catch common credential/token formats.
+#
+# PERFORMANCE NOTE: Patterns are compiled ONCE at module import time (via re.compile()),
+# not on each sanitization call. The list iteration during sanitization is O(n) where
+# n is the number of patterns (~10), which is negligible compared to the actual regex
+# matching. Further optimization (e.g., combining patterns) would reduce readability
+# without meaningful performance benefit for error-path code.
 _SENSITIVE_STDERR_PATTERNS = [
     # API keys/tokens with common prefixes
     (re.compile(r"\b(sk-[a-zA-Z0-9]{20,})\b"), "<REDACTED_API_KEY>"),
@@ -465,6 +476,27 @@ def _resolve_unsafe_flag(
     return bool(allow_flag)
 
 
+def _safe_typename(obj: object) -> str:
+    """Get the type name of an object safely, handling edge cases.
+
+    Returns the type name for error messages. Handles edge cases where
+    type(x).__name__ might fail (e.g., proxy objects, broken __class__).
+
+    Args:
+        obj: The object to get the type name for.
+
+    Returns:
+        A string representing the type name, or a fallback string on failure.
+    """
+    try:
+        return type(obj).__name__
+    except Exception:
+        try:
+            return str(type(obj))
+        except Exception:
+            return "<unknown type>"
+
+
 def _build_claude_args(
     allow_flag: bool,
     model: str | None,
@@ -501,10 +533,10 @@ def _build_claude_args(
     # Early validation ensures clear error messages with caller stack context.
     if extra is not None:
         if not isinstance(extra, (list, tuple)):
-            msg = f"{caller}: 'extra' must be a list or tuple of strings, got {type(extra).__name__}"
+            msg = f"{caller}: 'extra' must be a list or tuple of strings, got {_safe_typename(extra)}"
             raise TypeError(msg)
         if not all(isinstance(x, str) for x in extra):
-            invalid_types = [type(x).__name__ for x in extra if not isinstance(x, str)]
+            invalid_types = [_safe_typename(x) for x in extra if not isinstance(x, str)]
             msg = f"{caller}: 'extra' must contain only strings, found: {invalid_types}"
             raise TypeError(msg)
 
@@ -739,20 +771,20 @@ def _cleanup_failed_process(
                 pass  # Stdin may already be closed or in an error state
 
         # Wait for process with bounded timeout, kill if necessary.
-        # Note: We use the same wait_timeout for both the initial wait and post-kill wait.
-        # This is intentional: the parameter controls how long we're willing to wait for
-        # process termination in this cleanup context.
+        # Initial wait uses wait_timeout (caller's configured cleanup timeout).
+        # Post-kill wait uses PROCESS_KILL_WAIT_TIMEOUT_SECONDS (shorter) since
+        # kill() is forceful and the process should terminate quickly.
         try:
             proc.wait(timeout=wait_timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             try:
-                proc.wait(timeout=wait_timeout)
+                proc.wait(timeout=PROCESS_KILL_WAIT_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Process did not terminate after kill() and %.1fs wait; "
                     "possible zombie process (pid=%s)",
-                    wait_timeout,
+                    PROCESS_KILL_WAIT_TIMEOUT_SECONDS,
                     proc.pid,
                 )
 
@@ -1251,7 +1283,7 @@ def claude_exec_streaming(
                 proc.stdout.close()
             if proc.stderr:
                 proc.stderr.close()
-            msg = "select() failed (OSError); streaming aborted"
+            msg = f"select() failed (OSError, errno={e.errno}): {e}; streaming aborted"
             raise RuntimeError(msg) from e
 
         for fd in readable:
