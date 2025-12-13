@@ -1155,8 +1155,7 @@ def claude_exec_streaming(
                     # Success - return the output
                     return stdout_so_far, stderr_so_far
 
-        ret = proc.poll()
-        process_exited = ret is not None
+        process_exited = proc.poll() is not None
         # Exclude fds that have reached EOF - they would cause select to return
         # immediately with nothing to read, spinning the loop forever
         readable_fds = [

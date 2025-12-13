@@ -120,9 +120,7 @@ def _get_box_chars() -> tuple[str, str]:
         return _BOX_CHARS_CACHE
 
 
-_JITTER_RNG = random.Random(
-    os.urandom(16)
-)  # jitter timing is not security-sensitive, seeded for variability
+_JITTER_RNG = random.Random()  # jitter timing is not security-sensitive
 
 
 def _decode_stderr(stderr: bytes | str | None) -> str:
