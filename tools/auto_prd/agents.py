@@ -376,9 +376,9 @@ class ClaudeHeadlessResponse:
             msg = f"Claude JSON response missing required fields: {missing}"
             raise ValueError(msg)
 
-        # Extract values with None handling and debug logging for observability.
-        # The 'or' pattern handles null values from JSON (e.g., "cost": null)
-        # which would otherwise cause TypeError in float()/int() conversion.
+        # Extract values with explicit None checks and debug logging for observability.
+        # Explicit None checks and type validation handle null values from JSON (e.g., "cost": null)
+        # to prevent TypeError in float()/int() conversion and improve robustness.
         result_raw = data.get("result")
         session_id_raw = data.get("session_id")
 
@@ -822,10 +822,10 @@ def _build_claude_args(
         msg = f"{caller}: 'output_format' must be one of {valid_output_formats}, got {output_format!r}"
         raise ValueError(msg)
 
-    # Validate 'allowed_tools' - must be a list of strings if provided
+    # Validate 'allowed_tools' - must be a list or tuple of strings if provided
     if allowed_tools is not None:
-        if not isinstance(allowed_tools, list):
-            msg = f"{caller}: 'allowed_tools' must be a list of strings, got {_safe_typename(allowed_tools)}"
+        if not isinstance(allowed_tools, (list, tuple)):
+            msg = f"{caller}: 'allowed_tools' must be a list or tuple of strings, got {_safe_typename(allowed_tools)}"
             raise TypeError(msg)
         if not all(isinstance(x, str) for x in allowed_tools):
             invalid_types = [

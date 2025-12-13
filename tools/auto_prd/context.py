@@ -123,7 +123,7 @@ class SessionMemory:
         Raises:
             ValueError: If numeric fields are negative.
         """
-        # Use __setattr__ validation by re-assigning through the validator
+        # Validate fields directly after construction
         self._validate_cost(self.total_cost_usd)
         self._validate_duration(self.total_duration_ms)
 
@@ -288,9 +288,15 @@ def build_phase_context(
     it needs to operate effectively.
 
     Args:
-        phase: The execution phase. Internal phases include: implement, fix
-            (for CodeRabbit fixes), pr, and review_fix. CLI phases are:
-            local, pr, review_fix (see VALID_PHASES in constants.py).
+        phase: The execution phase name. Valid values include:
+            - implement: Local implementation phase
+            - fix: CodeRabbit fix phase
+            - pr: Pull request creation phase
+            - review_fix: Review and fix phase
+            - local: CLI alias for implement phase
+            Note: Some phases are used internally (implement, fix), while others
+            are used by the CLI (local, pr, review_fix). See VALID_PHASES in
+            constants.py for the authoritative list of CLI phases.
         prd_path: Path to the PRD file.
         repo_root: Repository root directory.
         iteration: Current iteration number (1-indexed).
@@ -419,10 +425,24 @@ def save_session_memory(
             raise
         return None
 
-    # Use session_id if available, otherwise generate a timestamp-based name
-    filename = (
-        memory.session_id if memory.session_id else f"session_{memory.created_at}"
-    )
+    # Use session_id if available, otherwise generate a filename-safe timestamp.
+    # Format created_at as YYYYMMDDTHHMMSS (with microseconds if available) to avoid
+    # colons and other special characters that would be replaced with underscores.
+    if memory.session_id:
+        filename = memory.session_id
+    else:
+        try:
+            dt = datetime.fromisoformat(memory.created_at)
+            # Use microseconds if present, else just seconds
+            if dt.microsecond:
+                safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
+            else:
+                safe_ts = dt.strftime("%Y%m%dT%H%M%S")
+            filename = f"session_{safe_ts}"
+        except ValueError:
+            # Fallback: use only the digits from created_at
+            safe_ts = "".join(c for c in memory.created_at if c.isdigit())
+            filename = f"session_{safe_ts}"
     # Sanitize filename by replacing non-alphanumeric characters with underscores
     filename = "".join(c if c.isalnum() or c in "-_" else "_" for c in filename)
     filepath = memory_dir / f"{filename}.json"
@@ -619,7 +639,7 @@ class StallDetector:
             msg = f"no_output_threshold_seconds must be positive, got {no_output_threshold_seconds}"
             raise ValueError(msg)
         if no_progress_threshold_iterations < 1:
-            msg = f"no_progress_threshold_iterations must be >= 1, got {no_progress_threshold_iterations}"
+            msg = f"no_progress_threshold_iterations must be positive, got {no_progress_threshold_iterations}"
             raise ValueError(msg)
 
         # Store thresholds as private attributes (read-only via properties)
