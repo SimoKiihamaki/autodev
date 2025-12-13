@@ -59,11 +59,40 @@ MAX_CONSECUTIVE_FAILURES = 3
 # for deduplication purposes, we only care whether a key exists, not how recently it
 # was accessed. FIFO eviction is simpler and sufficient for this use case.
 #
+# TTL mechanism: Each entry stores {comment_id: timestamp} to support time-based eviction.
+# Entries older than _WARNED_MALFORMED_TTL_SECONDS are eligible for cleanup. This prevents
+# unbounded memory growth in long-running processes/services while still providing
+# effective deduplication within the TTL window.
+#
 # Thread safety: Protected by _WARNED_MALFORMED_LOCK to prevent race conditions
 # during concurrent access from multiple threads (e.g., parallel format_unresolved_bullets calls).
-_warned_malformed_comment_ids: OrderedDict[str, None] = OrderedDict()
+_warned_malformed_comment_ids: OrderedDict[str, float] = OrderedDict()
 _WARNED_MALFORMED_MAX_SIZE = 1000
+_WARNED_MALFORMED_TTL_SECONDS = 60 * 60  # 1 hour TTL for cache entries
 _WARNED_MALFORMED_LOCK = threading.Lock()
+
+
+def _cleanup_warned_malformed_cache(now: float | None = None) -> None:
+    """Evict expired entries from the warned malformed comment ID cache.
+
+    Should be called periodically (e.g., at the start of format_unresolved_bullets)
+    to prevent unbounded memory growth in long-running processes.
+
+    Args:
+        now: Current timestamp for testing. If None, uses time.time().
+
+    Note:
+        This function assumes the caller holds _WARNED_MALFORMED_LOCK.
+    """
+    if now is None:
+        now = time.time()
+    expired_keys = []
+    for key, ts in list(_warned_malformed_comment_ids.items()):
+        if now - ts > _WARNED_MALFORMED_TTL_SECONDS:
+            expired_keys.append(key)
+    for key in expired_keys:
+        _warned_malformed_comment_ids.pop(key, None)
+
 
 # Truncation limits for error messages to balance detail with readability.
 # ERROR_DETAIL_TRUNCATE_CHARS: Max chars for error detail shown to user (brief summary)
@@ -76,10 +105,20 @@ STDERR_LOG_TRUNCATE_CHARS = 2000
 # Programming error types that should never be retried.
 # These exceptions indicate bugs in the code rather than transient failures:
 # - AttributeError, TypeError, NameError: Classic programming mistakes
-# - KeyError: Missing dict keys often indicate API changes or data bugs
 # - RuntimeError: Indicates internal errors that won't resolve via retry
 # - AssertionError: Assertion failures indicate violated invariants
 # - ImportError: Module import issues require configuration fixes
+#
+# NOTE: KeyError is intentionally EXCLUDED from this list because it can occur
+# in two distinct scenarios:
+# 1. Programming bugs (accessing undefined dict keys in our code) - should not retry
+# 2. Malformed API responses with missing expected fields - might be transient and
+#    could benefit from retry (e.g., incomplete JSON responses due to network issues)
+#
+# We chose to err on the side of allowing retry for KeyError because:
+# - Transient API issues are relatively common in networked environments
+# - The retry limit (MAX_CONSECUTIVE_FAILURES) still bounds worst-case behavior
+# - True programming bugs will hit the retry limit quickly and fail consistently
 #
 # This tuple is defined once at module level and used in both the explicit
 # exception handler and the fallback handler for consistency. This prevents
@@ -88,7 +127,6 @@ _PROGRAMMING_ERROR_TYPES: tuple[type[Exception], ...] = (
     AttributeError,
     TypeError,
     NameError,
-    KeyError,
     RuntimeError,
     AssertionError,
     ImportError,
@@ -283,20 +321,34 @@ def review_fix_loop(
         checkpoint: Optional checkpoint dict for resume support.
 
     Returns:
-        bool: True means "terminated without reaching max failures" - the function completed
-        without exhausting all retry attempts. This includes:
-        - pr_number is None (nothing to do, no-op)
-        - dry_run=True (skipped execution)
-        - Loop completed successfully
-        - Loop timed out due to idle_grace
-        - Loop stopped by policy (e.g., should_stop_review_after_push)
+        bool: Indicates the termination state of the review loop.
 
-        False means "terminated due to failures" - the loop hit MAX_CONSECUTIVE_FAILURES
-        consecutive runner failures and gave up.
+        **True (Completed/No-op)** - The function terminated gracefully. This includes
+        both "work completed" and "nothing to do" scenarios:
 
-        Note: True does NOT mean "successfully completed work". It means the function
-        terminated without encountering a fatal error condition. Callers should check
-        pr_number and dry_run if they need to distinguish "nothing to do" from "completed".
+        - **No-op states** (no work attempted):
+          - pr_number is None: Early exit, nothing to review
+          - dry_run=True: Execution skipped by design
+
+        - **Success states** (work was attempted and completed):
+          - Loop completed after processing all feedback
+          - Loop timed out due to idle_grace (no new feedback arrived)
+          - Loop stopped by policy (e.g., should_stop_review_after_push returned True)
+
+        **False (Failed)** - The loop hit MAX_CONSECUTIVE_FAILURES consecutive runner
+        failures and terminated. This indicates persistent problems with the executor.
+
+        **Usage guidance**:
+        - For simple "did it fail?" checks: `if not result: handle_failure()`
+        - To distinguish no-op from actual work, check inputs:
+          ```python
+          if pr_number is None or dry_run:
+              # No-op - nothing was actually done
+          elif result:
+              # Success - work was completed
+          else:
+              # Failure - max retries exhausted
+          ```
 
     Raises:
         The following exceptions are re-raised immediately if encountered and are considered
@@ -314,8 +366,6 @@ def review_fix_loop(
             inappropriate type, such as invalid argument types.
         NameError: If a variable or function name is not found, typically
             indicating a configuration or import issue.
-        KeyError: If a required key is missing from a dictionary or mapping,
-            such as missing fields in API responses or checkpoint data.
         RuntimeError: If an internal error occurs that cannot be resolved by
             retrying (e.g., subprocess configuration failures, invariant violations).
         AssertionError: If an assertion fails, indicating a violated invariant
@@ -562,7 +612,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # SystemExit(0) or SystemExit(None) = clean exit, propagate immediately.
                 # This represents intentional program termination (not an error).
                 #
-                # SystemExit(non-zero) = execution failure, treat as recoverable.
+                # FATAL EXIT CODES: Certain non-zero exit codes indicate permanent failures
+                # that should not be retried. These are conventionally non-recoverable:
+                #   - 2: Misuse of shell command (bad arguments) - requires code/config fix
+                #   - 126: Command cannot execute (permission denied) - requires intervention
+                #   - 127: Command not found (missing binary) - requires installation
+                #   - 130: Script terminated by Ctrl+C (user intent) - should propagate
+                #
+                # Exit code 1 is intentionally NOT in this list because it's used for
+                # general errors that may be transient (rate limits, resource issues, etc.).
+                _FATAL_EXIT_CODES = frozenset({2, 126, 127, 130})
+                #
+                # SystemExit(other non-zero) = execution failure, treat as potentially recoverable.
                 # This differs from PermissionError/FileNotFoundError/MemoryError (which are
                 # re-raised immediately) because:
                 # 1. SystemExit(non-zero) typically comes from safety utilities in command.py
@@ -572,12 +633,16 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # 3. subprocess.CalledProcessError (non-zero exit from child process) is also
                 #    treated as recoverable, and SystemExit(non-zero) is semantically similar
                 #    when it indicates "this run failed" rather than "this is misconfigured"
-                #
-                # If this heuristic proves wrong for specific exit codes, consider adding
-                # an explicit list of "fatal" exit codes that should re-raise immediately.
                 exit_code = getattr(exc, "code", None)
                 if exit_code in (0, None):
                     # Clean exit requested by code - propagate immediately without retry.
+                    raise
+                if isinstance(exit_code, int) and exit_code in _FATAL_EXIT_CODES:
+                    # Fatal exit code - do not retry, propagate immediately.
+                    logger.error(
+                        "Review runner received fatal SystemExit code %d - not retrying",
+                        exit_code,
+                    )
                     raise
                 # Non-zero exit code: treat as execution failure (potentially recoverable).
                 consecutive_failures += 1
@@ -595,29 +660,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 sleep_with_jitter(float(poll))
                 continue
             except Exception as exc:
-                # DEFENSE-IN-DEPTH CHECK (kept intentionally despite being unreachable):
-                #
-                # Under correct operation, programming errors are caught by the earlier
-                # `except _PROGRAMMING_ERROR_TYPES` block and this check is never reached.
-                # However, this defensive check is retained to guard against two scenarios:
-                #
-                # 1. Future refactoring: If someone reorders exception handlers or adds a
-                #    new handler above _PROGRAMMING_ERROR_TYPES, this catch-all would
-                #    inadvertently capture programming errors. This check ensures they're
-                #    still raised immediately rather than retried.
-                #
-                # 2. Exception chaining: A wrapped exception (e.g., from a library) could
-                #    contain a programming error as __cause__ or __context__. While Python
-                #    matches the outer exception type, this provides extra safety.
-                #
-                # The log message explicitly calls this out as a bug to aid debugging.
-                if isinstance(exc, _PROGRAMMING_ERROR_TYPES):
-                    logger.error(
-                        "Programming error %s reached fallback handler unexpectedly - "
-                        "this indicates a bug in exception handling logic",
-                        type(exc).__name__,
-                    )
-                    raise
+                # NOTE: Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
+                # earlier explicit handler and re-raised immediately. This catch-all only
+                # handles truly unexpected exceptions. If you modify exception handlers,
+                # ensure _PROGRAMMING_ERROR_TYPES remains higher in the handler chain.
                 consecutive_failures += 1
                 error_type = type(exc).__name__
                 logger.exception(
@@ -692,8 +738,12 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
             # repeatedly across multiple poll cycles (e.g., due to a persistent API bug).
             comment_id = str(entry.get("comment_id", "unknown"))
             # Thread-safe access to the shared cache. The lock protects the check-then-act
-            # sequence (membership test, eviction, insertion) from race conditions.
+            # sequence (membership test, TTL cleanup, eviction, insertion) from race conditions.
             with _WARNED_MALFORMED_LOCK:
+                # Clean up expired entries periodically to prevent unbounded memory growth
+                # in long-running processes. This is done inside the lock to ensure
+                # consistency with subsequent membership checks.
+                _cleanup_warned_malformed_cache()
                 if comment_id not in _warned_malformed_comment_ids:
                     # Add to FIFO cache with eviction if at capacity.
                     # This maintains deduplication while preventing unbounded growth.
@@ -702,12 +752,12 @@ def format_unresolved_bullets(unresolved: list[dict], limit: int) -> str:
                     # BEFORE inserting the new entry. This ensures the cache never exceeds
                     # _WARNED_MALFORMED_MAX_SIZE entries. The sequence is:
                     #   1. If at capacity (len >= max), remove oldest (popitem)
-                    #   2. Add new entry (dict assignment)
+                    #   2. Add new entry with timestamp (dict assignment)
                     # After this sequence, len == max (not max + 1) because eviction precedes insertion.
                     if len(_warned_malformed_comment_ids) >= _WARNED_MALFORMED_MAX_SIZE:
                         # Evict oldest entry (FIFO order in OrderedDict)
                         _warned_malformed_comment_ids.popitem(last=False)
-                    _warned_malformed_comment_ids[comment_id] = None
+                    _warned_malformed_comment_ids[comment_id] = time.time()
                     should_warn = True
                 else:
                     should_warn = False

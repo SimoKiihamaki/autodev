@@ -63,8 +63,19 @@ STDERR_ERROR_MESSAGE_MAX_CHARS = 1000
 # PERFORMANCE NOTE: Patterns are compiled ONCE at module import time (via re.compile()),
 # not on each sanitization call. The list iteration during sanitization is O(n) where
 # n is the number of patterns (~10), which is negligible compared to the actual regex
-# matching. Further optimization (e.g., combining patterns) would reduce readability
-# without meaningful performance benefit for error-path code.
+# matching.
+#
+# OPTIMIZATION ALTERNATIVES CONSIDERED AND REJECTED:
+# 1. Combining API key patterns into single regex with alternation (sk-|ghp_|gho_|...):
+#    - Would reduce pattern count but complicate replacement logic (each needs different text)
+#    - Makes adding/removing patterns error-prone
+#    - Minimal performance gain since this runs only on error paths, not hot paths
+# 2. Trie-based prefix matching for known prefixes (sk-, ghp_, etc.):
+#    - Overkill for ~10 patterns; adds complexity without proportional benefit
+# 3. Early exit if stderr is short:
+#    - Already handled by max_chars truncation before pattern matching
+#
+# Current design prioritizes maintainability: each pattern is independent and self-documenting.
 _SENSITIVE_STDERR_PATTERNS = [
     # API keys/tokens with common prefixes
     (re.compile(r"\b(sk-[a-zA-Z0-9]{20,})\b"), "<REDACTED_API_KEY>"),
@@ -87,28 +98,21 @@ _SENSITIVE_STDERR_PATTERNS = [
     (re.compile(r"/home/[a-zA-Z0-9_\-]+/"), "/home/<USER>/"),
     (re.compile(r"/Users/[a-zA-Z0-9_\-]+/"), "/Users/<USER>/"),
     # Windows user directory paths (e.g., C:\Users\username\ or D:/Users/username/)
-    # Handles both backslash and forward slash path separators via [\\/]+ pattern.
-    # The trailing separator is optional ([\\/]*) to match paths like "C:\Users\username"
-    # without a trailing slash, which commonly appear in error messages.
+    # Two separate patterns to preserve the original separator style for debugging clarity:
+    # 1. Backslash pattern: C:\Users\username\ -> <DRIVE>:\Users\<USER>\
+    # 2. Forward slash pattern: D:/Users/alice/ -> <DRIVE>:/Users/<USER>/
     #
-    # PATH NORMALIZATION BEHAVIOR: The replacement ALWAYS uses backslashes regardless
-    # of the original path's separator style. This means:
-    # - Input:  "D:/Users/alice/file.txt" (forward slashes)
-    # - Output: "<DRIVE>:\Users\<USER>\" (backslashes)
-    #
-    # Rationale for backslash normalization:
-    # 1. Windows users expect backslashes in path output and will find it clearer
-    # 2. Sanitized paths appear in error messages/logs meant for user debugging
-    # 3. Consistency with how Windows displays paths natively
-    # 4. Forward slashes in Windows paths are typically from cross-platform code
-    #    (e.g., Python's pathlib), so normalizing improves debugging context
-    #
-    # Trade-off: Paths that intentionally used forward slashes (which Windows accepts)
-    # will be normalized to backslashes. This is acceptable because the sanitized output
-    # is for display/logging only, not for programmatic path operations.
+    # Preserving original separator style improves debugging because:
+    # - Users can match sanitized paths to their original error messages
+    # - Cross-platform code (pathlib) commonly uses forward slashes on Windows
+    # - The sanitized output format matches what the user actually saw
     (
-        re.compile(r"[A-Za-z]:[\\/]+Users[\\/][^\\/]+[\\/]*", re.IGNORECASE),
+        re.compile(r"[A-Za-z]:\\+Users\\[^\\]+\\?", re.IGNORECASE),
         r"<DRIVE>:\\Users\\<USER>\\",
+    ),
+    (
+        re.compile(r"[A-Za-z]:/+Users/[^/]+/?", re.IGNORECASE),
+        r"<DRIVE>:/Users/<USER>/",
     ),
 ]
 
@@ -883,6 +887,15 @@ def claude_exec_streaming(
 
         If exact output preservation is required (e.g., for binary-like text
         or format-sensitive processing), use claude_exec instead.
+
+        **INCOMPLETE OUTPUT WARNING**: If I/O errors occur during streaming but
+        the process exits with code 0, this function returns successfully with
+        potentially incomplete output. A warning is logged at ERROR level with
+        details of the read errors. Callers requiring guaranteed complete output
+        should monitor logs for "Claude execution completed with N read errors"
+        messages, or use claude_exec (non-streaming) instead which doesn't have
+        this limitation. This design choice prioritizes returning partial results
+        over failing entirely when some data was successfully captured.
 
     Raises:
         PermissionError: If allow_unsafe_execution is False and dry_run is False

@@ -703,12 +703,34 @@ def popen_streaming(
     # - Missing PYTHONPATH causes hard-to-debug import errors in subprocess hooks
     #
     # find_repo_root() always returns a valid Path (falls back to cwd() if no .git found),
-    # so repo_root_path will never be None. We validate it exists to catch edge cases where
-    # the fallback cwd was deleted between find_repo_root() and this check.
+    # so repo_root_path will never be None.
+    #
+    # SECURITY: We validate that repo_root_path exists, is a directory, and contains a .git
+    # entry to prevent PYTHONPATH injection attacks. If an attacker could control repo_root_path
+    # to point to an untrusted directory, malicious Python code could be injected. By requiring
+    # a .git entry, we ensure the path is a legitimate repository root.
+    #
+    # We use resolve(strict=True) to:
+    # 1. Convert to absolute path to prevent relative path traversal
+    # 2. Raise FileNotFoundError if path doesn't exist (the strict=True behavior)
+    # 3. Resolve symlinks to prevent symlink-based attacks to untrusted locations
     repo_root_path = find_repo_root()
-    if not repo_root_path.exists():
+    try:
+        repo_root_path = repo_root_path.resolve(strict=True)
+    except FileNotFoundError:
         raise FileNotFoundError(
             _REPO_ROOT_NOT_FOUND_MSG.format(repo_root=repo_root_path)
+        )
+    if not repo_root_path.is_dir():
+        raise FileNotFoundError(
+            _REPO_ROOT_NOT_FOUND_MSG.format(repo_root=repo_root_path)
+        )
+    # Verify .git entry exists (directory for normal repos, file for worktrees/submodules)
+    git_entry = repo_root_path / ".git"
+    if not git_entry.exists():
+        raise FileNotFoundError(
+            f"Repository root {repo_root_path} does not contain a .git directory or file. "
+            "This may indicate an invalid repository path."
         )
     repo_root = str(repo_root_path)
     env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}{os.pathsep}{repo_root}".lstrip(

@@ -513,15 +513,21 @@ class ReviewFixLoopTests(unittest.TestCase):
         _mock_git_head,
         _mock_trigger,
     ) -> None:
-        """Test that programming errors (AttributeError, TypeError, etc.) are re-raised."""
-        for error_class in [AttributeError, TypeError, NameError, KeyError]:
+        """Test that programming errors (AttributeError, TypeError, etc.) are re-raised.
+
+        Note: KeyError is intentionally EXCLUDED from this test because it is treated
+        as potentially recoverable. KeyError can occur from malformed API responses
+        (transient) as well as programming bugs. See _PROGRAMMING_ERROR_TYPES for rationale.
+        """
+        for error_class in [AttributeError, TypeError, NameError]:
             with self.subTest(error_class=error_class):
                 # Create fresh mock per error type for isolated call counts and side_effects.
                 # Named 'fresh_runner' to emphasize each iteration gets a new instance.
+                # Note: We don't call mock_policy_runner.reset_mock() here because we create
+                # a new fresh_runner anyway, making the reset redundant.
                 fresh_runner = mock.MagicMock(
                     side_effect=error_class("programming error")
                 )
-                mock_policy_runner.reset_mock()
                 mock_policy_runner.return_value = (fresh_runner, "claude")
 
                 with mock.patch(

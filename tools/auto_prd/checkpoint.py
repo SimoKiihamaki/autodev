@@ -218,23 +218,15 @@ def save_checkpoint(checkpoint: dict[str, Any]) -> None:
         raise
 
 
-def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
-    """Migrate checkpoint from older schema versions to current version.
+def _migrate_v0_to_v1(checkpoint: dict[str, Any]) -> None:
+    """Migrate checkpoint from v0 (unversioned) to v1.
 
-    This function handles backward compatibility for checkpoints created by older
-    versions of the software. It performs in-place migration of deprecated field
-    names and structures.
+    Changes in v1:
+    - Added 'version' field
+    - Renamed review_fix.last_activity_time -> last_activity_wall_clock
 
-    Args:
-        checkpoint: Checkpoint dictionary to migrate.
-
-    Returns:
-        The migrated checkpoint (same object, modified in place).
+    Note: Modifies checkpoint in place.
     """
-    # Migration: last_activity_time -> last_activity_wall_clock (version 1)
-    # The field was renamed for clarity - "wall_clock" explicitly indicates this is
-    # a wall-clock timestamp (time.time()) for operational visibility, not a monotonic
-    # timer used for idle timeout computation.
     review_fix = checkpoint.get("phases", {}).get("review_fix", {})
     if (
         "last_activity_time" in review_fix
@@ -244,6 +236,78 @@ def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
         logger.debug(
             "Migrated checkpoint field: last_activity_time -> last_activity_wall_clock"
         )
+
+
+# Migration functions keyed by source version.
+# Each function takes a checkpoint dict and modifies it in place to the next version.
+# To add a new migration:
+# 1. Define a function _migrate_vN_to_vM(checkpoint) that modifies checkpoint in place
+# 2. Add entry N: _migrate_vN_to_vM to _MIGRATIONS
+# 3. Increment CHECKPOINT_VERSION at the top of this file
+_MIGRATIONS: dict[int, Any] = {
+    0: _migrate_v0_to_v1,
+    # Future migrations:
+    # 1: _migrate_v1_to_v2,
+}
+
+
+def _migrate_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """Migrate checkpoint from older schema versions to current version.
+
+    This function handles backward compatibility for checkpoints created by older
+    versions of the software. It applies migrations sequentially from the checkpoint's
+    version to CHECKPOINT_VERSION.
+
+    Migration versioning:
+    - Checkpoints without a 'version' field are treated as version 0
+    - Each migration function handles one version increment
+    - Migrations are applied in sequence until reaching CHECKPOINT_VERSION
+    - The 'version' field is updated after all migrations complete
+
+    Args:
+        checkpoint: Checkpoint dictionary to migrate.
+
+    Returns:
+        The migrated checkpoint (same object, modified in place).
+    """
+    # Checkpoints without a version field are from before versioning was added (v0)
+    current_version = checkpoint.get("version", 0)
+
+    if current_version > CHECKPOINT_VERSION:
+        logger.warning(
+            "Checkpoint version %d is newer than supported version %d. "
+            "Some features may not work correctly.",
+            current_version,
+            CHECKPOINT_VERSION,
+        )
+        return checkpoint
+
+    if current_version == CHECKPOINT_VERSION:
+        return checkpoint
+
+    # Apply migrations sequentially
+    logger.debug(
+        "Migrating checkpoint from version %d to %d",
+        current_version,
+        CHECKPOINT_VERSION,
+    )
+    while current_version < CHECKPOINT_VERSION:
+        migration_fn = _MIGRATIONS.get(current_version)
+        if migration_fn is None:
+            logger.warning(
+                "No migration function for version %d to %d; skipping remaining migrations",
+                current_version,
+                current_version + 1,
+            )
+            break
+        migration_fn(checkpoint)
+        current_version += 1
+
+    # Update version to current
+    checkpoint["version"] = CHECKPOINT_VERSION
+    logger.debug(
+        "Checkpoint migration complete (now at version %d)", CHECKPOINT_VERSION
+    )
 
     return checkpoint
 

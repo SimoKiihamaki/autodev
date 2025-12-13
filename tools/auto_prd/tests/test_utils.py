@@ -27,18 +27,35 @@ class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
         ignored to prevent sensitive model output (secrets, PII, tokens) from
         appearing in error messages.
 
+        The test data uses realistic secret patterns to demonstrate the security
+        vulnerability being prevented. If stdout were included in error details,
+        these secrets would leak into logs, error messages, and exception traces.
+
         For migration notes on this behavior change, see CHANGELOG.md.
         """
+        # Use realistic secret patterns that could appear in LLM output
+        # These demonstrate what would leak if stdout were included in error details
+        stdout_with_secrets = (
+            b"Here's the code you requested:\n"
+            b"API_KEY=sk-1234567890abcdef1234567890abcdef\n"
+            b"GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345678\n"
+            b"DATABASE_URL=postgres://user:password123@localhost/db\n"
+            b"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxx\n"
+        )
         exc = subprocess.CalledProcessError(
             1,
             ["coderabbit", "--prompt-only"],
-            output=b"sensitive model output that should be ignored",
+            output=stdout_with_secrets,
             stderr=None,
         )
         details = extract_called_process_error_details(exc)
         self.assertIsInstance(details, str)
-        # Should NOT contain stdout content (security: stdout may have sensitive data)
-        self.assertNotIn("sensitive", details)
+        # Should NOT contain ANY stdout content (security: stdout may have sensitive data)
+        self.assertNotIn("sk-", details)
+        self.assertNotIn("ghp_", details)
+        self.assertNotIn("password", details)
+        self.assertNotIn("Bearer", details)
+        self.assertNotIn("API_KEY", details)
         # Should fall back to exit code when stderr is empty (new behavior)
         self.assertEqual(details, "exit code 1")
 
