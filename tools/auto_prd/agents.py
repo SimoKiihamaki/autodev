@@ -796,16 +796,20 @@ def _safe_typename(obj: object) -> str:
     """
     try:
         return type(obj).__name__
-    except (TypeError, AttributeError) as e:
-        # Catch only expected errors (TypeError, AttributeError) for clarity
-        logger.debug("Failed to get type name via __name__: %s", e)
+    except Exception as e:
+        # Broad catch for primary path: type(obj).__name__ can fail in pathological
+        # cases with TypeError, AttributeError, or even custom exceptions from
+        # objects with unusual __class__ implementations. Since this is a defensive
+        # utility for error messages, we prioritize robustness over precision.
+        logger.debug(
+            "Failed to get type name via __name__: %s (%s)", e, type(e).__name__
+        )
         try:
             return str(type(obj))
         except Exception:
-            # Broad catch here is intentional: str(type(obj)) can raise
-            # unexpected exceptions in pathological cases (e.g., RecursionError
+            # Broad catch for fallback path: str(type(obj)) can raise RecursionError
             # for deeply nested proxy objects, or custom exceptions from
-            # __str__/__repr__ overrides). This is a defensive utility function.
+            # __str__/__repr__ overrides. This is the last-resort fallback.
             return "<unknown type>"
 
 
@@ -865,11 +869,15 @@ def _build_claude_args(
             msg = f"{caller}: 'extra' must contain only strings, found: {invalid_types}"
             raise TypeError(msg)
 
-    # Validate output_format
+    # Validate output_format - reject empty strings with a specific error message
     valid_output_formats = {"json", "stream-json"}
-    if output_format is not None and output_format not in valid_output_formats:
-        msg = f"{caller}: 'output_format' must be one of {valid_output_formats}, got {output_format!r}"
-        raise ValueError(msg)
+    if output_format is not None:
+        if output_format == "":
+            msg = f"{caller}: 'output_format' cannot be empty; use None to omit or one of {valid_output_formats}"
+            raise ValueError(msg)
+        if output_format not in valid_output_formats:
+            msg = f"{caller}: 'output_format' must be one of {valid_output_formats}, got {output_format!r}"
+            raise ValueError(msg)
 
     # Validate 'allowed_tools' - must be a list or tuple of strings if provided
     if allowed_tools is not None:

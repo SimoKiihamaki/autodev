@@ -36,7 +36,7 @@ from .utils import (
     extract_called_process_error_details,
     is_valid_int,
     is_valid_numeric,
-    sanitize_for_cli,
+    scrub_cli_text,
 )
 
 JITTER_MIN_SECONDS = 0.0
@@ -444,7 +444,17 @@ def review_fix_loop(
     raw_cycles = review_state.get("cycles", 0)
     # Use is_valid_numeric to exclude booleans from being treated as valid cycle counts.
     # Boolean checkpoint values should be treated as corrupted data and reset to 0.
-    cycles = int(raw_cycles) if is_valid_numeric(raw_cycles) else 0
+    if is_valid_numeric(raw_cycles):
+        cycles = int(raw_cycles)
+    else:
+        # Log warning for consistency with other checkpoint field validation
+        # (processed_comment_ids, compacted_history both log when resetting).
+        logger.warning(
+            "Checkpoint 'cycles' has invalid value %r (type %s); resetting to 0",
+            raw_cycles,
+            type(raw_cycles).__name__,
+        )
+        cycles = 0
 
     # Context compaction: maintain summaries of previous fixes for continuity.
     # This is passed via --append-system-prompt to give Claude context about
@@ -531,12 +541,15 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # <previous_fixes> because the system_prompt_suffix is passed as a CLI
                 # argument, and < > | ; ` characters are blocked by validate_command_args()
                 # as potential shell metacharacters. We sanitize the history content using
-                # sanitize_for_cli() since review feedback may contain these characters.
+                # scrub_cli_text() since review feedback may contain these characters.
+                # scrub_cli_text() is preferred over sanitize_for_cli() as it's the
+                # established utility used throughout the codebase (pr_flow.py, command.py)
+                # and includes early-exit optimization when no unsafe chars are present.
                 if compacted_history:
                     # At this point, compacted_history is guaranteed non-empty (truthy check above).
                     # Sanitize history entries using the module-level helper function.
                     sanitized_history = [
-                        sanitize_for_cli(entry)
+                        scrub_cli_text(entry)
                         for entry in compacted_history[-MAX_COMPACTED_HISTORY:]
                     ]
                     context_suffix = (
@@ -790,6 +803,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             num_items = len(unresolved)
             # Defensive extraction: summary can be non-string (None, int, dict, etc.)
             # from malformed API responses, so validate type before slicing.
+            # The `isinstance(summary, str) and summary` check:
+            #   1. isinstance(..., str) - ensures type safety for slicing
+            #   2. `and summary` - filters out empty strings (falsy), which would be
+            #      useless in the examples list
             summary_items: list[str] = []
             for item in unresolved[:3]:
                 summary = item.get("summary")
