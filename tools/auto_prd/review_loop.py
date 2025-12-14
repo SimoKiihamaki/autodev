@@ -19,7 +19,11 @@ from .agents import (
     get_claude_exec_timeout,
 )
 from .checkpoint import save_checkpoint, update_phase_state
-from .constants import CODERABBIT_FINDINGS_CHAR_LIMIT, get_tool_allowlist
+from .constants import (
+    CLI_ARG_REPLACEMENTS,
+    CODERABBIT_FINDINGS_CHAR_LIMIT,
+    get_tool_allowlist,
+)
 from .gh_ops import (
     acknowledge_review_items,
     get_unresolved_feedback,
@@ -516,12 +520,28 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # Add phase-specific tool restrictions for Claude
                 runner_kwargs["allowed_tools"] = get_tool_allowlist("review_fix")
                 # Add context compaction: inject history of previous fixes
+                # Note: Using bracket-style tags [previous_fixes] instead of XML-style
+                # <previous_fixes> because the system_prompt_suffix is passed as a CLI
+                # argument, and < > | ; ` characters are blocked by validate_command_args()
+                # as potential shell metacharacters. We sanitize the history content using
+                # CLI_ARG_REPLACEMENTS since review feedback may contain these characters.
                 if compacted_history:
+                    # Sanitize history entries to replace unsafe CLI characters
+                    # that could trigger validate_command_args() security checks
+                    def sanitize_for_cli(text: str) -> str:
+                        for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
+                            text = text.replace(unsafe, safe)
+                        return text
+
+                    sanitized_history = [
+                        sanitize_for_cli(entry)
+                        for entry in compacted_history[-MAX_COMPACTED_HISTORY:]
+                    ]
                     context_suffix = (
-                        "\n\n<previous_fixes>\n"
+                        "\n\n[previous_fixes]\n"
                         "Context from prior fix iterations (most recent last):\n"
-                        + "\n---\n".join(compacted_history[-MAX_COMPACTED_HISTORY:])
-                        + "\n</previous_fixes>"
+                        + "\n---\n".join(sanitized_history)
+                        + "\n[/previous_fixes]"
                     )
                     runner_kwargs["system_prompt_suffix"] = context_suffix
 
