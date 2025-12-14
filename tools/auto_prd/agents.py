@@ -786,7 +786,7 @@ def _safe_typename(obj: object) -> str:
     try:
         return type(obj).__name__
     except (TypeError, AttributeError) as e:
-        # Narrow exception types to avoid catching unrelated system errors
+        # Catch only expected errors (TypeError, AttributeError) for clarity
         logger.debug("Failed to get type name via __name__: %s", e)
         try:
             return str(type(obj))

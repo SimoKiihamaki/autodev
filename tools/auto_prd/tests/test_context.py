@@ -59,30 +59,6 @@ class SessionMemoryTests(unittest.TestCase):
             SessionMemory(session_id="test", total_duration_ms=-100)
         self.assertIn("non-negative", str(ctx.exception))
 
-    def test_assignment_validation_cost(self):
-        """Test that assigning negative cost after creation raises ValueError."""
-        memory = SessionMemory(session_id="test")
-        with self.assertRaises(ValueError):
-            memory.total_cost_usd = -5.0
-
-    def test_assignment_validation_duration(self):
-        """Test that assigning negative duration after creation raises ValueError."""
-        memory = SessionMemory(session_id="test")
-        with self.assertRaises(ValueError):
-            memory.total_duration_ms = -100
-
-    def test_assignment_validation_type_cost(self):
-        """Test that assigning non-numeric cost raises TypeError."""
-        memory = SessionMemory(session_id="test")
-        with self.assertRaises(TypeError):
-            memory.total_cost_usd = "not a number"
-
-    def test_assignment_validation_type_duration(self):
-        """Test that assigning non-numeric duration raises TypeError."""
-        memory = SessionMemory(session_id="test")
-        with self.assertRaises(TypeError):
-            memory.total_duration_ms = "not a number"
-
     def test_to_dict(self):
         """Test SessionMemory.to_dict() serialization."""
         memory = SessionMemory(

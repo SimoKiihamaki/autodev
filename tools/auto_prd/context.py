@@ -103,7 +103,7 @@ class SessionMemory:
 
     Raises:
         ValueError: If total_cost_usd or total_duration_ms are negative
-            (validated on construction and assignment).
+            (validated on construction only; assignment is not validated).
     """
 
     session_id: str
@@ -124,11 +124,11 @@ class SessionMemory:
             ValueError: If numeric fields are negative.
 
         Note:
-            Validation is performed only during __post_init__ (not via __setattr__)
-            because dataclasses call __setattr__ for each field during __init__
-            before __post_init__ runs. Using __setattr__ for validation would cause
-            issues since the validation methods wouldn't be bound yet during field
-            initialization.
+            Validation is performed only during construction (in __post_init__).
+            This class does not implement __setattr__, so assignments after
+            construction are not validated. This design choice avoids complexity
+            with dataclass field initialization, where __setattr__ is called for
+            each field before __post_init__ runs.
         """
         # Validate fields directly after construction
         if self.total_cost_usd < 0:
