@@ -182,6 +182,9 @@ class SessionMemory:
                 f"files_touched must be a list, got {type(files_touched_raw).__name__}"
             )
             raise TypeError(msg)
+        if not all(isinstance(x, str) for x in files_touched_raw):
+            msg = "files_touched must contain only strings"
+            raise TypeError(msg)
 
         phase_outcomes_raw = data.get("phase_outcomes", {})
         if not isinstance(phase_outcomes_raw, dict):
@@ -192,10 +195,16 @@ class SessionMemory:
         if not isinstance(commits_made_raw, list):
             msg = f"commits_made must be a list, got {type(commits_made_raw).__name__}"
             raise TypeError(msg)
+        if not all(isinstance(x, str) for x in commits_made_raw):
+            msg = "commits_made must contain only strings"
+            raise TypeError(msg)
 
         errors_raw = data.get("errors", [])
         if not isinstance(errors_raw, list):
             msg = f"errors must be a list, got {type(errors_raw).__name__}"
+            raise TypeError(msg)
+        if not all(isinstance(x, str) for x in errors_raw):
+            msg = "errors must contain only strings"
             raise TypeError(msg)
 
         # Validate numeric fields with explicit type checking and logging.
@@ -396,6 +405,8 @@ def compact_context(
 
     # Truncate if needed, ensuring final length does not exceed max_length
     TRUNCATION_MARKER = "\n  ...(truncated)"
+    if max_length < len(TRUNCATION_MARKER):
+        return TRUNCATION_MARKER[:max_length]
     if len(summary) > max_length:
         summary = summary[: max_length - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
 

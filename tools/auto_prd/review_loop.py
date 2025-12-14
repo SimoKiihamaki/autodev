@@ -425,9 +425,11 @@ def review_fix_loop(
     # Extract values with type validation to handle corrupted checkpoint data
     raw_comment_ids = review_state.get("processed_comment_ids", [])
     if isinstance(raw_comment_ids, list):
-        # Filter to only valid integer IDs
+        # Filter to only valid integer IDs, excluding bools (bool is subclass of int)
         processed_comment_ids: set[int] = {
-            cid for cid in raw_comment_ids if isinstance(cid, int)
+            cid
+            for cid in raw_comment_ids
+            if isinstance(cid, int) and not isinstance(cid, bool)
         }
     else:
         logger.warning(

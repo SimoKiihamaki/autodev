@@ -479,10 +479,13 @@ class ClaudeHeadlessResponse:
             num_turns = int(num_turns_raw)
 
         # Wrap raw_json in MappingProxyType to prevent mutation of internal state.
+        # Validate is_error: only accept actual booleans, treat strings like "false" as False
+        is_error_raw = data.get("is_error")
+        is_error = is_error_raw if isinstance(is_error_raw, bool) else False
         return cls(
             result=result_raw if isinstance(result_raw, str) else "",
             session_id=session_id_raw if isinstance(session_id_raw, str) else "",
-            is_error=bool(data.get("is_error")),
+            is_error=is_error,
             total_cost_usd=total_cost_usd,
             duration_ms=duration_ms,
             duration_api_ms=duration_api_ms,
