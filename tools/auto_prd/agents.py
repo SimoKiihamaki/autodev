@@ -398,13 +398,21 @@ class ClaudeHeadlessResponse:
                 "Claude response 'total_cost_usd' is None; cost tracking unavailable"
             )
             total_cost_usd = 0.0
-        elif not isinstance(cost_raw, int | float):
+        elif isinstance(cost_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python,
+            # so isinstance(True, int) returns True. Boolean cost values are
+            # semantically incorrect and should not be silently converted.
+            logger.warning(
+                "Claude response 'total_cost_usd' has unexpected type bool; using default 0.0"
+            )
+            total_cost_usd = 0.0
+        elif isinstance(cost_raw, int | float):
+            total_cost_usd = float(cost_raw)
+        else:
             logger.warning(
                 "Claude response 'total_cost_usd' has unexpected type %s; attempting conversion",
                 type(cost_raw).__name__,
             )
-            total_cost_usd = float(cost_raw)
-        else:
             total_cost_usd = float(cost_raw)
 
         duration_ms_raw = data.get("duration_ms")
@@ -413,39 +421,57 @@ class ClaudeHeadlessResponse:
                 "Claude response 'duration_ms' is None; duration tracking unavailable"
             )
             duration_ms = 0
-        elif not isinstance(duration_ms_raw, int | float):
+        elif isinstance(duration_ms_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'duration_ms' has unexpected type bool; using default 0"
+            )
+            duration_ms = 0
+        elif isinstance(duration_ms_raw, int | float):
+            duration_ms = int(duration_ms_raw)
+        else:
             logger.warning(
                 "Claude response 'duration_ms' has unexpected type %s; attempting conversion",
                 type(duration_ms_raw).__name__,
             )
-            duration_ms = int(duration_ms_raw)
-        else:
             duration_ms = int(duration_ms_raw)
 
         duration_api_ms_raw = data.get("duration_api_ms")
         if duration_api_ms_raw is None:
             logger.debug("Claude response 'duration_api_ms' is None; using 0")
             duration_api_ms = 0
-        elif not isinstance(duration_api_ms_raw, int | float):
+        elif isinstance(duration_api_ms_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'duration_api_ms' has unexpected type bool; using default 0"
+            )
+            duration_api_ms = 0
+        elif isinstance(duration_api_ms_raw, int | float):
+            duration_api_ms = int(duration_api_ms_raw)
+        else:
             logger.warning(
                 "Claude response 'duration_api_ms' has unexpected type %s; attempting conversion",
                 type(duration_api_ms_raw).__name__,
             )
-            duration_api_ms = int(duration_api_ms_raw)
-        else:
             duration_api_ms = int(duration_api_ms_raw)
 
         num_turns_raw = data.get("num_turns")
         if num_turns_raw is None:
             logger.debug("Claude response 'num_turns' is None; using 0")
             num_turns = 0
-        elif not isinstance(num_turns_raw, int | float):
+        elif isinstance(num_turns_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'num_turns' has unexpected type bool; using default 0"
+            )
+            num_turns = 0
+        elif isinstance(num_turns_raw, int | float):
+            num_turns = int(num_turns_raw)
+        else:
             logger.warning(
                 "Claude response 'num_turns' has unexpected type %s; attempting conversion",
                 type(num_turns_raw).__name__,
             )
-            num_turns = int(num_turns_raw)
-        else:
             num_turns = int(num_turns_raw)
 
         # Wrap raw_json in MappingProxyType to prevent mutation of internal state.

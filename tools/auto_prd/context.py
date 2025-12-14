@@ -200,10 +200,18 @@ class SessionMemory:
 
         # Validate numeric fields with explicit type checking and logging.
         # This catches corrupted session files with null/invalid numeric values.
+        # Booleans are explicitly rejected because bool is a subclass of int in Python,
+        # so isinstance(True, int) returns True. Boolean values are semantically
+        # incorrect for numeric fields and should be rejected as invalid types.
         cost_raw = data.get("total_cost_usd")
         if cost_raw is None:
             logger.warning("Session memory 'total_cost_usd' is None; using default 0.0")
             total_cost_usd = 0.0
+        elif isinstance(cost_raw, bool):
+            msg = (
+                f"total_cost_usd must be numeric or null, got {type(cost_raw).__name__}"
+            )
+            raise TypeError(msg)
         elif isinstance(cost_raw, int | float):
             total_cost_usd = float(cost_raw)
         else:
@@ -218,6 +226,9 @@ class SessionMemory:
                 "Session memory 'total_duration_ms' is None; using default 0"
             )
             total_duration_ms = 0
+        elif isinstance(duration_raw, bool):
+            msg = f"total_duration_ms must be numeric or null, got {type(duration_raw).__name__}"
+            raise TypeError(msg)
         elif isinstance(duration_raw, int | float):
             total_duration_ms = int(duration_raw)
         else:
@@ -380,9 +391,10 @@ def compact_context(
 
     summary = "\n".join(parts)
 
-    # Truncate if needed
+    # Truncate if needed, ensuring final length does not exceed max_length
+    TRUNCATION_MARKER = "\n  ...(truncated)"
     if len(summary) > max_length:
-        summary = summary[: max_length - 20] + "\n  ...(truncated)"
+        summary = summary[: max_length - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
 
     return summary
 

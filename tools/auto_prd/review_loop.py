@@ -437,7 +437,14 @@ def review_fix_loop(
         processed_comment_ids = set()
 
     raw_cycles = review_state.get("cycles", 0)
-    cycles = int(raw_cycles) if isinstance(raw_cycles, int | float) else 0
+    # Exclude booleans explicitly - bool is a subclass of int in Python,
+    # so isinstance(True, int) returns True. Boolean checkpoint values
+    # should be treated as corrupted data and reset to 0.
+    cycles = (
+        int(raw_cycles)
+        if isinstance(raw_cycles, int | float) and not isinstance(raw_cycles, bool)
+        else 0
+    )
 
     # Context compaction: maintain summaries of previous fixes for continuity.
     # This is passed via --append-system-prompt to give Claude context about
@@ -752,8 +759,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
-                # (e.g., malformed JSON responses). See _PROGRAMMING_ERROR_TYPES definition
-                # and the comment block above it for detailed rationale.
+                # (e.g., malformed JSON responses). See the _PROGRAMMING_ERROR_TYPES definition
+                # and its associated comment block for detailed rationale.
                 #
                 # Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
                 # earlier explicit handler and re-raised immediately. This catch-all only
@@ -780,6 +787,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             # Add compact summary for context continuity in future iterations.
             # This creates a brief summary of what was fixed, passed to Claude
             # via --append-system-prompt to maintain context without session resumption.
+            cycles += 1  # Increment first so summary uses current iteration number
             num_items = len(unresolved)
             # Defensive extraction: summary can be non-string (None, int, dict, etc.)
             # from malformed API responses, so validate type before slicing.
@@ -789,7 +797,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 if isinstance(summary, str) and summary:
                     summary_items.append(summary[:100])
             compact_summary = (
-                f"Iteration {cycles + 1}: Fixed {num_items} item(s). "
+                f"Iteration {cycles}: Fixed {num_items} item(s). "
                 f"Examples: {'; '.join(s for s in summary_items if s)}"
             )
             compacted_history.append(compact_summary)
@@ -798,7 +806,6 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 compacted_history[:] = compacted_history[-MAX_COMPACTED_HISTORY:]
 
             # Persist checkpoint with updated processed comment IDs and compacted history
-            cycles += 1
             if checkpoint:
                 update_phase_state(
                     checkpoint,
