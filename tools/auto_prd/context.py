@@ -258,6 +258,9 @@ class SessionMemory:
         """
         self.total_cost_usd += response.total_cost_usd
         self.total_duration_ms += response.duration_ms
+        # Ensure totals remain non-negative (guards against corrupted response data)
+        self.total_cost_usd = max(0.0, self.total_cost_usd)
+        self.total_duration_ms = max(0, self.total_duration_ms)
         if response.is_error:
             self.errors.append(f"{phase}: execution reported error")
         # Session ID may be updated if this is a new session

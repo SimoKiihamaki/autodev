@@ -790,7 +790,11 @@ def _safe_typename(obj: object) -> str:
         logger.debug("Failed to get type name via __name__: %s", e)
         try:
             return str(type(obj))
-        except (TypeError, AttributeError):
+        except Exception:
+            # Broad catch here is intentional: str(type(obj)) can raise
+            # unexpected exceptions in pathological cases (e.g., RecursionError
+            # for deeply nested proxy objects, or custom exceptions from
+            # __str__/__repr__ overrides). This is a defensive utility function.
             return "<unknown type>"
 
 

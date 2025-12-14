@@ -797,10 +797,14 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 summary = item.get("summary")
                 if isinstance(summary, str) and summary:
                     summary_items.append(summary[:100])
-            compact_summary = (
-                f"Iteration {cycles}: Fixed {num_items} item(s). "
-                f"Examples: {'; '.join(s for s in summary_items if s)}"
-            )
+            # Handle empty summary_items gracefully - omit Examples section if none exist
+            if summary_items:
+                examples_str = f"Examples: {'; '.join(s for s in summary_items if s)}"
+                compact_summary = (
+                    f"Iteration {cycles}: Fixed {num_items} item(s). {examples_str}"
+                )
+            else:
+                compact_summary = f"Iteration {cycles}: Fixed {num_items} item(s)."
             compacted_history.append(compact_summary)
             # Keep only the most recent summaries to limit context size
             if len(compacted_history) > MAX_COMPACTED_HISTORY:
