@@ -432,11 +432,12 @@ class BuildPhaseContextTests(unittest.TestCase):
             prd_path=Path("/path/to/prd.md"),
             repo_root=Path("/repo"),
         )
-        self.assertIn("<phase_context>", context)
+        # Uses bracket-style tags to avoid < > characters in CLI args
+        self.assertIn("[phase_context]", context)
         self.assertIn("Phase: implement", context)
         self.assertIn("Iteration: 1", context)
         self.assertIn("PRD location:", context)
-        self.assertIn("</phase_context>", context)
+        self.assertIn("[/phase_context]", context)
 
     def test_with_iteration(self):
         """Test build_phase_context includes iteration number."""

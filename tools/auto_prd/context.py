@@ -338,7 +338,11 @@ def build_phase_context(
     context_parts: list[str] = []
 
     # Phase and iteration info
-    context_parts.append("<phase_context>")
+    # Note: Using bracket-style tags [phase_context] instead of XML-style
+    # <phase_context> because the output is used with --append-system-prompt,
+    # and < > characters are blocked by validate_command_args() in cli.py.
+    # This matches the bracket-tag convention used in review_loop.py.
+    context_parts.append("[phase_context]")
     context_parts.append(f"Phase: {phase}")
     context_parts.append(f"Iteration: {iteration}")
     context_parts.append(f"PRD location: {prd_path}")
@@ -354,7 +358,7 @@ def build_phase_context(
         for key, value in additional_context.items():
             context_parts.append(f"  {key}: {value}")
 
-    context_parts.append("</phase_context>")
+    context_parts.append("[/phase_context]")
 
     return "\n".join(context_parts)
 
