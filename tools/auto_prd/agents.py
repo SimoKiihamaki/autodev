@@ -425,7 +425,15 @@ class ClaudeHeadlessResponse:
                 "Claude response 'total_cost_usd' has unexpected type %s; attempting conversion",
                 type(cost_raw).__name__,
             )
-            total_cost_usd = float(cost_raw)
+            try:
+                total_cost_usd = float(cost_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'total_cost_usd' cannot be converted to float (type %s): %s; using default 0.0",
+                    type(cost_raw).__name__,
+                    e,
+                )
+                total_cost_usd = 0.0
 
         duration_ms_raw = data.get("duration_ms")
         if duration_ms_raw is None:
@@ -446,7 +454,15 @@ class ClaudeHeadlessResponse:
                 "Claude response 'duration_ms' has unexpected type %s; attempting conversion",
                 type(duration_ms_raw).__name__,
             )
-            duration_ms = int(duration_ms_raw)
+            try:
+                duration_ms = int(duration_ms_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'duration_ms' cannot be converted to int (type %s): %s; using default 0",
+                    type(duration_ms_raw).__name__,
+                    e,
+                )
+                duration_ms = 0
 
         duration_api_ms_raw = data.get("duration_api_ms")
         if duration_api_ms_raw is None:
@@ -467,7 +483,15 @@ class ClaudeHeadlessResponse:
                 "Claude response 'duration_api_ms' has unexpected type %s; attempting conversion",
                 type(duration_api_ms_raw).__name__,
             )
-            duration_api_ms = int(duration_api_ms_raw)
+            try:
+                duration_api_ms = int(duration_api_ms_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'duration_api_ms' cannot be converted to int (type %s): %s; using default 0",
+                    type(duration_api_ms_raw).__name__,
+                    e,
+                )
+                duration_api_ms = 0
 
         num_turns_raw = data.get("num_turns")
         if num_turns_raw is None:
@@ -488,7 +512,15 @@ class ClaudeHeadlessResponse:
                 "Claude response 'num_turns' has unexpected type %s; attempting conversion",
                 type(num_turns_raw).__name__,
             )
-            num_turns = int(num_turns_raw)
+            try:
+                num_turns = int(num_turns_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'num_turns' cannot be converted to int (type %s): %s; using default 0",
+                    type(num_turns_raw).__name__,
+                    e,
+                )
+                num_turns = 0
 
         # Wrap raw_json in MappingProxyType to prevent mutation of internal state.
         # Validate is_error: only accept actual booleans, treat strings like "false" as False
