@@ -691,6 +691,238 @@ class BuildClaudeArgsTests(unittest.TestCase):
         )
         self.assertEqual(args[-2:], ["-p", "-"])
 
+    # Tests for allowed_tools parameter
+    def test_with_allowed_tools_list(self):
+        """Test _build_claude_args adds --allowedTools for each tool."""
+        tools = ["Read", "Edit", "Write"]
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=tools,
+        )
+        # Each tool should have its own --allowedTools argument
+        self.assertEqual(args.count("--allowedTools"), 3)
+        self.assertIn("Read", args)
+        self.assertIn("Edit", args)
+        self.assertIn("Write", args)
+        # Verify structure: --allowedTools followed by tool name
+        for tool in tools:
+            tool_idx = args.index(tool)
+            self.assertEqual(args[tool_idx - 1], "--allowedTools")
+
+    def test_with_allowed_tools_empty_list(self):
+        """Test _build_claude_args with empty allowed_tools list adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=[],
+        )
+        self.assertNotIn("--allowedTools", args)
+        self.assertEqual(args, ["claude", "-p", "-"])
+
+    def test_with_allowed_tools_none(self):
+        """Test _build_claude_args with None allowed_tools adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=None,
+        )
+        self.assertNotIn("--allowedTools", args)
+
+    def test_allowed_tools_non_list_raises_type_error(self):
+        """Test _build_claude_args raises TypeError for non-list allowed_tools."""
+        with self.assertRaises(TypeError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                allowed_tools="Read",  # String, not list
+            )
+        self.assertIn("allowed_tools", str(ctx.exception))
+        self.assertIn("list or tuple", str(ctx.exception))
+
+    def test_allowed_tools_non_string_elements_raises_type_error(self):
+        """Test _build_claude_args raises TypeError when allowed_tools contains non-strings."""
+        with self.assertRaises(TypeError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                allowed_tools=["Read", 123, "Write"],  # 123 is not a string
+            )
+        self.assertIn("allowed_tools", str(ctx.exception))
+        self.assertIn("strings", str(ctx.exception))
+
+    def test_allowed_tools_tuple_accepted(self):
+        """Test _build_claude_args accepts tuple for allowed_tools."""
+        tools = ("Read", "Edit")
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=tools,
+        )
+        self.assertEqual(args.count("--allowedTools"), 2)
+
+    # Tests for system_prompt_suffix parameter
+    def test_with_system_prompt_suffix(self):
+        """Test _build_claude_args adds --append-system-prompt for suffix."""
+        suffix = "Previous context: Task completed successfully."
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        self.assertIn("--append-system-prompt", args)
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+
+    def test_with_system_prompt_suffix_none(self):
+        """Test _build_claude_args with None suffix adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=None,
+        )
+        self.assertNotIn("--append-system-prompt", args)
+
+    def test_with_system_prompt_suffix_empty_string(self):
+        """Test _build_claude_args with empty suffix adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix="",
+        )
+        self.assertNotIn("--append-system-prompt", args)
+
+    def test_with_system_prompt_suffix_multiline(self):
+        """Test _build_claude_args handles multiline suffix correctly."""
+        suffix = "Line 1\nLine 2\nLine 3"
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+        self.assertIn("\n", args[prompt_idx + 1])
+
+    def test_with_system_prompt_suffix_special_characters(self):
+        """Test _build_claude_args handles special characters in suffix."""
+        suffix = "Context: $var, 'quotes', \"double\", <tags>"
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+
+    # Tests for output_format parameter
+    def test_with_output_format_json(self):
+        """Test _build_claude_args adds --output-format for json."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format="json",
+        )
+        self.assertIn("--output-format", args)
+        format_idx = args.index("--output-format")
+        self.assertEqual(args[format_idx + 1], "json")
+
+    def test_with_output_format_stream_json(self):
+        """Test _build_claude_args adds --output-format for stream-json."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format="stream-json",
+        )
+        self.assertIn("--output-format", args)
+        format_idx = args.index("--output-format")
+        self.assertEqual(args[format_idx + 1], "stream-json")
+
+    def test_with_output_format_none(self):
+        """Test _build_claude_args with None output_format adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format=None,
+        )
+        self.assertNotIn("--output-format", args)
+
+    def test_output_format_invalid_raises_value_error(self):
+        """Test _build_claude_args raises ValueError for invalid output_format."""
+        with self.assertRaises(ValueError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                output_format="invalid-format",
+            )
+        self.assertIn("output_format", str(ctx.exception))
+        self.assertIn("json", str(ctx.exception))
+        self.assertIn("stream-json", str(ctx.exception))
+
+    def test_output_format_empty_string_raises_value_error(self):
+        """Test _build_claude_args raises ValueError for empty output_format."""
+        with self.assertRaises(ValueError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                output_format="",
+            )
+        self.assertIn("output_format", str(ctx.exception))
+
+    # Test all parameters combined
+    def test_all_new_parameters_combined(self):
+        """Test _build_claude_args with all new parameters together."""
+        args = _build_claude_args(
+            allow_flag=True,
+            model="claude-3-sonnet",
+            enable_search=True,
+            extra=["--verbose"],
+            output_format="json",
+            allowed_tools=["Read", "Edit"],
+            system_prompt_suffix="Previous context here",
+        )
+        # Verify all components are present
+        self.assertIn("--dangerously-skip-permissions", args)
+        self.assertIn("--model", args)
+        self.assertIn("--output-format", args)
+        self.assertIn("--allowedTools", args)
+        self.assertIn("--append-system-prompt", args)
+        self.assertIn("--verbose", args)
+        # And ends with -p -
+        self.assertEqual(args[-2:], ["-p", "-"])
+
 
 class ClaudeHeadlessResponseTests(unittest.TestCase):
     """Test suite for ClaudeHeadlessResponse dataclass."""

@@ -28,6 +28,9 @@ save_session_memory = safe_import(
 load_session_memory = safe_import(
     "tools.auto_prd.context", "..context", "load_session_memory"
 )
+extract_progress_from_response = safe_import(
+    "tools.auto_prd.context", "..context", "extract_progress_from_response"
+)
 
 # Import ClaudeHeadlessResponse from agents for update_from_response tests
 ClaudeHeadlessResponse = safe_import(
@@ -517,6 +520,109 @@ class CompactContextTests(unittest.TestCase):
         # The summary should be truncated to max_length
         self.assertLessEqual(len(summary), 100)
         self.assertIn("truncated", summary)
+
+
+class ExtractProgressFromResponseTests(unittest.TestCase):
+    """Test suite for extract_progress_from_response function."""
+
+    def test_extracts_all_expected_fields(self):
+        """Test that all expected fields are extracted from response."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 2500
+        mock_response.duration_api_ms = 2000
+        mock_response.total_cost_usd = 0.075
+        mock_response.session_id = "test-session-abc123"
+        mock_response.is_error = False
+        mock_response.num_turns = 8
+
+        result = extract_progress_from_response(mock_response)
+
+        # Verify all expected keys are present
+        self.assertIn("duration_ms", result)
+        self.assertIn("duration_api_ms", result)
+        self.assertIn("cost_usd", result)
+        self.assertIn("session_id", result)
+        self.assertIn("is_error", result)
+        self.assertIn("num_turns", result)
+
+        # Verify values are correct
+        self.assertEqual(result["duration_ms"], 2500)
+        self.assertEqual(result["duration_api_ms"], 2000)
+        self.assertEqual(result["cost_usd"], 0.075)
+        self.assertEqual(result["session_id"], "test-session-abc123")
+        self.assertEqual(result["is_error"], False)
+        self.assertEqual(result["num_turns"], 8)
+
+    def test_extracts_error_state_true(self):
+        """Test that is_error=True is correctly extracted."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 500
+        mock_response.duration_api_ms = 400
+        mock_response.total_cost_usd = 0.01
+        mock_response.session_id = "error-session"
+        mock_response.is_error = True
+        mock_response.num_turns = 1
+
+        result = extract_progress_from_response(mock_response)
+
+        self.assertEqual(result["is_error"], True)
+
+    def test_extracts_zero_values(self):
+        """Test that zero values are correctly extracted."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 0
+        mock_response.duration_api_ms = 0
+        mock_response.total_cost_usd = 0.0
+        mock_response.session_id = ""
+        mock_response.is_error = False
+        mock_response.num_turns = 0
+
+        result = extract_progress_from_response(mock_response)
+
+        self.assertEqual(result["duration_ms"], 0)
+        self.assertEqual(result["duration_api_ms"], 0)
+        self.assertEqual(result["cost_usd"], 0.0)
+        self.assertEqual(result["session_id"], "")
+        self.assertEqual(result["num_turns"], 0)
+
+    def test_returns_dict(self):
+        """Test that the return value is a dictionary."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 100
+        mock_response.duration_api_ms = 80
+        mock_response.total_cost_usd = 0.001
+        mock_response.session_id = "dict-test"
+        mock_response.is_error = False
+        mock_response.num_turns = 2
+
+        result = extract_progress_from_response(mock_response)
+
+        self.assertIsInstance(result, dict)
+        # Should have exactly 6 keys
+        self.assertEqual(len(result), 6)
+
+    def test_extracts_from_real_response_object(self):
+        """Test extraction from an actual ClaudeHeadlessResponse object."""
+        # Create a real ClaudeHeadlessResponse object
+        response = ClaudeHeadlessResponse(
+            result="Task completed",
+            session_id="real-session-123",
+            is_error=False,
+            total_cost_usd=0.05,
+            duration_ms=1500,
+            duration_api_ms=1200,
+            num_turns=5,
+            raw_json={},
+        )
+
+        result = extract_progress_from_response(response)
+
+        self.assertEqual(result["duration_ms"], 1500)
+        self.assertEqual(result["duration_api_ms"], 1200)
+        self.assertEqual(result["cost_usd"], 0.05)
+        self.assertEqual(result["session_id"], "real-session-123")
+        self.assertEqual(result["is_error"], False)
+        self.assertEqual(result["num_turns"], 5)
 
 
 if __name__ == "__main__":

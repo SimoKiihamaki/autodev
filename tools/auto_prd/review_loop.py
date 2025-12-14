@@ -804,7 +804,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     summary_items.append(summary[:100])
             # Handle empty summary_items gracefully - omit Examples section if none exist
             if summary_items:
-                examples_str = f"Examples: {'; '.join(s for s in summary_items if s)}"
+                examples_str = f"Examples: {'; '.join(summary_items)}"
                 compact_summary = (
                     f"Iteration {cycles}: Addressed {num_items} item(s). {examples_str}"
                 )
