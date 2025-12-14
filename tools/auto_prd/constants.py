@@ -91,7 +91,9 @@ PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 #
 # Note: This mapping is immutable (MappingProxyType with tuple values) to prevent
 # accidental modification at runtime. Use get_tool_allowlist() for safe access.
-_HEADLESS_TOOL_ALLOWLISTS_RAW: dict[str, tuple[str, ...]] = {
+# The _INTERNAL suffix indicates this is the mutable internal dict before wrapping
+# in MappingProxyType. Do not access directly; use HEADLESS_TOOL_ALLOWLISTS instead.
+_HEADLESS_TOOL_ALLOWLISTS_INTERNAL: dict[str, tuple[str, ...]] = {
     # Local/implement phase: needs full file access + build commands
     "implement": (
         "Bash(git:*,make:*,npm:*,pnpm:*,yarn:*,pytest:*,cargo:*,go:*)",
@@ -123,7 +125,7 @@ _HEADLESS_TOOL_ALLOWLISTS_RAW: dict[str, tuple[str, ...]] = {
 
 # Immutable view of tool allowlists - prevents accidental modification.
 HEADLESS_TOOL_ALLOWLISTS: Mapping[str, Sequence[str]] = MappingProxyType(
-    _HEADLESS_TOOL_ALLOWLISTS_RAW
+    _HEADLESS_TOOL_ALLOWLISTS_INTERNAL
 )
 
 

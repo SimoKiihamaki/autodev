@@ -376,11 +376,25 @@ def compact_context(
     Args:
         response: The ClaudeHeadlessResponse to summarize.
         phase: The phase that was just executed.
-        max_length: Maximum length of the summary.
+        max_length: Maximum length of the summary. Must be at least 10 to produce
+            a meaningful summary; smaller values raise ValueError.
 
     Returns:
         Compact summary string.
+
+    Raises:
+        ValueError: If max_length is less than MIN_MEANINGFUL_LENGTH (10).
     """
+    # Minimum length to produce any meaningful output. Values smaller than this
+    # would truncate even a short marker like "...(+N)" and produce confusing output.
+    MIN_MEANINGFUL_LENGTH = 10
+    if max_length < MIN_MEANINGFUL_LENGTH:
+        msg = (
+            f"max_length ({max_length}) is too small to produce a meaningful summary "
+            f"(minimum {MIN_MEANINGFUL_LENGTH})"
+        )
+        raise ValueError(msg)
+
     # Extract key metrics
     parts: list[str] = []
 
@@ -411,14 +425,60 @@ def compact_context(
 
     summary = "\n".join(parts)
 
-    # Truncate if needed, ensuring final length does not exceed max_length
+    # Truncate if needed, ensuring final length does not exceed max_length.
+    # Use a shorter marker when max_length is small but still valid.
     TRUNCATION_MARKER = "\n  ...(truncated)"
-    if max_length < len(TRUNCATION_MARKER):
-        return TRUNCATION_MARKER[:max_length]
+    SHORT_TRUNCATION_MARKER = "...(+)"
     if len(summary) > max_length:
-        summary = summary[: max_length - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
+        # Choose marker based on available space
+        if max_length >= len(TRUNCATION_MARKER) + MIN_MEANINGFUL_LENGTH:
+            marker = TRUNCATION_MARKER
+        else:
+            marker = SHORT_TRUNCATION_MARKER
+        summary = summary[: max_length - len(marker)] + marker
 
     return summary
+
+
+def _generate_session_filename(memory: SessionMemory) -> str:
+    """Generate a filename-safe identifier for a session memory file.
+
+    This function encapsulates the fallback logic for generating filenames when
+    session_id is empty or unavailable. It provides multiple fallback layers:
+    1. Use session_id if available
+    2. Parse created_at as ISO timestamp and format as YYYYMMDDTHHMMSS_ffffff
+    3. Extract digits from created_at as a fallback
+    4. Use current UTC timestamp if all else fails
+
+    The result is sanitized by replacing non-alphanumeric characters with underscores.
+
+    Args:
+        memory: The SessionMemory to generate a filename for.
+
+    Returns:
+        A sanitized filename string (without extension) suitable for filesystem use.
+    """
+    # Use session_id if available, otherwise generate a filename-safe timestamp.
+    # Format created_at as YYYYMMDDTHHMMSS with microseconds to ensure uniqueness
+    # and avoid colons and other special characters in the filename.
+    if memory.session_id:
+        filename = memory.session_id
+    else:
+        try:
+            dt = datetime.fromisoformat(memory.created_at)
+            # Always include microseconds to ensure uniqueness when multiple
+            # sessions are created in rapid succession without session_id.
+            safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
+            filename = f"session_{safe_ts}"
+        except ValueError:
+            # Fallback: use only the digits from created_at; if empty, use current UTC timestamp
+            safe_ts = "".join(c for c in memory.created_at if c.isdigit())
+            if not safe_ts:
+                # Use current UTC timestamp with microseconds for uniqueness
+                safe_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%f")
+            filename = f"session_{safe_ts}"
+    # Sanitize filename by replacing non-alphanumeric characters with underscores
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in filename)
 
 
 def save_session_memory(
@@ -459,27 +519,7 @@ def save_session_memory(
             raise
         return None
 
-    # Use session_id if available, otherwise generate a filename-safe timestamp.
-    # Format created_at as YYYYMMDDTHHMMSS with microseconds to ensure uniqueness
-    # and avoid colons and other special characters in the filename.
-    if memory.session_id:
-        filename = memory.session_id
-    else:
-        try:
-            dt = datetime.fromisoformat(memory.created_at)
-            # Always include microseconds to ensure uniqueness when multiple
-            # sessions are created in rapid succession without session_id.
-            safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
-            filename = f"session_{safe_ts}"
-        except ValueError:
-            # Fallback: use only the digits from created_at; if empty, use current UTC timestamp
-            safe_ts = "".join(c for c in memory.created_at if c.isdigit())
-            if not safe_ts:
-                # Use current UTC timestamp with microseconds for uniqueness
-                safe_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%f")
-            filename = f"session_{safe_ts}"
-    # Sanitize filename by replacing non-alphanumeric characters with underscores
-    filename = "".join(c if c.isalnum() or c in "-_" else "_" for c in filename)
+    filename = _generate_session_filename(memory)
     filepath = memory_dir / f"{filename}.json"
 
     try:

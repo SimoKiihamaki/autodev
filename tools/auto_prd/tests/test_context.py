@@ -31,6 +31,9 @@ load_session_memory = safe_import(
 extract_progress_from_response = safe_import(
     "tools.auto_prd.context", "..context", "extract_progress_from_response"
 )
+_generate_session_filename = safe_import(
+    "tools.auto_prd.context", "..context", "_generate_session_filename"
+)
 
 # Import ClaudeHeadlessResponse from agents for update_from_response tests
 ClaudeHeadlessResponse = safe_import(
@@ -521,6 +524,37 @@ class CompactContextTests(unittest.TestCase):
         self.assertLessEqual(len(summary), 100)
         self.assertIn("truncated", summary)
 
+    def test_compact_context_small_max_length_raises_value_error(self):
+        """Test compact_context raises ValueError for max_length < 10."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 1000
+        mock_response.total_cost_usd = 0.01
+        mock_response.num_turns = 1
+        mock_response.is_error = False
+        mock_response.result = ""
+
+        with self.assertRaises(ValueError) as ctx:
+            compact_context(mock_response, "test", max_length=5)
+
+        self.assertIn("too small", str(ctx.exception))
+        self.assertIn("minimum 10", str(ctx.exception))
+
+    def test_compact_context_uses_short_marker_for_small_lengths(self):
+        """Test compact_context uses shorter truncation marker for small max_length."""
+        mock_response = MagicMock(spec=ClaudeHeadlessResponse)
+        mock_response.duration_ms = 1000
+        mock_response.total_cost_usd = 0.01
+        mock_response.num_turns = 1
+        mock_response.is_error = False
+        mock_response.result = "commit push fixed test " * 50  # Long result
+
+        # max_length of 20 is valid (>= 10) but too small for full marker
+        summary = compact_context(mock_response, "test", max_length=20)
+
+        self.assertLessEqual(len(summary), 20)
+        # Should use short marker "...(+)" instead of full "\n  ...(truncated)"
+        self.assertIn("...(+)", summary)
+
 
 class ExtractProgressFromResponseTests(unittest.TestCase):
     """Test suite for extract_progress_from_response function."""
@@ -623,6 +657,64 @@ class ExtractProgressFromResponseTests(unittest.TestCase):
         self.assertEqual(result["session_id"], "real-session-123")
         self.assertEqual(result["is_error"], False)
         self.assertEqual(result["num_turns"], 5)
+
+
+class GenerateSessionFilenameTests(unittest.TestCase):
+    """Test suite for _generate_session_filename helper function."""
+
+    def test_uses_session_id_when_available(self):
+        """Test that session_id is used as filename when available."""
+        memory = SessionMemory(session_id="my-session-123")
+        filename = _generate_session_filename(memory)
+        # Should use session_id; hyphens and underscores are preserved
+        self.assertEqual(filename, "my-session-123")
+
+    def test_uses_created_at_when_no_session_id(self):
+        """Test that created_at is used when session_id is empty."""
+        memory = SessionMemory(
+            session_id="", created_at="2024-01-15T10:30:45.123456+00:00"
+        )
+        filename = _generate_session_filename(memory)
+        # Should use parsed timestamp with microseconds
+        self.assertTrue(filename.startswith("session_"))
+        self.assertIn("20240115", filename)
+
+    def test_fallback_to_digits_on_invalid_iso(self):
+        """Test fallback to extracting digits when ISO parsing fails."""
+        memory = SessionMemory(session_id="", created_at="invalid-timestamp-123456")
+        filename = _generate_session_filename(memory)
+        # Should extract digits from invalid timestamp
+        self.assertTrue(filename.startswith("session_"))
+        self.assertIn("123456", filename)
+
+    def test_fallback_to_current_timestamp_when_no_digits(self):
+        """Test fallback to current UTC timestamp when created_at has no digits."""
+        memory = SessionMemory(session_id="", created_at="no-digits-here")
+        filename = _generate_session_filename(memory)
+        # Should use current timestamp as fallback
+        self.assertTrue(filename.startswith("session_"))
+        # Should contain current year
+        import datetime
+
+        current_year = str(datetime.datetime.now(datetime.timezone.utc).year)
+        self.assertIn(current_year, filename)
+
+    def test_sanitizes_special_characters(self):
+        """Test that special characters are sanitized to underscores."""
+        memory = SessionMemory(session_id="session/with:special@chars!")
+        filename = _generate_session_filename(memory)
+        # Special chars should be replaced with underscores
+        self.assertNotIn("/", filename)
+        self.assertNotIn(":", filename)
+        self.assertNotIn("@", filename)
+        self.assertNotIn("!", filename)
+        self.assertIn("_", filename)
+
+    def test_preserves_alphanumeric_and_dash_underscore(self):
+        """Test that alphanumeric, dash, and underscore are preserved."""
+        memory = SessionMemory(session_id="abc-123_XYZ")
+        filename = _generate_session_filename(memory)
+        self.assertEqual(filename, "abc-123_XYZ")
 
 
 if __name__ == "__main__":

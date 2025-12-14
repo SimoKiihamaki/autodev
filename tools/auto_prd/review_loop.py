@@ -20,7 +20,6 @@ from .agents import (
 )
 from .checkpoint import save_checkpoint, update_phase_state
 from .constants import (
-    CLI_ARG_REPLACEMENTS,
     CODERABBIT_FINDINGS_CHAR_LIMIT,
     get_tool_allowlist,
 )
@@ -33,7 +32,12 @@ from .gh_ops import (
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .policy import policy_runner
-from .utils import extract_called_process_error_details
+from .utils import (
+    extract_called_process_error_details,
+    is_valid_int,
+    is_valid_numeric,
+    sanitize_for_cli,
+)
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
@@ -422,14 +426,13 @@ def review_fix_loop(
             if isinstance(review_fix_state, dict):
                 review_state = review_fix_state
 
-    # Extract values with type validation to handle corrupted checkpoint data
+    # Extract values with type validation to handle corrupted checkpoint data.
+    # Use is_valid_int/is_valid_numeric to exclude booleans (bool is subclass of int).
     raw_comment_ids = review_state.get("processed_comment_ids", [])
     if isinstance(raw_comment_ids, list):
-        # Filter to only valid integer IDs, excluding bools (bool is subclass of int)
+        # Filter to only valid integer IDs using is_valid_int helper
         processed_comment_ids: set[int] = {
-            cid
-            for cid in raw_comment_ids
-            if isinstance(cid, int) and not isinstance(cid, bool)
+            cid for cid in raw_comment_ids if is_valid_int(cid)
         }
     else:
         logger.warning(
@@ -439,14 +442,9 @@ def review_fix_loop(
         processed_comment_ids = set()
 
     raw_cycles = review_state.get("cycles", 0)
-    # Exclude booleans explicitly - bool is a subclass of int in Python,
-    # so isinstance(True, int) returns True. Boolean checkpoint values
-    # should be treated as corrupted data and reset to 0.
-    cycles = (
-        int(raw_cycles)
-        if isinstance(raw_cycles, int | float) and not isinstance(raw_cycles, bool)
-        else 0
-    )
+    # Use is_valid_numeric to exclude booleans from being treated as valid cycle counts.
+    # Boolean checkpoint values should be treated as corrupted data and reset to 0.
+    cycles = int(raw_cycles) if is_valid_numeric(raw_cycles) else 0
 
     # Context compaction: maintain summaries of previous fixes for continuity.
     # This is passed via --append-system-prompt to give Claude context about
@@ -533,16 +531,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # <previous_fixes> because the system_prompt_suffix is passed as a CLI
                 # argument, and < > | ; ` characters are blocked by validate_command_args()
                 # as potential shell metacharacters. We sanitize the history content using
-                # CLI_ARG_REPLACEMENTS since review feedback may contain these characters.
+                # sanitize_for_cli() since review feedback may contain these characters.
                 if compacted_history:
                     # At this point, compacted_history is guaranteed non-empty (truthy check above).
-                    # Sanitize history entries to replace unsafe CLI characters
-                    # that could trigger validate_command_args() security checks.
-                    def sanitize_for_cli(text: str) -> str:
-                        for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
-                            text = text.replace(unsafe, safe)
-                        return text
-
+                    # Sanitize history entries using the module-level helper function.
                     sanitized_history = [
                         sanitize_for_cli(entry)
                         for entry in compacted_history[-MAX_COMPACTED_HISTORY:]
@@ -763,7 +755,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
                 # (e.g., malformed JSON responses). See the _PROGRAMMING_ERROR_TYPES definition
-                # and its associated comment block for detailed rationale.
+                # and its associated comment block above (search for '_PROGRAMMING_ERROR_TYPES')
+                # for detailed rationale.
                 #
                 # Programming errors (_PROGRAMMING_ERROR_TYPES) are caught by the
                 # earlier explicit handler and re-raised immediately. This catch-all only
