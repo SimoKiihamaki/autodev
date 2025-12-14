@@ -450,7 +450,9 @@ class ClaudeHeadlessResponse:
 
         duration_api_ms_raw = data.get("duration_api_ms")
         if duration_api_ms_raw is None:
-            logger.debug("Claude response 'duration_api_ms' is None; using 0")
+            logger.warning(
+                "Claude response 'duration_api_ms' is None; duration tracking unavailable"
+            )
             duration_api_ms = 0
         elif isinstance(duration_api_ms_raw, bool):
             # Reject booleans explicitly - bool is a subclass of int in Python
@@ -469,7 +471,9 @@ class ClaudeHeadlessResponse:
 
         num_turns_raw = data.get("num_turns")
         if num_turns_raw is None:
-            logger.debug("Claude response 'num_turns' is None; using 0")
+            logger.warning(
+                "Claude response 'num_turns' is None; turn tracking unavailable"
+            )
             num_turns = 0
         elif isinstance(num_turns_raw, bool):
             # Reject booleans explicitly - bool is a subclass of int in Python
@@ -489,6 +493,12 @@ class ClaudeHeadlessResponse:
         # Wrap raw_json in MappingProxyType to prevent mutation of internal state.
         # Validate is_error: only accept actual booleans, treat strings like "false" as False
         is_error_raw = data.get("is_error")
+        if is_error_raw is not None and not isinstance(is_error_raw, bool):
+            logger.warning(
+                "Claude response 'is_error' has unexpected type %s (value: %r); using False",
+                type(is_error_raw).__name__,
+                is_error_raw,
+            )
         is_error = is_error_raw if isinstance(is_error_raw, bool) else False
         return cls(
             result=result_raw if isinstance(result_raw, str) else "",

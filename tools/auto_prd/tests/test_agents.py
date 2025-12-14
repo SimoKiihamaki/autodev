@@ -970,7 +970,11 @@ class ClaudeHeadlessResponseTests(unittest.TestCase):
         self.assertIn("must be an object", str(ctx.exception))
 
     def test_from_json_null_values(self):
-        """Test ClaudeHeadlessResponse.from_json() handles null values gracefully."""
+        """Test ClaudeHeadlessResponse.from_json() handles null values gracefully.
+
+        Verifies that null numeric fields log WARNING level messages for consistency
+        and better observability of incomplete API responses.
+        """
         json_with_nulls = json.dumps(
             {
                 "result": None,
@@ -982,13 +986,26 @@ class ClaudeHeadlessResponseTests(unittest.TestCase):
                 "num_turns": None,
             }
         )
-        response = ClaudeHeadlessResponse.from_json(json_with_nulls)
+        # Verify WARNING logs are generated for null numeric fields
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_nulls)
         self.assertEqual(response.result, "")
         self.assertEqual(response.session_id, "")
         self.assertEqual(response.total_cost_usd, 0.0)
         self.assertEqual(response.duration_ms, 0)
         self.assertEqual(response.duration_api_ms, 0)
         self.assertEqual(response.num_turns, 0)
+        # Verify all numeric fields log at WARNING level for consistency
+        self.assertTrue(
+            any("total_cost_usd" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(
+            any("duration_ms" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(
+            any("duration_api_ms" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(any("num_turns" in msg and "None" in msg for msg in log.output))
 
     def test_negative_duration_raises(self):
         """Test ClaudeHeadlessResponse raises ValueError for negative duration."""
@@ -1019,6 +1036,46 @@ class ClaudeHeadlessResponseTests(unittest.TestCase):
                 raw_json={},
             )
         self.assertIn("total_cost_usd must be non-negative", str(ctx.exception))
+
+    def test_from_json_non_boolean_is_error_logs_warning(self):
+        """Test non-boolean is_error values log warning and default to False."""
+        # Test string "true" - should warn and use False
+        json_with_string_is_error = json.dumps(
+            {
+                "result": "Test",
+                "session_id": "test-123",
+                "is_error": "true",  # String, not boolean
+                "total_cost_usd": 0.01,
+                "duration_ms": 100,
+                "duration_api_ms": 80,
+                "num_turns": 1,
+            }
+        )
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_string_is_error)
+        self.assertFalse(response.is_error)
+        self.assertTrue(
+            any("is_error" in msg and "unexpected type" in msg for msg in log.output)
+        )
+
+        # Test integer 1 - should warn and use False
+        json_with_int_is_error = json.dumps(
+            {
+                "result": "Test",
+                "session_id": "test-123",
+                "is_error": 1,  # Integer, not boolean
+                "total_cost_usd": 0.01,
+                "duration_ms": 100,
+                "duration_api_ms": 80,
+                "num_turns": 1,
+            }
+        )
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_int_is_error)
+        self.assertFalse(response.is_error)
+        self.assertTrue(
+            any("is_error" in msg and "unexpected type" in msg for msg in log.output)
+        )
 
 
 class ParseClaudeJsonResponseTests(unittest.TestCase):
