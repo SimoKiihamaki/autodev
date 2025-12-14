@@ -146,12 +146,12 @@ class SessionMemory:
         to negative values after construction.
         """
         if name == "total_cost_usd":
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, int | float):
                 msg = f"total_cost_usd must be numeric, got {type(value).__name__}"
                 raise TypeError(msg)
             self._validate_cost(float(value))
         elif name == "total_duration_ms":
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, int | float):
                 msg = f"total_duration_ms must be numeric, got {type(value).__name__}"
                 raise TypeError(msg)
             self._validate_duration(int(value))
@@ -221,7 +221,7 @@ class SessionMemory:
         if cost_raw is None:
             logger.warning("Session memory 'total_cost_usd' is None; using default 0.0")
             total_cost_usd = 0.0
-        elif isinstance(cost_raw, (int, float)):
+        elif isinstance(cost_raw, int | float):
             total_cost_usd = float(cost_raw)
         else:
             msg = (
@@ -235,7 +235,7 @@ class SessionMemory:
                 "Session memory 'total_duration_ms' is None; using default 0"
             )
             total_duration_ms = 0
-        elif isinstance(duration_raw, (int, float)):
+        elif isinstance(duration_raw, int | float):
             total_duration_ms = int(duration_raw)
         else:
             msg = f"total_duration_ms must be numeric or null, got {type(duration_raw).__name__}"
@@ -287,16 +287,33 @@ def build_phase_context(
     This keeps the context size manageable while giving Claude the information
     it needs to operate effectively.
 
+    Phase Name Mapping:
+        The codebase uses two sets of phase names that must be kept in sync:
+
+        CLI Phases (VALID_PHASES in constants.py):
+            - "local" - CLI name for local implementation
+            - "pr" - Pull request creation
+            - "review_fix" - Review and fix phase
+
+        Internal Tool Allowlist Phases (HEADLESS_TOOL_ALLOWLISTS in constants.py):
+            - "implement" - Tool allowlist for local implementation
+            - "fix" - Tool allowlist for CodeRabbit fix phase
+            - "pr" - Tool allowlist for PR creation (same name)
+            - "review_fix" - Tool allowlist for review/fix (same name)
+
+        When using get_tool_allowlist(), callers must pass the internal phase
+        name ("implement", not "local"). This function accepts both names for
+        documentation purposes as it's used for context building, not tool
+        restriction.
+
     Args:
-        phase: The execution phase name. Valid values include:
-            - implement: Local implementation phase
-            - fix: CodeRabbit fix phase
+        phase: The execution phase name. This function accepts any phase string
+            for flexibility. Common values:
+            - implement: Internal name for local implementation phase
+            - fix: CodeRabbit fix phase (internal)
             - pr: Pull request creation phase
             - review_fix: Review and fix phase
             - local: CLI alias for implement phase
-            Note: Some phases are used internally (implement, fix), while others
-            are used by the CLI (local, pr, review_fix). See VALID_PHASES in
-            constants.py for the authoritative list of CLI phases.
         prd_path: Path to the PRD file.
         repo_root: Repository root directory.
         iteration: Current iteration number (1-indexed).
@@ -639,7 +656,7 @@ class StallDetector:
             msg = f"no_output_threshold_seconds must be positive, got {no_output_threshold_seconds}"
             raise ValueError(msg)
         if no_progress_threshold_iterations < 1:
-            msg = f"no_progress_threshold_iterations must be positive, got {no_progress_threshold_iterations}"
+            msg = f"no_progress_threshold_iterations must be at least 1, got {no_progress_threshold_iterations}"
             raise ValueError(msg)
 
         # Store thresholds as private attributes (read-only via properties)

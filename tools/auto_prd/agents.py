@@ -398,7 +398,7 @@ class ClaudeHeadlessResponse:
                 "Claude response 'total_cost_usd' is None; cost tracking unavailable"
             )
             total_cost_usd = 0.0
-        elif not isinstance(cost_raw, (int, float)):
+        elif not isinstance(cost_raw, int | float):
             logger.warning(
                 "Claude response 'total_cost_usd' has unexpected type %s; attempting conversion",
                 type(cost_raw).__name__,
@@ -413,7 +413,7 @@ class ClaudeHeadlessResponse:
                 "Claude response 'duration_ms' is None; duration tracking unavailable"
             )
             duration_ms = 0
-        elif not isinstance(duration_ms_raw, (int, float)):
+        elif not isinstance(duration_ms_raw, int | float):
             logger.warning(
                 "Claude response 'duration_ms' has unexpected type %s; attempting conversion",
                 type(duration_ms_raw).__name__,
@@ -426,7 +426,7 @@ class ClaudeHeadlessResponse:
         if duration_api_ms_raw is None:
             logger.debug("Claude response 'duration_api_ms' is None; using 0")
             duration_api_ms = 0
-        elif not isinstance(duration_api_ms_raw, (int, float)):
+        elif not isinstance(duration_api_ms_raw, int | float):
             logger.warning(
                 "Claude response 'duration_api_ms' has unexpected type %s; attempting conversion",
                 type(duration_api_ms_raw).__name__,
@@ -439,7 +439,7 @@ class ClaudeHeadlessResponse:
         if num_turns_raw is None:
             logger.debug("Claude response 'num_turns' is None; using 0")
             num_turns = 0
-        elif not isinstance(num_turns_raw, (int, float)):
+        elif not isinstance(num_turns_raw, int | float):
             logger.warning(
                 "Claude response 'num_turns' has unexpected type %s; attempting conversion",
                 type(num_turns_raw).__name__,
@@ -512,7 +512,11 @@ def parse_claude_json_response(
     except ValueError as e:
         # Log at WARNING since JSON parsing failure when --output-format json
         # was requested indicates an unexpected condition (timeout, truncation, etc.)
-        preview = stdout[:200] + "..." if len(stdout) > 200 else stdout
+        # Sanitize the preview to redact potential secrets/PII before logging or
+        # including in exception messages. Model output can contain tokens,
+        # credentials, PR URLs with embedded auth, etc.
+        preview_raw = stdout[:200] + "..." if len(stdout) > 200 else stdout
+        preview = _sanitize_stderr_for_exception(preview_raw, 200)
         if strict:
             msg = (
                 f"Failed to parse Claude JSON response: {e}. Output preview: {preview}"
@@ -824,7 +828,7 @@ def _build_claude_args(
 
     # Validate 'allowed_tools' - must be a list or tuple of strings if provided
     if allowed_tools is not None:
-        if not isinstance(allowed_tools, (list, tuple)):
+        if not isinstance(allowed_tools, list | tuple):
             msg = f"{caller}: 'allowed_tools' must be a list or tuple of strings, got {_safe_typename(allowed_tools)}"
             raise TypeError(msg)
         if not all(isinstance(x, str) for x in allowed_tools):

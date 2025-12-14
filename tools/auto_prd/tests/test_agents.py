@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -34,6 +35,12 @@ _resolve_unsafe_flag = safe_import(
 )
 _build_claude_args = safe_import(
     "tools.auto_prd.agents", "..agents", "_build_claude_args"
+)
+ClaudeHeadlessResponse = safe_import(
+    "tools.auto_prd.agents", "..agents", "ClaudeHeadlessResponse"
+)
+parse_claude_json_response = safe_import(
+    "tools.auto_prd.agents", "..agents", "parse_claude_json_response"
 )
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "..command", "register_safe_cwd"
@@ -683,6 +690,161 @@ class BuildClaudeArgsTests(unittest.TestCase):
             extra=["--debug"],
         )
         self.assertEqual(args[-2:], ["-p", "-"])
+
+
+class ClaudeHeadlessResponseTests(unittest.TestCase):
+    """Test suite for ClaudeHeadlessResponse dataclass."""
+
+    def test_from_json_valid(self):
+        """Test ClaudeHeadlessResponse.from_json() with valid JSON."""
+        valid_json = json.dumps(
+            {
+                "result": "Task completed successfully",
+                "session_id": "test-session-123",
+                "is_error": False,
+                "total_cost_usd": 0.05,
+                "duration_ms": 1500,
+                "duration_api_ms": 1200,
+                "num_turns": 3,
+            }
+        )
+        response = ClaudeHeadlessResponse.from_json(valid_json)
+        self.assertEqual(response.result, "Task completed successfully")
+        self.assertEqual(response.session_id, "test-session-123")
+        self.assertFalse(response.is_error)
+        self.assertEqual(response.total_cost_usd, 0.05)
+        self.assertEqual(response.duration_ms, 1500)
+        self.assertEqual(response.duration_api_ms, 1200)
+        self.assertEqual(response.num_turns, 3)
+
+    def test_from_json_invalid_json(self):
+        """Test ClaudeHeadlessResponse.from_json() with malformed JSON."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json("not valid json {{{")
+        self.assertIn("Failed to parse", str(ctx.exception))
+
+    def test_from_json_missing_required_fields(self):
+        """Test ClaudeHeadlessResponse.from_json() with missing required fields."""
+        incomplete_json = json.dumps({"total_cost_usd": 0.01})
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json(incomplete_json)
+        self.assertIn("missing required fields", str(ctx.exception))
+
+    def test_from_json_non_dict_response(self):
+        """Test ClaudeHeadlessResponse.from_json() with non-dict JSON."""
+        array_json = json.dumps(["item1", "item2"])
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json(array_json)
+        self.assertIn("must be an object", str(ctx.exception))
+
+    def test_from_json_null_values(self):
+        """Test ClaudeHeadlessResponse.from_json() handles null values gracefully."""
+        json_with_nulls = json.dumps(
+            {
+                "result": None,
+                "session_id": None,
+                "is_error": False,
+                "total_cost_usd": None,
+                "duration_ms": None,
+                "duration_api_ms": None,
+                "num_turns": None,
+            }
+        )
+        response = ClaudeHeadlessResponse.from_json(json_with_nulls)
+        self.assertEqual(response.result, "")
+        self.assertEqual(response.session_id, "")
+        self.assertEqual(response.total_cost_usd, 0.0)
+        self.assertEqual(response.duration_ms, 0)
+        self.assertEqual(response.duration_api_ms, 0)
+        self.assertEqual(response.num_turns, 0)
+
+    def test_negative_duration_raises(self):
+        """Test ClaudeHeadlessResponse raises ValueError for negative duration."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse(
+                result="test",
+                session_id="test",
+                is_error=False,
+                total_cost_usd=0.0,
+                duration_ms=-100,
+                duration_api_ms=0,
+                num_turns=0,
+                raw_json={},
+            )
+        self.assertIn("duration_ms must be non-negative", str(ctx.exception))
+
+    def test_negative_cost_raises(self):
+        """Test ClaudeHeadlessResponse raises ValueError for negative cost."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse(
+                result="test",
+                session_id="test",
+                is_error=False,
+                total_cost_usd=-0.01,
+                duration_ms=0,
+                duration_api_ms=0,
+                num_turns=0,
+                raw_json={},
+            )
+        self.assertIn("total_cost_usd must be non-negative", str(ctx.exception))
+
+
+class ParseClaudeJsonResponseTests(unittest.TestCase):
+    """Test suite for parse_claude_json_response function."""
+
+    def test_parse_valid_json(self):
+        """Test parse_claude_json_response with valid JSON."""
+        valid_json = json.dumps(
+            {
+                "result": "Done",
+                "session_id": "sess-123",
+                "is_error": False,
+                "total_cost_usd": 0.02,
+                "duration_ms": 500,
+                "duration_api_ms": 400,
+                "num_turns": 1,
+            }
+        )
+        response = parse_claude_json_response(valid_json)
+        self.assertIsNotNone(response)
+        self.assertEqual(response.result, "Done")
+        self.assertEqual(response.session_id, "sess-123")
+
+    def test_parse_empty_stdout_lenient(self):
+        """Test parse_claude_json_response with empty stdout in lenient mode."""
+        response = parse_claude_json_response("", strict=False)
+        self.assertIsNone(response)
+
+        response = parse_claude_json_response("   ", strict=False)
+        self.assertIsNone(response)
+
+    def test_parse_empty_stdout_strict(self):
+        """Test parse_claude_json_response with empty stdout in strict mode."""
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response("", strict=True)
+        self.assertIn("empty", str(ctx.exception))
+
+    def test_parse_invalid_json_lenient(self):
+        """Test parse_claude_json_response returns None for invalid JSON in lenient mode."""
+        response = parse_claude_json_response("not json at all", strict=False)
+        self.assertIsNone(response)
+
+    def test_parse_invalid_json_strict(self):
+        """Test parse_claude_json_response raises for invalid JSON in strict mode."""
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response("not json at all", strict=True)
+        self.assertIn("Failed to parse", str(ctx.exception))
+
+    def test_parse_sanitizes_output_preview(self):
+        """Test that parse_claude_json_response sanitizes output preview in error messages."""
+        # JSON with potential secrets that should be sanitized
+        bad_json = '{"result": "sk-1234567890abcdefghij secret token"'  # Invalid JSON
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response(bad_json, strict=True)
+        # The error message should have the preview sanitized
+        error_msg = str(ctx.exception)
+        self.assertNotIn("sk-1234567890abcdefghij", error_msg)
+        self.assertIn("REDACTED", error_msg)
 
 
 if __name__ == "__main__":

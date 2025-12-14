@@ -69,6 +69,18 @@ PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 # These restrict which tools Claude can use during each execution phase,
 # reducing blast radius and improving security.
 #
+# IMPORTANT: Phase Name Mapping
+# These internal phase names differ from CLI phase names (VALID_PHASES above):
+#   - "implement" (here) corresponds to "local" (CLI) - local implementation phase
+#   - "fix" (here only) - CodeRabbit fix phase, not exposed in CLI
+#   - "pr" (same) - Pull request creation phase
+#   - "review_fix" (same) - Review and fix phase
+#
+# When calling get_tool_allowlist(), use the internal names from this mapping,
+# not the CLI names. For example:
+#   - get_tool_allowlist("implement")  # Correct
+#   - get_tool_allowlist("local")      # Wrong - will raise ValueError
+#
 # Tool syntax follows Claude Code's --allowedTools format:
 # - Simple tools: "Read", "Edit", "Write", "Glob", "Grep"
 # - Bash with patterns: "Bash(command:*)" allows specific commands

@@ -433,7 +433,7 @@ def review_fix_loop(
         processed_comment_ids = set()
 
     raw_cycles = review_state.get("cycles", 0)
-    cycles = int(raw_cycles) if isinstance(raw_cycles, (int, float)) else 0
+    cycles = int(raw_cycles) if isinstance(raw_cycles, int | float) else 0
 
     # Context compaction: maintain summaries of previous fixes for continuity.
     # This is passed via --append-system-prompt to give Claude context about
@@ -761,7 +761,13 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             # This creates a brief summary of what was fixed, passed to Claude
             # via --append-system-prompt to maintain context without session resumption.
             num_items = len(unresolved)
-            summary_items = [item.get("summary", "")[:100] for item in unresolved[:3]]
+            # Defensive extraction: summary can be non-string (None, int, dict, etc.)
+            # from malformed API responses, so validate type before slicing.
+            summary_items: list[str] = []
+            for item in unresolved[:3]:
+                summary = item.get("summary")
+                if isinstance(summary, str) and summary:
+                    summary_items.append(summary[:100])
             compact_summary = (
                 f"Iteration {cycles + 1}: Fixed {num_items} item(s). "
                 f"Examples: {'; '.join(s for s in summary_items if s)}"
