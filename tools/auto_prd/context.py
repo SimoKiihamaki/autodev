@@ -472,8 +472,11 @@ def save_session_memory(
             safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
             filename = f"session_{safe_ts}"
         except ValueError:
-            # Fallback: use only the digits from created_at
+            # Fallback: use only the digits from created_at; if empty, use current UTC timestamp
             safe_ts = "".join(c for c in memory.created_at if c.isdigit())
+            if not safe_ts:
+                # Use current UTC timestamp with microseconds for uniqueness
+                safe_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%f")
             filename = f"session_{safe_ts}"
     # Sanitize filename by replacing non-alphanumeric characters with underscores
     filename = "".join(c if c.isalnum() or c in "-_" else "_" for c in filename)
