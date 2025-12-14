@@ -6,7 +6,9 @@ import os
 import re
 import shutil
 import threading
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 CHECKBOX_ANY_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", flags=re.MULTILINE)
 CHECKBOX_UNCHECKED_RE = re.compile(r"^\s*[-*]\s*\[\s\]", flags=re.MULTILINE)
@@ -62,6 +64,92 @@ SAFE_CWD_ROOTS: set[Path] = {Path(__file__).resolve().parent}
 # See internal/tui/model.go for Go-side definitions.
 VALID_PHASES = ("local", "pr", "review_fix")
 PHASES_WITH_COMMIT_RISK = {"local", "pr"}
+
+# Per-phase tool allowlists for Claude Code headless mode.
+# These restrict which tools Claude can use during each execution phase,
+# reducing blast radius and improving security.
+#
+# IMPORTANT: Phase Name Mapping
+# These internal phase names differ from CLI phase names (VALID_PHASES above):
+#   - "implement" (here) corresponds to "local" (CLI) - local implementation phase
+#   - "fix" (here only) - CodeRabbit fix phase, not exposed in CLI
+#   - "pr" (same) - Pull request creation phase
+#   - "review_fix" (same) - Review and fix phase
+#
+# When calling get_tool_allowlist(), use the internal names from this mapping,
+# not the CLI names. For example:
+#   - get_tool_allowlist("implement")  # Correct
+#   - get_tool_allowlist("local")      # Wrong - will raise ValueError
+#
+# Tool syntax follows Claude Code's --allowedTools format:
+# - Simple tools: "Read", "Edit", "Write", "Glob", "Grep"
+# - Bash with patterns: "Bash(command:*)" allows specific commands
+#   Multiple commands can be comma-separated: "Bash(git:*,make:*,npm:*)"
+# - Each tool in the list becomes a separate --allowedTools argument
+#
+# See: https://code.claude.com/docs/en/cli-reference
+#
+# Note: This mapping is immutable (MappingProxyType with tuple values) to prevent
+# accidental modification at runtime. Use get_tool_allowlist() for safe access.
+# The _INTERNAL suffix indicates this is the mutable internal dict before wrapping
+# in MappingProxyType. Do not access directly; use HEADLESS_TOOL_ALLOWLISTS instead.
+_HEADLESS_TOOL_ALLOWLISTS_INTERNAL: dict[str, tuple[str, ...]] = {
+    # Local/implement phase: needs full file access + build commands
+    "implement": (
+        "Bash(git:*,make:*,npm:*,pnpm:*,yarn:*,pytest:*,cargo:*,go:*)",
+        "Read",
+        "Edit",
+        "Write",
+        "Glob",
+        "Grep",
+    ),
+    # Fix phase (CodeRabbit fixes): limited to editing existing files
+    "fix": (
+        "Bash(git:*,make:*,npm:*,pnpm:*,pytest:*)",
+        "Read",
+        "Edit",
+    ),
+    # PR phase: git + GitHub CLI only
+    "pr": (
+        "Bash(git:*,gh:*)",
+        "Read",
+    ),
+    # Review/fix phase: needs edit access + GitHub for PR updates
+    "review_fix": (
+        "Bash(git:*,gh:*,make:*,npm:*,pnpm:*,pytest:*)",
+        "Read",
+        "Edit",
+        "Write",
+    ),
+}
+
+# Immutable view of tool allowlists - prevents accidental modification.
+HEADLESS_TOOL_ALLOWLISTS: Mapping[str, Sequence[str]] = MappingProxyType(
+    _HEADLESS_TOOL_ALLOWLISTS_INTERNAL
+)
+
+
+def get_tool_allowlist(phase: str) -> list[str]:
+    """Get the tool allowlist for a phase with clear error on invalid phase.
+
+    This function provides a safer alternative to direct dictionary access,
+    giving clear error messages when an invalid phase name is used.
+
+    Args:
+        phase: The execution phase (implement, fix, pr, review_fix).
+
+    Returns:
+        List of allowed tools for the phase.
+
+    Raises:
+        ValueError: If phase is not a valid phase name.
+    """
+    if phase not in HEADLESS_TOOL_ALLOWLISTS:
+        valid_phases = sorted(HEADLESS_TOOL_ALLOWLISTS.keys())
+        msg = f"Invalid phase '{phase}'; valid phases are: {valid_phases}"
+        raise ValueError(msg)
+    return list(HEADLESS_TOOL_ALLOWLISTS[phase])
+
 
 COMMAND_VERIFICATION_TIMEOUT_SECONDS = 8
 

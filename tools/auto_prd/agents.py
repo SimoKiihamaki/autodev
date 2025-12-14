@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 import random
 import re
@@ -10,10 +11,12 @@ import select
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import IO, Any
 
 from .command import (
@@ -276,6 +279,340 @@ def get_claude_exec_timeout() -> int | None:
     )
 
 
+@dataclass(frozen=True)
+class ClaudeHeadlessResponse:
+    """Structured response from Claude headless JSON output.
+
+    This dataclass represents the parsed response from Claude when using
+    --output-format json. It provides structured access to execution metadata
+    and results, enabling better observability and error handling.
+
+    The dataclass is frozen (immutable) to prevent accidental modification
+    after parsing. The raw_json field returns an immutable view.
+
+    Attributes:
+        result: The text output from Claude's execution.
+        session_id: Unique identifier for the Claude session.
+        is_error: True if the execution encountered an error.
+        total_cost_usd: Total API cost in USD for this execution.
+        duration_ms: Execution duration in milliseconds.
+        duration_api_ms: API call duration in milliseconds (network + inference).
+        num_turns: Number of conversational turns in the session.
+        raw_json: Immutable view of the complete raw JSON response.
+    """
+
+    result: str
+    session_id: str
+    is_error: bool
+    total_cost_usd: float
+    duration_ms: int
+    duration_api_ms: int
+    num_turns: int
+    raw_json: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        """Validate invariants at construction time.
+
+        This validates initial construction only. Post-construction immutability
+        is enforced by frozen=True, which prevents field reassignment via the
+        standard attribute assignment mechanism.
+
+        Raises:
+            ValueError: If duration values are negative or cost is negative.
+        """
+        if self.duration_ms < 0:
+            msg = f"duration_ms must be non-negative, got {self.duration_ms}"
+            raise ValueError(msg)
+        if self.duration_api_ms < 0:
+            msg = f"duration_api_ms must be non-negative, got {self.duration_api_ms}"
+            raise ValueError(msg)
+        if self.total_cost_usd < 0:
+            msg = f"total_cost_usd must be non-negative, got {self.total_cost_usd}"
+            raise ValueError(msg)
+        if self.num_turns < 0:
+            msg = f"num_turns must be non-negative, got {self.num_turns}"
+            raise ValueError(msg)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> ClaudeHeadlessResponse:
+        """Parse a JSON string from Claude --output-format json.
+
+        Args:
+            json_str: Raw JSON string from Claude stdout.
+
+        Returns:
+            Parsed ClaudeHeadlessResponse instance.
+
+        Raises:
+            ValueError: If parsing fails for any reason:
+                - Input is not valid JSON (json.JSONDecodeError wrapped as ValueError)
+                - Parsed JSON is not an object/dict (e.g., array, string, number)
+                - Required fields ("result", "session_id") are missing as keys
+                Note: Required fields must exist as keys but may have null values,
+                which are coerced to empty strings with debug logging.
+        """
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            msg = f"Failed to parse Claude JSON response: {e}"
+            raise ValueError(msg) from e
+
+        # Validate that parsed JSON is a dict (object), not array/string/number.
+        # This prevents AttributeError when calling data.get() below.
+        if not isinstance(data, dict):
+            msg = f"Claude JSON response must be an object, got {type(data).__name__}"
+            raise ValueError(msg)
+
+        # Claude JSON output structure (from documentation):
+        # {
+        #   "result": "...",
+        #   "session_id": "...",
+        #   "is_error": false,
+        #   "total_cost_usd": 0.05,
+        #   "duration_ms": 1234,
+        #   "duration_api_ms": 1100,
+        #   "num_turns": 3,
+        #   ...
+        # }
+        required_fields = ["result", "session_id"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            msg = f"Claude JSON response missing required fields: {missing}"
+            raise ValueError(msg)
+
+        # Extract values with explicit None checks and debug logging for observability.
+        # Explicit None checks and type validation handle null values from JSON (e.g., "cost": null)
+        # to prevent TypeError in float()/int() conversion and improve robustness.
+        result_raw = data.get("result")
+        session_id_raw = data.get("session_id")
+
+        # Log when required fields contain None (indicates potential API issue)
+        if result_raw is None:
+            logger.debug("Claude response 'result' field is None; using empty string")
+        if session_id_raw is None:
+            logger.debug(
+                "Claude response 'session_id' field is None; session tracking unavailable"
+            )
+
+        # Extract numeric fields with explicit type checking and logging.
+        # Log at WARNING when null/missing since this indicates incomplete API response.
+        #
+        # DESIGN NOTE: Boolean handling differs from SessionMemory.from_dict() by design.
+        # - Here (API responses): Log warning and use default - resilience over strictness
+        # - SessionMemory.from_dict(): Raise TypeError - strictness over resilience
+        #
+        # Rationale: API responses are external/untrusted and may have malformed data due
+        # to upstream issues. Session files are under our control; corruption indicates
+        # bugs that should fail fast. See SessionMemory.from_dict() for the strict variant.
+        cost_raw = data.get("total_cost_usd")
+        if cost_raw is None:
+            logger.warning(
+                "Claude response 'total_cost_usd' is None; cost tracking unavailable"
+            )
+            total_cost_usd = 0.0
+        elif isinstance(cost_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python,
+            # so isinstance(True, int) returns True. Boolean cost values are
+            # semantically incorrect and should not be silently converted.
+            logger.warning(
+                "Claude response 'total_cost_usd' has unexpected type bool; using default 0.0"
+            )
+            total_cost_usd = 0.0
+        elif isinstance(cost_raw, int | float):
+            total_cost_usd = float(cost_raw)
+        else:
+            logger.warning(
+                "Claude response 'total_cost_usd' has unexpected type %s; attempting conversion",
+                type(cost_raw).__name__,
+            )
+            try:
+                total_cost_usd = float(cost_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'total_cost_usd' cannot be converted to float (type %s): %s; using default 0.0",
+                    type(cost_raw).__name__,
+                    e,
+                )
+                total_cost_usd = 0.0
+
+        duration_ms_raw = data.get("duration_ms")
+        if duration_ms_raw is None:
+            logger.warning(
+                "Claude response 'duration_ms' is None; duration tracking unavailable"
+            )
+            duration_ms = 0
+        elif isinstance(duration_ms_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'duration_ms' has unexpected type bool; using default 0"
+            )
+            duration_ms = 0
+        elif isinstance(duration_ms_raw, int | float):
+            duration_ms = int(duration_ms_raw)
+        else:
+            logger.warning(
+                "Claude response 'duration_ms' has unexpected type %s; attempting conversion",
+                type(duration_ms_raw).__name__,
+            )
+            try:
+                duration_ms = int(duration_ms_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'duration_ms' cannot be converted to int (type %s): %s; using default 0",
+                    type(duration_ms_raw).__name__,
+                    e,
+                )
+                duration_ms = 0
+
+        duration_api_ms_raw = data.get("duration_api_ms")
+        if duration_api_ms_raw is None:
+            logger.warning(
+                "Claude response 'duration_api_ms' is None; duration tracking unavailable"
+            )
+            duration_api_ms = 0
+        elif isinstance(duration_api_ms_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'duration_api_ms' has unexpected type bool; using default 0"
+            )
+            duration_api_ms = 0
+        elif isinstance(duration_api_ms_raw, int | float):
+            duration_api_ms = int(duration_api_ms_raw)
+        else:
+            logger.warning(
+                "Claude response 'duration_api_ms' has unexpected type %s; attempting conversion",
+                type(duration_api_ms_raw).__name__,
+            )
+            try:
+                duration_api_ms = int(duration_api_ms_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'duration_api_ms' cannot be converted to int (type %s): %s; using default 0",
+                    type(duration_api_ms_raw).__name__,
+                    e,
+                )
+                duration_api_ms = 0
+
+        num_turns_raw = data.get("num_turns")
+        if num_turns_raw is None:
+            logger.warning(
+                "Claude response 'num_turns' is None; turn tracking unavailable"
+            )
+            num_turns = 0
+        elif isinstance(num_turns_raw, bool):
+            # Reject booleans explicitly - bool is a subclass of int in Python
+            logger.warning(
+                "Claude response 'num_turns' has unexpected type bool; using default 0"
+            )
+            num_turns = 0
+        elif isinstance(num_turns_raw, int | float):
+            num_turns = int(num_turns_raw)
+        else:
+            logger.warning(
+                "Claude response 'num_turns' has unexpected type %s; attempting conversion",
+                type(num_turns_raw).__name__,
+            )
+            try:
+                num_turns = int(num_turns_raw)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Claude response 'num_turns' cannot be converted to int (type %s): %s; using default 0",
+                    type(num_turns_raw).__name__,
+                    e,
+                )
+                num_turns = 0
+
+        # Wrap raw_json in MappingProxyType to prevent mutation of internal state.
+        # Validate is_error: only accept actual booleans, treat strings like "false" as False
+        is_error_raw = data.get("is_error")
+        if is_error_raw is not None and not isinstance(is_error_raw, bool):
+            logger.warning(
+                "Claude response 'is_error' has unexpected type %s (value: %r); using False",
+                type(is_error_raw).__name__,
+                is_error_raw,
+            )
+        is_error = is_error_raw if isinstance(is_error_raw, bool) else False
+        return cls(
+            result=result_raw if isinstance(result_raw, str) else "",
+            session_id=session_id_raw if isinstance(session_id_raw, str) else "",
+            is_error=is_error,
+            total_cost_usd=total_cost_usd,
+            duration_ms=duration_ms,
+            duration_api_ms=duration_api_ms,
+            num_turns=num_turns,
+            raw_json=MappingProxyType(data),
+        )
+
+
+def parse_claude_json_response(
+    stdout: str,
+    *,
+    strict: bool = False,
+) -> ClaudeHeadlessResponse | None:
+    """Attempt to parse Claude stdout as JSON response.
+
+    This function provides two modes of operation:
+
+    **Lenient mode (strict=False, default):**
+    Returns None if the output is not valid JSON rather than raising an exception.
+    This allows callers to gracefully fall back to treating stdout as plain text.
+    A warning is logged with a content preview for debugging.
+
+    **Strict mode (strict=True):**
+    Raises ValueError if parsing fails. Use this when output_format="json" was
+    explicitly requested and you need to ensure the response was properly formatted.
+    Strict mode is appropriate when the caller has no fallback behavior and needs
+    to surface parsing failures to the user.
+
+    **Usage guidance:**
+    When calling Claude with output_format="json", prefer strict=True to surface
+    parsing failures. Only use lenient mode (strict=False) when you have a robust
+    fallback for plain text output and can accept losing the structured metadata
+    (cost, duration, session_id) on parse failure.
+
+    Args:
+        stdout: Raw stdout from Claude execution.
+        strict: If True, raise ValueError on parse failure instead of returning None.
+            Use strict=True when output_format="json" was explicitly requested
+            and parsing failure indicates a real problem (timeout, truncation, etc.).
+
+    Returns:
+        ClaudeHeadlessResponse if stdout is valid JSON, None if not (and strict=False).
+
+    Raises:
+        ValueError: If strict=True and parsing fails (empty input, invalid JSON,
+            or missing required fields).
+    """
+    if not stdout.strip():
+        if strict:
+            msg = "Claude stdout is empty; expected JSON response"
+            raise ValueError(msg)
+        logger.debug("Claude stdout is empty; cannot parse as JSON")
+        return None
+
+    try:
+        return ClaudeHeadlessResponse.from_json(stdout)
+    except ValueError as e:
+        # Log at WARNING since JSON parsing failure when --output-format json
+        # was requested indicates an unexpected condition (timeout, truncation, etc.)
+        # Sanitize the preview to redact potential secrets/PII before logging or
+        # including in exception messages. Model output can contain tokens,
+        # credentials, PR URLs with embedded auth, etc.
+        preview_raw = stdout[:200] + "..." if len(stdout) > 200 else stdout
+        preview = _sanitize_stderr_for_exception(preview_raw, 200)
+        if strict:
+            msg = (
+                f"Failed to parse Claude JSON response: {e}. Output preview: {preview}"
+            )
+            raise ValueError(msg) from e
+        logger.warning(
+            "Failed to parse Claude output as JSON: %s. Output preview: %s",
+            e,
+            preview,
+        )
+        return None
+
+
 # Use a cryptographically secure RNG for backoff jitter to avoid predictable retry cadences.
 _rate_limit_rng = random.SystemRandom()
 
@@ -501,10 +838,20 @@ def _safe_typename(obj: object) -> str:
     """
     try:
         return type(obj).__name__
-    except Exception:  # noqa: BLE001 - defensive: error formatting must not fail
+    except Exception as e:
+        # Broad catch for primary path: type(obj).__name__ can fail in pathological
+        # cases with TypeError, AttributeError, or even custom exceptions from
+        # objects with unusual __class__ implementations. Since this is a defensive
+        # utility for error messages, we prioritize robustness over precision.
+        logger.debug(
+            "Failed to get type name via __name__: %s (%s)", e, type(e).__name__
+        )
         try:
             return str(type(obj))
-        except Exception:  # noqa: BLE001 - defensive: last-resort formatting
+        except Exception:
+            # Broad catch for fallback path: str(type(obj)) can raise RecursionError
+            # for deeply nested proxy objects, or custom exceptions from
+            # __str__/__repr__ overrides. This is the last-resort fallback.
             return "<unknown type>"
 
 
@@ -515,6 +862,9 @@ def _build_claude_args(
     extra: list[str] | tuple[str, ...] | None,
     *,
     caller: str = "claude_exec or claude_exec_streaming",
+    output_format: str | None = None,
+    allowed_tools: list[str] | None = None,
+    system_prompt_suffix: str | None = None,
 ) -> list[str]:
     """Build the CLI arguments for Claude execution.
 
@@ -531,6 +881,15 @@ def _build_claude_args(
             before any arguments are constructed to fail fast with clear errors.
         caller: Name of the calling function for clearer error messages.
             Defaults to "claude_exec or claude_exec_streaming" for generic context.
+        output_format: Optional output format for structured responses.
+            Valid values: "json", "stream-json". When set, Claude returns
+            structured JSON output with metadata (session_id, cost, duration).
+        allowed_tools: Optional list of tools to allow. Restricts which tools
+            Claude can use during execution. Use HEADLESS_TOOL_ALLOWLISTS from
+            constants.py for phase-specific restrictions.
+        system_prompt_suffix: Optional text to append to system prompt via
+            --append-system-prompt. Used for injecting context like compacted
+            history from previous iterations.
 
     Returns:
         List of CLI arguments for Claude execution.
@@ -539,6 +898,7 @@ def _build_claude_args(
         TypeError: If extra is provided but is not a list/tuple of strings.
             This is raised immediately upon entry, before any other processing,
             to provide clear error messages with full caller context.
+        ValueError: If output_format is not a valid format.
     """
     # Validate 'extra' first, before any argument construction.
     # Early validation ensures clear error messages with caller stack context.
@@ -551,11 +911,48 @@ def _build_claude_args(
             msg = f"{caller}: 'extra' must contain only strings, found: {invalid_types}"
             raise TypeError(msg)
 
+    # Validate output_format - reject empty strings with a specific error message
+    valid_output_formats = {"json", "stream-json"}
+    if output_format is not None:
+        if output_format == "":
+            msg = f"{caller}: 'output_format' cannot be empty; use None to omit or one of {valid_output_formats}"
+            raise ValueError(msg)
+        if output_format not in valid_output_formats:
+            msg = f"{caller}: 'output_format' must be one of {valid_output_formats}, got {output_format!r}"
+            raise ValueError(msg)
+
+    # Validate 'allowed_tools' - must be a list or tuple of strings if provided
+    if allowed_tools is not None:
+        if not isinstance(allowed_tools, list | tuple):
+            msg = f"{caller}: 'allowed_tools' must be a list or tuple of strings, got {_safe_typename(allowed_tools)}"
+            raise TypeError(msg)
+        if not all(isinstance(x, str) for x in allowed_tools):
+            invalid_types = [
+                _safe_typename(x) for x in allowed_tools if not isinstance(x, str)
+            ]
+            msg = f"{caller}: 'allowed_tools' must contain only strings, found: {invalid_types}"
+            raise TypeError(msg)
+
     args: list[str] = ["claude"]
     if allow_flag:
         args.append("--dangerously-skip-permissions")
     if model:
         args.extend(["--model", model])
+
+    # Add structured output format for JSON responses
+    if output_format:
+        args.extend(["--output-format", output_format])
+
+    # Add tool restrictions for security
+    if allowed_tools:
+        # Each tool requires a separate --allowedTools argument per CLI docs
+        for tool in allowed_tools:
+            args.extend(["--allowedTools", tool])
+
+    # Add system prompt suffix for context injection
+    if system_prompt_suffix:
+        args.extend(["--append-system-prompt", system_prompt_suffix])
+
     if not enable_search:
         logger.info(
             "Claude CLI does not yet expose a --no-search flag; ignoring enable_search=False"
@@ -576,8 +973,37 @@ def claude_exec(
     allow_unsafe_execution: bool | None = None,
     dry_run: bool = False,
     extra: list[str] | None = None,
+    *,
+    output_format: str | None = None,
+    allowed_tools: list[str] | None = None,
+    system_prompt_suffix: str | None = None,
 ) -> tuple[str, str]:
-    """Execute a Claude command. Parameters mirror codex_exec for API compatibility."""
+    """Execute a Claude command.
+
+    Args:
+        prompt: The prompt to send to Claude.
+        repo_root: Repository root directory.
+        model: Optional model name override.
+        enable_search: Enable search (not currently used by Claude CLI).
+        yolo: Deprecated alias for allow_unsafe_execution.
+        allow_unsafe_execution: Must be True for actual (non-dry-run) execution.
+        dry_run: If True, skip actual execution and return ("DRY_RUN", "").
+        extra: Additional CLI arguments passed directly to claude.
+        output_format: Optional output format ("json" or "stream-json") for
+            structured responses with metadata (session_id, cost, duration).
+        allowed_tools: Optional list of tools to allow. Use HEADLESS_TOOL_ALLOWLISTS
+            from constants.py for phase-specific restrictions.
+        system_prompt_suffix: Optional text to append to system prompt via
+            --append-system-prompt for context injection.
+
+    Returns:
+        Tuple of (stdout, stderr) containing all output.
+
+    Raises:
+        PermissionError: If allow_unsafe_execution is False and dry_run is False.
+        FileNotFoundError: If the claude executable is not found in PATH.
+        subprocess.CalledProcessError: If claude returns a non-zero exit code.
+    """
     allow_flag = _resolve_unsafe_flag(allow_unsafe_execution, yolo, "claude_exec")
     if not allow_flag and not dry_run:
         msg = "Claude executor requires allow_unsafe_execution=True to bypass permissions."
@@ -587,7 +1013,14 @@ def claude_exec(
         verify_unsafe_execution_ready()
 
     args = _build_claude_args(
-        allow_flag, model, enable_search, extra, caller="claude_exec"
+        allow_flag,
+        model,
+        enable_search,
+        extra,
+        caller="claude_exec",
+        output_format=output_format,
+        allowed_tools=allowed_tools,
+        system_prompt_suffix=system_prompt_suffix,
     )
     if dry_run:
         # Log command name and arg count only - avoid full arg dump to prevent
@@ -857,6 +1290,10 @@ def claude_exec_streaming(
     extra: list[str] | None = None,
     on_output: Callable[[str], None] | None = None,
     timeout: int | None = None,
+    *,
+    output_format: str | None = None,
+    allowed_tools: list[str] | None = None,
+    system_prompt_suffix: str | None = None,
 ) -> tuple[str, str]:
     """Execute Claude with real-time output streaming.
 
@@ -893,6 +1330,12 @@ def claude_exec_streaming(
         timeout: Optional timeout in seconds. If None, falls back to the
             AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable. If that is
             also unset or explicitly disabled, no timeout is applied.
+        output_format: Optional output format ("json" or "stream-json") for
+            structured responses with metadata (session_id, cost, duration).
+        allowed_tools: Optional list of tools to allow. Use HEADLESS_TOOL_ALLOWLISTS
+            from constants.py for phase-specific restrictions.
+        system_prompt_suffix: Optional text to append to system prompt via
+            --append-system-prompt for context injection.
 
     Returns:
         Tuple of (stdout, stderr) containing all accumulated output.
@@ -950,7 +1393,14 @@ def claude_exec_streaming(
         verify_unsafe_execution_ready()
 
     args = _build_claude_args(
-        allow_flag, model, enable_search, extra, caller="claude_exec_streaming"
+        allow_flag,
+        model,
+        enable_search,
+        extra,
+        caller="claude_exec_streaming",
+        output_format=output_format,
+        allowed_tools=allowed_tools,
+        system_prompt_suffix=system_prompt_suffix,
     )
     if dry_run:
         # Log command name and arg count only - avoid full arg dump to prevent

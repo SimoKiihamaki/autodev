@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -34,6 +35,12 @@ _resolve_unsafe_flag = safe_import(
 )
 _build_claude_args = safe_import(
     "tools.auto_prd.agents", "..agents", "_build_claude_args"
+)
+ClaudeHeadlessResponse = safe_import(
+    "tools.auto_prd.agents", "..agents", "ClaudeHeadlessResponse"
+)
+parse_claude_json_response = safe_import(
+    "tools.auto_prd.agents", "..agents", "parse_claude_json_response"
 )
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "..command", "register_safe_cwd"
@@ -683,6 +690,450 @@ class BuildClaudeArgsTests(unittest.TestCase):
             extra=["--debug"],
         )
         self.assertEqual(args[-2:], ["-p", "-"])
+
+    # Tests for allowed_tools parameter
+    def test_with_allowed_tools_list(self):
+        """Test _build_claude_args adds --allowedTools for each tool."""
+        tools = ["Read", "Edit", "Write"]
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=tools,
+        )
+        # Each tool should have its own --allowedTools argument
+        self.assertEqual(args.count("--allowedTools"), 3)
+        self.assertIn("Read", args)
+        self.assertIn("Edit", args)
+        self.assertIn("Write", args)
+        # Verify structure: --allowedTools followed by tool name
+        for tool in tools:
+            tool_idx = args.index(tool)
+            self.assertEqual(args[tool_idx - 1], "--allowedTools")
+
+    def test_with_allowed_tools_empty_list(self):
+        """Test _build_claude_args with empty allowed_tools list adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=[],
+        )
+        self.assertNotIn("--allowedTools", args)
+        self.assertEqual(args, ["claude", "-p", "-"])
+
+    def test_with_allowed_tools_none(self):
+        """Test _build_claude_args with None allowed_tools adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=None,
+        )
+        self.assertNotIn("--allowedTools", args)
+
+    def test_allowed_tools_non_list_raises_type_error(self):
+        """Test _build_claude_args raises TypeError for non-list allowed_tools."""
+        with self.assertRaises(TypeError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                allowed_tools="Read",  # String, not list
+            )
+        self.assertIn("allowed_tools", str(ctx.exception))
+        self.assertIn("list or tuple", str(ctx.exception))
+
+    def test_allowed_tools_non_string_elements_raises_type_error(self):
+        """Test _build_claude_args raises TypeError when allowed_tools contains non-strings."""
+        with self.assertRaises(TypeError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                allowed_tools=["Read", 123, "Write"],  # 123 is not a string
+            )
+        self.assertIn("allowed_tools", str(ctx.exception))
+        self.assertIn("strings", str(ctx.exception))
+
+    def test_allowed_tools_tuple_accepted(self):
+        """Test _build_claude_args accepts tuple for allowed_tools."""
+        tools = ("Read", "Edit")
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            allowed_tools=tools,
+        )
+        self.assertEqual(args.count("--allowedTools"), 2)
+
+    # Tests for system_prompt_suffix parameter
+    def test_with_system_prompt_suffix(self):
+        """Test _build_claude_args adds --append-system-prompt for suffix."""
+        suffix = "Previous context: Task completed successfully."
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        self.assertIn("--append-system-prompt", args)
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+
+    def test_with_system_prompt_suffix_none(self):
+        """Test _build_claude_args with None suffix adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=None,
+        )
+        self.assertNotIn("--append-system-prompt", args)
+
+    def test_with_system_prompt_suffix_empty_string(self):
+        """Test _build_claude_args with empty suffix adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix="",
+        )
+        self.assertNotIn("--append-system-prompt", args)
+
+    def test_with_system_prompt_suffix_multiline(self):
+        """Test _build_claude_args handles multiline suffix correctly."""
+        suffix = "Line 1\nLine 2\nLine 3"
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+        self.assertIn("\n", args[prompt_idx + 1])
+
+    def test_with_system_prompt_suffix_special_characters(self):
+        """Test _build_claude_args handles special characters in suffix."""
+        suffix = "Context: $var, 'quotes', \"double\", <tags>"
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            system_prompt_suffix=suffix,
+        )
+        prompt_idx = args.index("--append-system-prompt")
+        self.assertEqual(args[prompt_idx + 1], suffix)
+
+    # Tests for output_format parameter
+    def test_with_output_format_json(self):
+        """Test _build_claude_args adds --output-format for json."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format="json",
+        )
+        self.assertIn("--output-format", args)
+        format_idx = args.index("--output-format")
+        self.assertEqual(args[format_idx + 1], "json")
+
+    def test_with_output_format_stream_json(self):
+        """Test _build_claude_args adds --output-format for stream-json."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format="stream-json",
+        )
+        self.assertIn("--output-format", args)
+        format_idx = args.index("--output-format")
+        self.assertEqual(args[format_idx + 1], "stream-json")
+
+    def test_with_output_format_none(self):
+        """Test _build_claude_args with None output_format adds no args."""
+        args = _build_claude_args(
+            allow_flag=False,
+            model=None,
+            enable_search=True,
+            extra=None,
+            output_format=None,
+        )
+        self.assertNotIn("--output-format", args)
+
+    def test_output_format_invalid_raises_value_error(self):
+        """Test _build_claude_args raises ValueError for invalid output_format."""
+        with self.assertRaises(ValueError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                output_format="invalid-format",
+            )
+        self.assertIn("output_format", str(ctx.exception))
+        self.assertIn("json", str(ctx.exception))
+        self.assertIn("stream-json", str(ctx.exception))
+
+    def test_output_format_empty_string_raises_value_error(self):
+        """Test _build_claude_args raises ValueError for empty output_format."""
+        with self.assertRaises(ValueError) as ctx:
+            _build_claude_args(
+                allow_flag=False,
+                model=None,
+                enable_search=True,
+                extra=None,
+                output_format="",
+            )
+        self.assertIn("output_format", str(ctx.exception))
+
+    # Test all parameters combined
+    def test_all_new_parameters_combined(self):
+        """Test _build_claude_args with all new parameters together."""
+        args = _build_claude_args(
+            allow_flag=True,
+            model="claude-3-sonnet",
+            enable_search=True,
+            extra=["--verbose"],
+            output_format="json",
+            allowed_tools=["Read", "Edit"],
+            system_prompt_suffix="Previous context here",
+        )
+        # Verify all components are present
+        self.assertIn("--dangerously-skip-permissions", args)
+        self.assertIn("--model", args)
+        self.assertIn("--output-format", args)
+        self.assertIn("--allowedTools", args)
+        self.assertIn("--append-system-prompt", args)
+        self.assertIn("--verbose", args)
+        # And ends with -p -
+        self.assertEqual(args[-2:], ["-p", "-"])
+
+
+class ClaudeHeadlessResponseTests(unittest.TestCase):
+    """Test suite for ClaudeHeadlessResponse dataclass."""
+
+    def test_from_json_valid(self):
+        """Test ClaudeHeadlessResponse.from_json() with valid JSON."""
+        valid_json = json.dumps(
+            {
+                "result": "Task completed successfully",
+                "session_id": "test-session-123",
+                "is_error": False,
+                "total_cost_usd": 0.05,
+                "duration_ms": 1500,
+                "duration_api_ms": 1200,
+                "num_turns": 3,
+            }
+        )
+        response = ClaudeHeadlessResponse.from_json(valid_json)
+        self.assertEqual(response.result, "Task completed successfully")
+        self.assertEqual(response.session_id, "test-session-123")
+        self.assertFalse(response.is_error)
+        self.assertEqual(response.total_cost_usd, 0.05)
+        self.assertEqual(response.duration_ms, 1500)
+        self.assertEqual(response.duration_api_ms, 1200)
+        self.assertEqual(response.num_turns, 3)
+
+    def test_from_json_invalid_json(self):
+        """Test ClaudeHeadlessResponse.from_json() with malformed JSON."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json("not valid json {{{")
+        self.assertIn("Failed to parse", str(ctx.exception))
+
+    def test_from_json_missing_required_fields(self):
+        """Test ClaudeHeadlessResponse.from_json() with missing required fields."""
+        incomplete_json = json.dumps({"total_cost_usd": 0.01})
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json(incomplete_json)
+        self.assertIn("missing required fields", str(ctx.exception))
+
+    def test_from_json_non_dict_response(self):
+        """Test ClaudeHeadlessResponse.from_json() with non-dict JSON."""
+        array_json = json.dumps(["item1", "item2"])
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse.from_json(array_json)
+        self.assertIn("must be an object", str(ctx.exception))
+
+    def test_from_json_null_values(self):
+        """Test ClaudeHeadlessResponse.from_json() handles null values gracefully.
+
+        Verifies that null numeric fields log WARNING level messages for consistency
+        and better observability of incomplete API responses.
+        """
+        json_with_nulls = json.dumps(
+            {
+                "result": None,
+                "session_id": None,
+                "is_error": False,
+                "total_cost_usd": None,
+                "duration_ms": None,
+                "duration_api_ms": None,
+                "num_turns": None,
+            }
+        )
+        # Verify WARNING logs are generated for null numeric fields
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_nulls)
+        self.assertEqual(response.result, "")
+        self.assertEqual(response.session_id, "")
+        self.assertEqual(response.total_cost_usd, 0.0)
+        self.assertEqual(response.duration_ms, 0)
+        self.assertEqual(response.duration_api_ms, 0)
+        self.assertEqual(response.num_turns, 0)
+        # Verify all numeric fields log at WARNING level for consistency
+        self.assertTrue(
+            any("total_cost_usd" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(
+            any("duration_ms" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(
+            any("duration_api_ms" in msg and "None" in msg for msg in log.output)
+        )
+        self.assertTrue(any("num_turns" in msg and "None" in msg for msg in log.output))
+
+    def test_negative_duration_raises(self):
+        """Test ClaudeHeadlessResponse raises ValueError for negative duration."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse(
+                result="test",
+                session_id="test",
+                is_error=False,
+                total_cost_usd=0.0,
+                duration_ms=-100,
+                duration_api_ms=0,
+                num_turns=0,
+                raw_json={},
+            )
+        self.assertIn("duration_ms must be non-negative", str(ctx.exception))
+
+    def test_negative_cost_raises(self):
+        """Test ClaudeHeadlessResponse raises ValueError for negative cost."""
+        with self.assertRaises(ValueError) as ctx:
+            ClaudeHeadlessResponse(
+                result="test",
+                session_id="test",
+                is_error=False,
+                total_cost_usd=-0.01,
+                duration_ms=0,
+                duration_api_ms=0,
+                num_turns=0,
+                raw_json={},
+            )
+        self.assertIn("total_cost_usd must be non-negative", str(ctx.exception))
+
+    def test_from_json_non_boolean_is_error_logs_warning(self):
+        """Test non-boolean is_error values log warning and default to False."""
+        # Test string "true" - should warn and use False
+        json_with_string_is_error = json.dumps(
+            {
+                "result": "Test",
+                "session_id": "test-123",
+                "is_error": "true",  # String, not boolean
+                "total_cost_usd": 0.01,
+                "duration_ms": 100,
+                "duration_api_ms": 80,
+                "num_turns": 1,
+            }
+        )
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_string_is_error)
+        self.assertFalse(response.is_error)
+        self.assertTrue(
+            any("is_error" in msg and "unexpected type" in msg for msg in log.output)
+        )
+
+        # Test integer 1 - should warn and use False
+        json_with_int_is_error = json.dumps(
+            {
+                "result": "Test",
+                "session_id": "test-123",
+                "is_error": 1,  # Integer, not boolean
+                "total_cost_usd": 0.01,
+                "duration_ms": 100,
+                "duration_api_ms": 80,
+                "num_turns": 1,
+            }
+        )
+        with self.assertLogs("auto_prd", level="WARNING") as log:
+            response = ClaudeHeadlessResponse.from_json(json_with_int_is_error)
+        self.assertFalse(response.is_error)
+        self.assertTrue(
+            any("is_error" in msg and "unexpected type" in msg for msg in log.output)
+        )
+
+
+class ParseClaudeJsonResponseTests(unittest.TestCase):
+    """Test suite for parse_claude_json_response function."""
+
+    def test_parse_valid_json(self):
+        """Test parse_claude_json_response with valid JSON."""
+        valid_json = json.dumps(
+            {
+                "result": "Done",
+                "session_id": "sess-123",
+                "is_error": False,
+                "total_cost_usd": 0.02,
+                "duration_ms": 500,
+                "duration_api_ms": 400,
+                "num_turns": 1,
+            }
+        )
+        response = parse_claude_json_response(valid_json)
+        self.assertIsNotNone(response)
+        self.assertEqual(response.result, "Done")
+        self.assertEqual(response.session_id, "sess-123")
+
+    def test_parse_empty_stdout_lenient(self):
+        """Test parse_claude_json_response with empty stdout in lenient mode."""
+        response = parse_claude_json_response("", strict=False)
+        self.assertIsNone(response)
+
+        response = parse_claude_json_response("   ", strict=False)
+        self.assertIsNone(response)
+
+    def test_parse_empty_stdout_strict(self):
+        """Test parse_claude_json_response with empty stdout in strict mode."""
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response("", strict=True)
+        self.assertIn("empty", str(ctx.exception))
+
+    def test_parse_invalid_json_lenient(self):
+        """Test parse_claude_json_response returns None for invalid JSON in lenient mode."""
+        response = parse_claude_json_response("not json at all", strict=False)
+        self.assertIsNone(response)
+
+    def test_parse_invalid_json_strict(self):
+        """Test parse_claude_json_response raises for invalid JSON in strict mode."""
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response("not json at all", strict=True)
+        self.assertIn("Failed to parse", str(ctx.exception))
+
+    def test_parse_sanitizes_output_preview(self):
+        """Test that parse_claude_json_response sanitizes output preview in error messages."""
+        # JSON with potential secrets that should be sanitized
+        bad_json = '{"result": "sk-1234567890abcdefghij secret token"'  # Invalid JSON
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response(bad_json, strict=True)
+        # The error message should have the preview sanitized
+        error_msg = str(ctx.exception)
+        self.assertNotIn("sk-1234567890abcdefghij", error_msg)
+        self.assertIn("REDACTED", error_msg)
 
 
 if __name__ == "__main__":

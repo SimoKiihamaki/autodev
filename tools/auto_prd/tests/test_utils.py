@@ -15,7 +15,10 @@ extract_called_process_error_details = safe_import(
 extract_http_status = safe_import(
     "tools.auto_prd.utils", "..utils", "extract_http_status"
 )
+is_valid_int = safe_import("tools.auto_prd.utils", "..utils", "is_valid_int")
+is_valid_numeric = safe_import("tools.auto_prd.utils", "..utils", "is_valid_numeric")
 parse_tasks_left = safe_import("tools.auto_prd.utils", "..utils", "parse_tasks_left")
+sanitize_for_cli = safe_import("tools.auto_prd.utils", "..utils", "sanitize_for_cli")
 scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
 
 
@@ -135,6 +138,95 @@ class ScrubCliTextTests(unittest.TestCase):
         original = "a>b;c"
         sanitized = scrub_cli_text(original)
         self.assertEqual(sanitized, "a)b,c")
+
+
+class IsValidIntTests(unittest.TestCase):
+    """Tests for is_valid_int helper function."""
+
+    def test_returns_true_for_integer(self) -> None:
+        """Verify function returns True for regular integers."""
+        self.assertTrue(is_valid_int(42))
+        self.assertTrue(is_valid_int(0))
+        self.assertTrue(is_valid_int(-1))
+
+    def test_returns_false_for_boolean(self) -> None:
+        """Verify function excludes booleans (which are subclass of int in Python)."""
+        self.assertFalse(is_valid_int(True))
+        self.assertFalse(is_valid_int(False))
+
+    def test_returns_false_for_float(self) -> None:
+        """Verify function returns False for floats."""
+        self.assertFalse(is_valid_int(3.14))
+        self.assertFalse(is_valid_int(0.0))
+
+    def test_returns_false_for_string(self) -> None:
+        """Verify function returns False for strings."""
+        self.assertFalse(is_valid_int("42"))
+        self.assertFalse(is_valid_int(""))
+
+    def test_returns_false_for_none(self) -> None:
+        """Verify function returns False for None."""
+        self.assertFalse(is_valid_int(None))
+
+
+class IsValidNumericTests(unittest.TestCase):
+    """Tests for is_valid_numeric helper function."""
+
+    def test_returns_true_for_integer(self) -> None:
+        """Verify function returns True for integers."""
+        self.assertTrue(is_valid_numeric(42))
+        self.assertTrue(is_valid_numeric(0))
+        self.assertTrue(is_valid_numeric(-1))
+
+    def test_returns_true_for_float(self) -> None:
+        """Verify function returns True for floats."""
+        self.assertTrue(is_valid_numeric(3.14))
+        self.assertTrue(is_valid_numeric(0.0))
+        self.assertTrue(is_valid_numeric(-1.5))
+
+    def test_returns_false_for_boolean(self) -> None:
+        """Verify function excludes booleans (which are subclass of int in Python)."""
+        self.assertFalse(is_valid_numeric(True))
+        self.assertFalse(is_valid_numeric(False))
+
+    def test_returns_false_for_string(self) -> None:
+        """Verify function returns False for strings."""
+        self.assertFalse(is_valid_numeric("3.14"))
+        self.assertFalse(is_valid_numeric(""))
+
+    def test_returns_false_for_none(self) -> None:
+        """Verify function returns False for None."""
+        self.assertFalse(is_valid_numeric(None))
+
+
+class SanitizeForCliTests(unittest.TestCase):
+    """Tests for sanitize_for_cli helper function."""
+
+    def test_replaces_unsafe_characters(self) -> None:
+        """Verify function replaces unsafe CLI characters."""
+        text = "`command|arg;stuff<data>`"
+        sanitized = sanitize_for_cli(text)
+        self.assertNotIn("`", sanitized)
+        self.assertNotIn("|", sanitized)
+        self.assertNotIn(";", sanitized)
+        self.assertNotIn("<", sanitized)
+        self.assertNotIn(">", sanitized)
+
+    def test_preserves_safe_characters(self) -> None:
+        """Verify function preserves safe characters."""
+        text = "safe text with spaces and numbers 123"
+        self.assertEqual(sanitize_for_cli(text), text)
+
+    def test_handles_empty_string(self) -> None:
+        """Verify function handles empty string."""
+        self.assertEqual(sanitize_for_cli(""), "")
+
+    def test_replacement_values_match_cli_arg_replacements(self) -> None:
+        """Verify replacements match CLI_ARG_REPLACEMENTS mapping."""
+        for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
+            text = f"prefix{unsafe}suffix"
+            sanitized = sanitize_for_cli(text)
+            self.assertEqual(sanitized, f"prefix{safe}suffix")
 
 
 if __name__ == "__main__":

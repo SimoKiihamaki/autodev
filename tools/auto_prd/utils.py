@@ -185,3 +185,75 @@ def detect_readonly_block(output: str) -> str | None:
 
 def report_readonly_error(pattern: str) -> None:
     raise RuntimeError(CODEX_READONLY_ERROR_MSG.format(pattern=pattern))
+
+
+def is_valid_int(value: object) -> bool:
+    """Check if value is a valid integer, excluding booleans.
+
+    Python's bool is a subclass of int, so isinstance(True, int) returns True.
+    This function explicitly excludes booleans when checking for integer values,
+    which is useful when parsing numeric fields from JSON/checkpoint data where
+    boolean values are semantically incorrect.
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        True if value is an int (but not a bool), False otherwise.
+
+    Examples:
+        >>> is_valid_int(42)
+        True
+        >>> is_valid_int(True)  # bool is a subclass of int
+        False
+        >>> is_valid_int(3.14)
+        False
+        >>> is_valid_int("42")
+        False
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def is_valid_numeric(value: object) -> bool:
+    """Check if value is a valid numeric (int or float), excluding booleans.
+
+    Python's bool is a subclass of int, so isinstance(True, int) returns True.
+    This function explicitly excludes booleans when checking for numeric values,
+    which is useful when parsing numeric fields from JSON/checkpoint data where
+    boolean values are semantically incorrect.
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        True if value is an int or float (but not a bool), False otherwise.
+
+    Examples:
+        >>> is_valid_numeric(42)
+        True
+        >>> is_valid_numeric(3.14)
+        True
+        >>> is_valid_numeric(True)  # bool is a subclass of int
+        False
+        >>> is_valid_numeric("42")
+        False
+    """
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def sanitize_for_cli(text: str) -> str:
+    """Sanitize text to replace unsafe CLI characters.
+
+    Replaces characters that could trigger validate_command_args() security
+    checks when the text is passed as CLI arguments. This is used for context
+    strings that are passed via --append-system-prompt.
+
+    Args:
+        text: The text to sanitize.
+
+    Returns:
+        Sanitized text with unsafe characters replaced according to CLI_ARG_REPLACEMENTS.
+    """
+    for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
+        text = text.replace(unsafe, safe)
+    return text
