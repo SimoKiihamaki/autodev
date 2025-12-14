@@ -122,40 +122,23 @@ class SessionMemory:
 
         Raises:
             ValueError: If numeric fields are negative.
+
+        Note:
+            Validation is performed only during __post_init__ (not via __setattr__)
+            because dataclasses call __setattr__ for each field during __init__
+            before __post_init__ runs. Using __setattr__ for validation would cause
+            issues since the validation methods wouldn't be bound yet during field
+            initialization.
         """
         # Validate fields directly after construction
-        self._validate_cost(self.total_cost_usd)
-        self._validate_duration(self.total_duration_ms)
-
-    def _validate_cost(self, value: float) -> None:
-        """Validate total_cost_usd value."""
-        if value < 0:
-            msg = f"total_cost_usd must be non-negative, got {value}"
+        if self.total_cost_usd < 0:
+            msg = f"total_cost_usd must be non-negative, got {self.total_cost_usd}"
             raise ValueError(msg)
-
-    def _validate_duration(self, value: int) -> None:
-        """Validate total_duration_ms value."""
-        if value < 0:
-            msg = f"total_duration_ms must be non-negative, got {value}"
+        if self.total_duration_ms < 0:
+            msg = (
+                f"total_duration_ms must be non-negative, got {self.total_duration_ms}"
+            )
             raise ValueError(msg)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        """Validate invariants on attribute assignment.
-
-        This ensures that total_cost_usd and total_duration_ms cannot be set
-        to negative values after construction.
-        """
-        if name == "total_cost_usd":
-            if not isinstance(value, int | float):
-                msg = f"total_cost_usd must be numeric, got {type(value).__name__}"
-                raise TypeError(msg)
-            self._validate_cost(float(value))
-        elif name == "total_duration_ms":
-            if not isinstance(value, int | float):
-                msg = f"total_duration_ms must be numeric, got {type(value).__name__}"
-                raise TypeError(msg)
-            self._validate_duration(int(value))
-        object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
