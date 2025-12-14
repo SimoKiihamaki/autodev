@@ -311,7 +311,11 @@ class ClaudeHeadlessResponse:
     raw_json: Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        """Validate invariants after construction.
+        """Validate invariants at construction time.
+
+        This validates initial construction only. Post-construction immutability
+        is enforced by frozen=True, which prevents field reassignment via the
+        standard attribute assignment mechanism.
 
         Raises:
             ValueError: If duration values are negative or cost is negative.

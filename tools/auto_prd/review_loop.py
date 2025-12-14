@@ -533,8 +533,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # as potential shell metacharacters. We sanitize the history content using
                 # CLI_ARG_REPLACEMENTS since review feedback may contain these characters.
                 if compacted_history:
+                    # At this point, compacted_history is guaranteed non-empty (truthy check above).
                     # Sanitize history entries to replace unsafe CLI characters
-                    # that could trigger validate_command_args() security checks
+                    # that could trigger validate_command_args() security checks.
                     def sanitize_for_cli(text: str) -> str:
                         for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
                             text = text.replace(unsafe, safe)

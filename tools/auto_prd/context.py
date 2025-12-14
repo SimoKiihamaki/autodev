@@ -438,18 +438,16 @@ def save_session_memory(
         return None
 
     # Use session_id if available, otherwise generate a filename-safe timestamp.
-    # Format created_at as YYYYMMDDTHHMMSS (with microseconds if available) to avoid
-    # colons and other special characters that would be replaced with underscores.
+    # Format created_at as YYYYMMDDTHHMMSS with microseconds to ensure uniqueness
+    # and avoid colons and other special characters in the filename.
     if memory.session_id:
         filename = memory.session_id
     else:
         try:
             dt = datetime.fromisoformat(memory.created_at)
-            # Use microseconds if present, else just seconds
-            if dt.microsecond:
-                safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
-            else:
-                safe_ts = dt.strftime("%Y%m%dT%H%M%S")
+            # Always include microseconds to ensure uniqueness when multiple
+            # sessions are created in rapid succession without session_id.
+            safe_ts = dt.strftime("%Y%m%dT%H%M%S_%f")
             filename = f"session_{safe_ts}"
         except ValueError:
             # Fallback: use only the digits from created_at
