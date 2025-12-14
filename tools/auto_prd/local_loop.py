@@ -179,7 +179,20 @@ At the end, print: TASKS_LEFT=<N>
             runner_kwargs["allowed_tools"] = get_tool_allowlist("implement")
 
         impl_output, _ = runner(impl_prompt, **runner_kwargs)
-        print(f"✓ {runner_name} implementation pass completed.", flush=True)
+        # Check for empty output which may indicate the runner failed silently
+        if not impl_output.strip():
+            logger.warning(
+                "%s returned empty output during implementation pass; "
+                "implementation may not have completed",
+                runner_name,
+            )
+            print(
+                f"  ⚠️  Warning: {runner_name} returned no output during implementation pass. "
+                "Results may be incomplete.",
+                flush=True,
+            )
+        else:
+            print(f"✓ {runner_name} implementation pass completed.", flush=True)
         readonly_indicator = detect_readonly_block(impl_output)
         if readonly_indicator:
             raise RuntimeError(
@@ -250,7 +263,20 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                 if runner is claude_exec:
                     fix_kwargs["allowed_tools"] = get_tool_allowlist("fix")
                 fix_output, _ = runner(fix_prompt, **fix_kwargs)
-                print(f"✓ {runner_name} fix pass completed.", flush=True)
+                # Check for empty output which may indicate the runner failed silently
+                if not fix_output.strip():
+                    logger.warning(
+                        "%s returned empty output during fix pass; "
+                        "fixes may not have been applied",
+                        runner_name,
+                    )
+                    print(
+                        f"  ⚠️  Warning: {runner_name} returned no output during fix pass. "
+                        "Results may be incomplete.",
+                        flush=True,
+                    )
+                else:
+                    print(f"✓ {runner_name} fix pass completed.", flush=True)
                 readonly_indicator = detect_readonly_block(fix_output)
                 if readonly_indicator:
                     raise RuntimeError(

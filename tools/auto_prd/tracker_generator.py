@@ -51,8 +51,12 @@ def _load_schema() -> dict[str, Any]:
 
 ANALYSIS_PROMPT = """# PRD Analysis Task
 
+CRITICAL: Your response must contain ONLY a valid JSON object. No introductory text, no
+summary, no markdown formatting, no explanation before or after. Start directly with `{`
+and end with `}`. Any text outside the JSON will cause a parsing failure.
+
 You are an expert software architect analyzing a Product Requirements Document (PRD).
-Your task is to create a comprehensive implementation tracker in JSON format.
+Your task is to output a comprehensive implementation tracker as a JSON object.
 
 ## Requirements
 
@@ -189,6 +193,9 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
     "critical_path": ["F001", "F002"]
   }}
 }}
+
+REMINDER: Output ONLY the JSON object above. Do not include any text, summary, or
+explanation. Your entire response must be parseable as JSON. Begin with `{{` now:
 """
 
 

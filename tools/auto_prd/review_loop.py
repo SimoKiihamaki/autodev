@@ -431,13 +431,29 @@ def review_fix_loop(
     raw_comment_ids = review_state.get("processed_comment_ids", [])
     if isinstance(raw_comment_ids, list):
         # Filter to only valid integer IDs using is_valid_int helper
-        processed_comment_ids: set[int] = {
-            cid for cid in raw_comment_ids if is_valid_int(cid)
-        }
+        valid_ids: set[int] = {cid for cid in raw_comment_ids if is_valid_int(cid)}
+        filtered_count = len(raw_comment_ids) - len(valid_ids)
+        if filtered_count > 0:
+            logger.warning(
+                "Checkpoint 'processed_comment_ids' contained %d invalid entry/entries; filtered",
+                filtered_count,
+            )
+            print(
+                f"  ⚠️  Warning: {filtered_count} invalid comment ID(s) were filtered from checkpoint.",
+                flush=True,
+            )
+        processed_comment_ids = valid_ids
     else:
-        logger.warning(
-            "Checkpoint 'processed_comment_ids' has invalid type %s; resetting to empty",
+        logger.error(
+            "Checkpoint 'processed_comment_ids' has invalid type %s; data corruption detected. "
+            "Previously processed comments will be re-processed.",
             type(raw_comment_ids).__name__,
+        )
+        print(
+            f"  ⚠️  ERROR: Checkpoint data corrupted (processed_comment_ids has type "
+            f"{type(raw_comment_ids).__name__}). Starting review tracking from scratch - "
+            "previously processed comments may be re-processed.",
+            flush=True,
         )
         processed_comment_ids = set()
 
@@ -449,12 +465,17 @@ def review_fix_loop(
     if is_valid_numeric(raw_cycles):
         cycles = max(0, int(raw_cycles))
     else:
-        # Log warning for consistency with other checkpoint field validation
-        # (processed_comment_ids, compacted_history both log when resetting).
-        logger.warning(
-            "Checkpoint 'cycles' has invalid value %r (type %s); resetting to 0",
+        # Log error for checkpoint corruption - this is data loss that may affect loop behavior.
+        logger.error(
+            "Checkpoint 'cycles' has invalid value %r (type %s); data corruption detected. "
+            "Resetting to 0.",
             raw_cycles,
             type(raw_cycles).__name__,
+        )
+        print(
+            f"  ⚠️  ERROR: Checkpoint data corrupted (cycles has type "
+            f"{type(raw_cycles).__name__}). Resetting cycle count to 0.",
+            flush=True,
         )
         cycles = 0
 
@@ -466,14 +487,27 @@ def review_fix_loop(
     if isinstance(raw_history, list):
         # Filter to only valid string entries
         compacted_history: list[str] = [s for s in raw_history if isinstance(s, str)]
-        if len(compacted_history) != len(raw_history):
+        filtered_count = len(raw_history) - len(compacted_history)
+        if filtered_count > 0:
             logger.warning(
-                "Checkpoint 'compacted_history' contained non-string elements; filtered"
+                "Checkpoint 'compacted_history' contained %d non-string element(s); filtered",
+                filtered_count,
+            )
+            print(
+                f"  ⚠️  Warning: Checkpoint history contained {filtered_count} invalid "
+                "entry/entries that were filtered out.",
+                flush=True,
             )
     else:
-        logger.warning(
-            "Checkpoint 'compacted_history' has invalid type %s; resetting to empty",
+        logger.error(
+            "Checkpoint 'compacted_history' has invalid type %s; data corruption detected. "
+            "Resetting to empty - context from previous iterations will be lost.",
             type(raw_history).__name__,
+        )
+        print(
+            f"  ⚠️  ERROR: Checkpoint data corrupted (compacted_history has type "
+            f"{type(raw_history).__name__}). Resetting context history.",
+            flush=True,
         )
         compacted_history = []
 
@@ -599,7 +633,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # mypy: runner_kwargs has mixed value types and actual_runner can be
                 # codex_exec or claude_exec_streaming with different signatures
                 _, stderr = actual_runner(
-                    fix_prompt, **runner_kwargs  # type: ignore[arg-type]
+                    fix_prompt,
+                    **runner_kwargs,  # type: ignore[arg-type]
                 )
                 # Note: Stderr is logged at debug level for diagnostics, but still sanitized
                 # to redact secrets/PII even at debug level. Debug logs may be enabled during

@@ -157,9 +157,9 @@ class TimeoutConfigurationTests(unittest.TestCase):
     def test_get_claude_exec_timeout_default(self):
         """Test get_claude_exec_timeout with no environment variable set."""
         result = get_claude_exec_timeout()
-        # Default is 60 minutes (3600 seconds) to prevent infinite hangs
+        # Default is 90 minutes (5400 seconds) to prevent infinite hangs
         self.assertEqual(result, DEFAULT_CLAUDE_TIMEOUT_SECONDS)
-        self.assertEqual(result, 3600)
+        self.assertEqual(result, 5400)
 
     def test_get_codex_exec_timeout_from_env(self):
         """Test get_codex_exec_timeout reads from environment variable."""
@@ -195,7 +195,7 @@ class TimeoutConfigurationTests(unittest.TestCase):
         """Test get_claude_exec_timeout with invalid value falls back to default."""
         with patch.dict(os.environ, {"AUTO_PRD_CLAUDE_TIMEOUT_SECONDS": "invalid"}):
             result = get_claude_exec_timeout()
-            # Falls back to default (3600 seconds)
+            # Falls back to default (5400 seconds)
             self.assertEqual(result, DEFAULT_CLAUDE_TIMEOUT_SECONDS)
 
     def test_timeout_functions_isolated(self):
@@ -1122,6 +1122,18 @@ class ParseClaudeJsonResponseTests(unittest.TestCase):
         """Test parse_claude_json_response raises for invalid JSON in strict mode."""
         with self.assertRaises(ValueError) as ctx:
             parse_claude_json_response("not json at all", strict=True)
+        self.assertIn("Failed to parse", str(ctx.exception))
+
+    def test_parse_invalid_json_default_strict_mode(self):
+        """Test that default behavior is now strict mode (raises on invalid JSON).
+
+        This test documents the breaking change from strict=False to strict=True
+        as the default. Callers that relied on lenient behavior must now explicitly
+        pass strict=False.
+        """
+        # Without explicit strict= parameter, should raise ValueError (strict=True default)
+        with self.assertRaises(ValueError) as ctx:
+            parse_claude_json_response("not json at all")
         self.assertIn("Failed to parse", str(ctx.exception))
 
     def test_parse_sanitizes_output_preview(self):

@@ -254,10 +254,10 @@ def get_codex_exec_timeout() -> int | None:
     return _timeout_from_env("AUTO_PRD_CODEX_TIMEOUT_SECONDS", None)
 
 
-# Default timeout for Claude execution: 60 minutes (3600 seconds).
-# This prevents infinite hangs while allowing long-running operations.
+# Default timeout for Claude execution: 90 minutes (5400 seconds).
+# This prevents infinite hangs while allowing long-running operations on complex PRDs.
 # Can be overridden via AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable.
-DEFAULT_CLAUDE_TIMEOUT_SECONDS = 3600
+DEFAULT_CLAUDE_TIMEOUT_SECONDS = 5400
 
 
 def get_claude_exec_timeout() -> int | None:
@@ -265,12 +265,12 @@ def get_claude_exec_timeout() -> int | None:
 
     Returns:
         The timeout in seconds from AUTO_PRD_CLAUDE_TIMEOUT_SECONDS, or:
-        - DEFAULT_CLAUDE_TIMEOUT_SECONDS (3600 = 60 minutes) if env var is not set
+        - DEFAULT_CLAUDE_TIMEOUT_SECONDS (5400 = 90 minutes) if env var is not set
         - None if the value is explicitly "none", "no", "off", "disable", or "disabled"
         - None if the value is <= 0 (treated as "no timeout")
 
     Note:
-        The default 60-minute timeout prevents infinite hangs during review loops
+        The default 90-minute timeout prevents infinite hangs during review loops
         while allowing ample time for complex operations. To disable the timeout
         entirely, set AUTO_PRD_CLAUDE_TIMEOUT_SECONDS=off in your environment.
     """
@@ -386,12 +386,18 @@ class ClaudeHeadlessResponse:
         result_raw = data.get("result")
         session_id_raw = data.get("session_id")
 
-        # Log when required fields contain None (indicates potential API issue)
+        # Log when required fields contain None (indicates potential API issue).
+        # These are logged at WARNING level since null required fields typically indicate
+        # an upstream API issue (truncated response, timeout, malformed output).
         if result_raw is None:
-            logger.debug("Claude response 'result' field is None; using empty string")
+            logger.warning(
+                "Claude response 'result' field is None; using empty string - "
+                "this may indicate an incomplete or malformed API response"
+            )
         if session_id_raw is None:
-            logger.debug(
-                "Claude response 'session_id' field is None; session tracking unavailable"
+            logger.warning(
+                "Claude response 'session_id' field is None; session tracking unavailable - "
+                "this may indicate an incomplete or malformed API response"
             )
 
         # Extract numeric fields with explicit type checking and logging.
@@ -547,28 +553,28 @@ class ClaudeHeadlessResponse:
 def parse_claude_json_response(
     stdout: str,
     *,
-    strict: bool = False,
+    strict: bool = True,
 ) -> ClaudeHeadlessResponse | None:
     """Attempt to parse Claude stdout as JSON response.
 
     This function provides two modes of operation:
 
-    **Lenient mode (strict=False, default):**
-    Returns None if the output is not valid JSON rather than raising an exception.
-    This allows callers to gracefully fall back to treating stdout as plain text.
-    A warning is logged with a content preview for debugging.
-
-    **Strict mode (strict=True):**
+    **Strict mode (strict=True, default):**
     Raises ValueError if parsing fails. Use this when output_format="json" was
     explicitly requested and you need to ensure the response was properly formatted.
     Strict mode is appropriate when the caller has no fallback behavior and needs
     to surface parsing failures to the user.
 
+    **Lenient mode (strict=False):**
+    Returns None if the output is not valid JSON rather than raising an exception.
+    This allows callers to gracefully fall back to treating stdout as plain text.
+    A warning is logged with a content preview for debugging.
+
     **Usage guidance:**
-    When calling Claude with output_format="json", prefer strict=True to surface
-    parsing failures. Only use lenient mode (strict=False) when you have a robust
-    fallback for plain text output and can accept losing the structured metadata
-    (cost, duration, session_id) on parse failure.
+    When calling Claude with output_format="json", use the default strict=True to
+    surface parsing failures immediately. Only use lenient mode (strict=False) when
+    you have a robust fallback for plain text output and can accept losing the
+    structured metadata (cost, duration, session_id) on parse failure.
 
     Args:
         stdout: Raw stdout from Claude execution.
