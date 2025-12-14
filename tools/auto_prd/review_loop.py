@@ -788,8 +788,11 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             )
 
             # Add compact summary for context continuity in future iterations.
-            # This creates a brief summary of what was fixed, passed to Claude
-            # via --append-system-prompt to maintain context without session resumption.
+            # This summary is created AFTER the fix attempt completes (actual_runner returned
+            # without exception). It describes items that were addressed in the iteration that
+            # just finished. We use "Addressed" instead of "Fixed" because we don't verify
+            # that items were actually fixed - only that the runner processed them without error.
+            # The summary is passed to Claude via --append-system-prompt in subsequent iterations.
             cycles += 1  # Increment first so summary uses current iteration number
             num_items = len(unresolved)
             # Defensive extraction: summary can be non-string (None, int, dict, etc.)
@@ -803,10 +806,10 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
             if summary_items:
                 examples_str = f"Examples: {'; '.join(s for s in summary_items if s)}"
                 compact_summary = (
-                    f"Iteration {cycles}: Fixed {num_items} item(s). {examples_str}"
+                    f"Iteration {cycles}: Addressed {num_items} item(s). {examples_str}"
                 )
             else:
-                compact_summary = f"Iteration {cycles}: Fixed {num_items} item(s)."
+                compact_summary = f"Iteration {cycles}: Addressed {num_items} item(s)."
             compacted_history.append(compact_summary)
             # Keep only the most recent summaries to limit context size
             if len(compacted_history) > MAX_COMPACTED_HISTORY:

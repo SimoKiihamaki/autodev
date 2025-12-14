@@ -396,6 +396,14 @@ class ClaudeHeadlessResponse:
 
         # Extract numeric fields with explicit type checking and logging.
         # Log at WARNING when null/missing since this indicates incomplete API response.
+        #
+        # DESIGN NOTE: Boolean handling differs from SessionMemory.from_dict() by design.
+        # - Here (API responses): Log warning and use default - resilience over strictness
+        # - SessionMemory.from_dict(): Raise TypeError - strictness over resilience
+        #
+        # Rationale: API responses are external/untrusted and may have malformed data due
+        # to upstream issues. Session files are under our control; corruption indicates
+        # bugs that should fail fast. See SessionMemory.from_dict() for the strict variant.
         cost_raw = data.get("total_cost_usd")
         if cost_raw is None:
             logger.warning(

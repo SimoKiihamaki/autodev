@@ -212,6 +212,14 @@ class SessionMemory:
         # Booleans are explicitly rejected because bool is a subclass of int in Python,
         # so isinstance(True, int) returns True. Boolean values are semantically
         # incorrect for numeric fields and should be rejected as invalid types.
+        #
+        # DESIGN NOTE: Boolean handling differs from ClaudeHeadlessResponse.from_dict().
+        # - Here (session files): Raise TypeError - strictness over resilience
+        # - ClaudeHeadlessResponse.from_dict(): Log warning and use default - resilience
+        #
+        # Rationale: Session files are under our control; corruption indicates bugs or
+        # tampering that should fail fast. API responses are external and may have
+        # malformed data due to upstream issues, so resilience is preferred there.
         cost_raw = data.get("total_cost_usd")
         if cost_raw is None:
             logger.warning("Session memory 'total_cost_usd' is None; using default 0.0")
@@ -713,6 +721,11 @@ class StallDetector:
                 else:
                     # No progress
                     self._no_progress_streak += 1
+            else:
+                # First observation of tasks_left - treat as progress and reset streak.
+                # This ensures the first iteration doesn't incorrectly contribute to
+                # stall detection when tasks_left is provided for the first time.
+                self._no_progress_streak = 0
             self._last_tasks_left = tasks_left
 
     def check_stall(self) -> tuple[bool, str]:
