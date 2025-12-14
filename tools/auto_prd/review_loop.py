@@ -444,8 +444,10 @@ def review_fix_loop(
     raw_cycles = review_state.get("cycles", 0)
     # Use is_valid_numeric to exclude booleans from being treated as valid cycle counts.
     # Boolean checkpoint values should be treated as corrupted data and reset to 0.
+    # Also validate non-negative: a negative cycle count from a corrupted checkpoint
+    # would cause logic errors in the loop, so we clamp/reset to 0.
     if is_valid_numeric(raw_cycles):
-        cycles = int(raw_cycles)
+        cycles = max(0, int(raw_cycles))
     else:
         # Log warning for consistency with other checkpoint field validation
         # (processed_comment_ids, compacted_history both log when resetting).
@@ -552,6 +554,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                         scrub_cli_text(entry)
                         for entry in compacted_history[-MAX_COMPACTED_HISTORY:]
                     ]
+                    # The wrapper text ("[previous_fixes]", "\n---\n", etc.) uses only
+                    # alphanumerics, brackets, newlines, and dashes - none of which are
+                    # in UNSAFE_ARG_CHARS, so no sanitization is needed for these literals.
                     context_suffix = (
                         "\n\n[previous_fixes]\n"
                         "Context from prior fix iterations (most recent last):\n"

@@ -11,6 +11,14 @@ Key concepts:
 Note on persistence paths:
 - Session memory files are saved to .aprd/memory/{sanitized_session_id}.json
 - The session_id is sanitized by replacing non-alphanumeric characters with underscores
+
+Design note on SessionMemory validation:
+SessionMemory validates non-negative values for total_cost_usd and total_duration_ms
+only during construction (__post_init__). Post-construction assignments are not
+validated because implementing __setattr__ would conflict with dataclass field
+initialization order. This is an acceptable trade-off: callers updating SessionMemory
+(primarily update_from_response) use ClaudeHeadlessResponse which is frozen and
+validates its own fields, so the accumulation math preserves non-negativity.
 """
 
 from __future__ import annotations
@@ -377,6 +385,8 @@ def compact_context(
     """
     # Minimum length to produce any meaningful output. Values smaller than this
     # would truncate even a short marker like "...(+N)" and produce confusing output.
+    # 10 chars is enough for the shortest truncation marker ("...(+)" = 6 chars)
+    # plus a few characters of actual content, ensuring summaries are not just markers.
     # Using lowercase for function-local constant per Python naming conventions.
     min_meaningful_length = 10
     if max_length < min_meaningful_length:
