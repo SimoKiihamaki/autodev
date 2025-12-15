@@ -7,6 +7,7 @@ providing automated code review feedback between iterations.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from .agents import (
     codex_exec,
 )
 from .checkpoint import save_checkpoint, update_phase_state
+from .command import CalledProcessError, TimeoutExpired
 from .constants import (
     CODERABBIT_FINDINGS_CHAR_LIMIT,
     CODEX_READONLY_ERROR_MSG,
@@ -42,6 +44,22 @@ MAX_EMPTY_CHANGE_STREAK = 3
 NO_CHANGES_ERROR = (
     "Codex iterations produced no file changes or commits after multiple passes."
 )
+
+# Retry configuration for implementation passes.
+# MAX_IMPL_RETRIES=2 provides 3 total attempts (initial + 2 retries), balancing
+# resilience against transient failures with reasonable total runtime.
+MAX_IMPL_RETRIES = 2
+
+# Base delay for exponential backoff between retries (seconds).
+# Uses formula: IMPL_RETRY_BACKOFF_BASE * (2**attempt) for delays of 10s, 20s.
+IMPL_RETRY_BACKOFF_BASE = 10
+
+# Exit codes that indicate non-retryable conditions.
+# 126: Command not executable (permission denied)
+# 127: Command not found
+# 137: Process killed by SIGKILL (often OOM)
+# 139: Segmentation fault (SIGSEGV)
+NON_RETRYABLE_EXIT_CODES = frozenset({126, 127, 137, 139})
 
 
 def should_stop_for_completion(
@@ -178,7 +196,77 @@ At the end, print: TASKS_LEFT=<N>
             # Add phase-specific tool restrictions for Claude
             runner_kwargs["allowed_tools"] = get_tool_allowlist("implement")
 
-        impl_output, _ = runner(impl_prompt, **runner_kwargs)
+        # Implementation pass with retry logic for transient failures.
+        # Retries on CalledProcessError and TimeoutExpired which may include transient
+        # failures (rate limits, network issues). Non-retryable exit codes (126, 127,
+        # 137, 139) skip retries to avoid wasting time on permanent failures.
+        impl_output = ""
+        last_impl_error: CalledProcessError | TimeoutExpired | None = None
+        for impl_attempt in range(MAX_IMPL_RETRIES + 1):
+            try:
+                impl_output, _ = runner(impl_prompt, **runner_kwargs)
+                last_impl_error = None
+                break
+            except (CalledProcessError, TimeoutExpired) as e:
+                last_impl_error = e
+                exit_code = getattr(e, "returncode", -1)
+                is_timeout = isinstance(e, TimeoutExpired)
+                error_type = (
+                    "timed out" if is_timeout else f"failed (exit code {exit_code})"
+                )
+
+                # Don't retry non-retryable exit codes
+                if not is_timeout and exit_code in NON_RETRYABLE_EXIT_CODES:
+                    logger.error(
+                        "%s implementation pass %s; not retrying (non-retryable exit code)",
+                        runner_name,
+                        error_type,
+                    )
+                    print(
+                        f"  ❌  {runner_name} {error_type}. "
+                        "This exit code indicates a configuration or system issue.",
+                        flush=True,
+                    )
+                    break
+
+                if impl_attempt < MAX_IMPL_RETRIES:
+                    wait_time = IMPL_RETRY_BACKOFF_BASE * (2**impl_attempt)
+                    logger.warning(
+                        "%s implementation pass %s (attempt %d/%d); retrying in %ds",
+                        runner_name,
+                        error_type,
+                        impl_attempt + 1,
+                        MAX_IMPL_RETRIES + 1,
+                        wait_time,
+                    )
+                    print(
+                        f"  ⚠️  {runner_name} {error_type}. "
+                        f"Retrying in {wait_time}s "
+                        f"(attempt {impl_attempt + 1}/{MAX_IMPL_RETRIES + 1})…",
+                        flush=True,
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(
+                        "%s implementation pass %s after %d attempts",
+                        runner_name,
+                        error_type,
+                        MAX_IMPL_RETRIES + 1,
+                    )
+                    print(
+                        f"  ❌  {runner_name} implementation {error_type} after "
+                        f"{MAX_IMPL_RETRIES + 1} attempts.",
+                        flush=True,
+                    )
+
+        # Re-raise if all retries exhausted for implementation (critical path).
+        # Implementation failures halt the pipeline because without successful
+        # implementation, there is no code to review or fix. In contrast, fix pass
+        # failures (see below) are non-fatal because the implementation already
+        # exists and the loop can continue with potentially incomplete fixes.
+        if last_impl_error is not None:
+            raise last_impl_error
+
         # Check for empty output which may indicate the runner failed silently
         if not impl_output.strip():
             logger.warning(
@@ -224,6 +312,7 @@ At the end, print: TASKS_LEFT=<N>
         )
 
         has_findings = False
+        fix_pass_failed = False  # Track if fix pass was attempted but failed
         status_after_iteration = status_after_impl
         head_after_iteration = head_after_impl
 
@@ -258,11 +347,37 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     "based on CodeRabbit feedback…",
                     flush=True,
                 )
-                # Use "fix" phase tool restrictions for the fix pass
+                # Use "fix" phase tool restrictions for the fix pass.
+                # Note: No retry logic here - fix pass failures are non-fatal (see below),
+                # so retrying would add latency without meaningful benefit.
                 fix_kwargs = runner_kwargs.copy()
                 if runner is claude_exec:
                     fix_kwargs["allowed_tools"] = get_tool_allowlist("fix")
-                fix_output, _ = runner(fix_prompt, **fix_kwargs)
+                try:
+                    fix_output, _ = runner(fix_prompt, **fix_kwargs)
+                except (CalledProcessError, TimeoutExpired) as e:
+                    # Fix pass failures are non-fatal - log and continue.
+                    # Rationale: The implementation has already succeeded at this point,
+                    # so we have working code. CodeRabbit fixes are quality improvements,
+                    # not correctness requirements. Failing to apply fixes is acceptable;
+                    # the iteration can continue and potentially address issues in
+                    # subsequent passes or during PR review.
+                    fix_pass_failed = True
+                    exit_code = getattr(e, "returncode", -1)
+                    is_timeout = isinstance(e, TimeoutExpired)
+                    error_type = "timed out" if is_timeout else f"exit code {exit_code}"
+                    logger.warning(
+                        "%s fix pass failed (%s); CodeRabbit findings will NOT be "
+                        "addressed this iteration",
+                        runner_name,
+                        error_type,
+                    )
+                    print(
+                        f"  ⚠️  Warning: {runner_name} fix pass failed ({error_type}). "
+                        "CodeRabbit findings will NOT be addressed this iteration.",
+                        flush=True,
+                    )
+                    fix_output = ""
                 # Check for empty output which may indicate the runner failed silently
                 if not fix_output.strip():
                     logger.warning(
@@ -327,6 +442,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     "qa_context_shared": qa_context_shared,
                     "last_head_sha": head_after_iteration,
                     "last_status_snapshot": list(status_after_iteration),
+                    "fix_pass_failed": fix_pass_failed,
                 },
             )
             save_checkpoint(checkpoint)

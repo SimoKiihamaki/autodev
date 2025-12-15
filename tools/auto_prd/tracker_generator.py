@@ -49,11 +49,14 @@ def _load_schema() -> dict[str, Any]:
     return _TRACKER_SCHEMA
 
 
+# Note: Double braces {{ and }} in this template are Python string escape sequences
+# that produce literal { and } in the formatted output. This is required because
+# the prompt uses .format() substitution (see line 679).
 ANALYSIS_PROMPT = """# PRD Analysis Task
 
 CRITICAL: Your response must contain ONLY a valid JSON object. No introductory text, no
-summary, no markdown formatting, no explanation before or after. Start directly with `{`
-and end with `}`. Any text outside the JSON will cause a parsing failure.
+summary, no markdown formatting, no explanation before or after. Start directly with `{{`
+and end with `}}`. Any text outside the JSON will cause a parsing failure.
 
 You are an expert software architect analyzing a Product Requirements Document (PRD).
 Your task is to output a comprehensive implementation tracker as a JSON object.
@@ -195,7 +198,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
 }}
 
 REMINDER: Output ONLY the JSON object above. Do not include any text, summary, or
-explanation. Your entire response must be parseable as JSON. Begin with `{{` now:
+explanation. Your entire response must be parseable as JSON. Begin with the opening brace now:
 """
 
 
