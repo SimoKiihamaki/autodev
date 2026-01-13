@@ -25,6 +25,9 @@ from .constants import (
     CODEX_READONLY_ERROR_MSG,
     get_tool_allowlist,
 )
+
+# Import StallDetector for Ralph-style gutter detection
+from .context import StallDetector
 from .git_ops import git_head_sha, git_status_snapshot
 from .guardrails import (
     add_sign,
@@ -42,9 +45,6 @@ from .utils import (
     parse_tasks_left,
     scrub_cli_text,
 )
-
-# Import StallDetector for Ralph-style gutter detection
-from .context import StallDetector
 
 LOCAL_QA_SNIPPET = """
 Use zsh for shell commands.
@@ -244,6 +244,10 @@ def orchestrate_local_loop(
         before_status = previous_status
         before_head = previous_head
 
+        # Reload tracker at the start of each iteration to stay in sync with
+        # agent updates (tracker.json may have been modified by previous iterations)
+        tracker = load_tracker(repo_root)
+
         qa_section = LOCAL_QA_SNIPPET if not qa_context_shared else LOCAL_QA_REMINDER
         impl_prompt = f"""
 Read the spec at '{prd_path}'. Implement the NEXT uncompleted tasks in '{repo_root}'.
@@ -358,6 +362,17 @@ At the end, print: TASKS_LEFT=<N>
                     "Suggested guardrail sign '%s' from implementation error",
                     suggested_sign.name,
                 )
+                # Persist the suggested sign so it prevents future recurrences
+                add_sign(
+                    name=suggested_sign.name,
+                    trigger=suggested_sign.trigger,
+                    instruction=suggested_sign.instruction,
+                    iteration=i,
+                    repo_root=repo_root,
+                    file_context=suggested_sign.file_context,
+                    category=suggested_sign.category,
+                    phase=suggested_sign.phase,
+                )
             raise last_impl_error
 
         # Check for empty output which may indicate the runner failed silently
@@ -386,23 +401,9 @@ At the end, print: TASKS_LEFT=<N>
         else:
             print("Codex did not report TASKS_LEFT (continuing)")
 
-        # Ralph-style gutter detection: Record iteration and check for stalls
-        stall_detector.record_output()  # We got output, so reset output timeout
-        stall_detector.record_iteration(tasks_left)
-        is_stalled, stall_reason = stall_detector.check_stall()
-        if is_stalled:
-            logger.warning("Gutter detected: %s", stall_reason)
-            print(f"  ⚠️  Gutter detection: {stall_reason}")
-            # Add a guardrail sign for this stall pattern
-            add_sign(
-                name="gutter_no_progress",
-                trigger="Multiple iterations without task progress",
-                instruction=stall_reason,
-                iteration=i,
-                repo_root=repo_root,
-                category="gutter",
-                phase="local",
-            )
+        # Track whether we saw any textual output from implementation pass
+        # This will be combined with fix pass output for stall detection
+        had_output = bool(impl_output.strip())
 
         qa_context_shared = True
 
@@ -466,6 +467,8 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                     fix_kwargs["allowed_tools"] = get_tool_allowlist("fix")
                 try:
                     fix_output, _ = runner(fix_prompt, **fix_kwargs)
+                    # Track fix pass output for stall detection
+                    had_output = had_output or bool(fix_output.strip())
                 except (CalledProcessError, TimeoutExpired) as e:
                     # Fix pass failures are non-fatal - log and continue.
                     # Rationale: The implementation has already succeeded at this point,
@@ -504,6 +507,17 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                         logger.info(
                             "Suggested guardrail sign '%s' from fix pass error",
                             suggested_sign.name,
+                        )
+                        # Persist the suggested sign so it prevents future recurrences
+                        add_sign(
+                            name=suggested_sign.name,
+                            trigger=suggested_sign.trigger,
+                            instruction=suggested_sign.instruction,
+                            iteration=i,
+                            repo_root=repo_root,
+                            file_context=suggested_sign.file_context,
+                            category=suggested_sign.category,
+                            phase=suggested_sign.phase,
                         )
                     fix_output = ""
                 # Check for empty output which may indicate the runner failed silently
@@ -547,6 +561,27 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
             or head_after_iteration != before_head
         )
 
+        # Ralph-style gutter detection: record once per iteration using final tasks_left
+        # This runs after both impl and fix passes so tasks_left reflects all progress
+        if had_output:
+            stall_detector.record_output()
+        stall_detector.record_iteration(tasks_left)
+        is_stalled, stall_reason = stall_detector.check_stall()
+        if is_stalled:
+            logger.warning("Gutter detected: %s", stall_reason)
+            print(f"  ⚠️  Gutter detection: {stall_reason}")
+            # Add a guardrail sign for this stall pattern and update in-memory list
+            new_sign = add_sign(
+                name="gutter_no_progress",
+                trigger="Multiple iterations without task progress",
+                instruction=stall_reason,
+                iteration=i,
+                repo_root=repo_root,
+                category="gutter",
+                phase="local",
+            )
+            guardrails.append(new_sign)
+
         # Ralph-style progress tracking: Save iteration summary
         # Must be after all iteration state is computed
         iteration_summary = IterationSummary(
@@ -574,6 +609,10 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         unchecked, total_checkboxes = checkbox_stats(prd_path)
         done_by_checkboxes = total_checkboxes > 0 and unchecked == 0
         done_by_codex = tasks_left == 0 if tasks_left is not None else False
+
+        # Reload tracker before completion check to ensure we have the latest state
+        # The tracker may have been updated by the agent during this iteration
+        tracker = load_tracker(repo_root)
 
         should_stop, completion_msg = should_stop_for_completion(
             done_by_checkboxes, done_by_codex, has_findings, tasks_left, tracker
