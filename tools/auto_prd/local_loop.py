@@ -35,6 +35,7 @@ from .guardrails import (
 from .logging_utils import logger
 from .policy import policy_runner
 from .progress_renderer import IterationSummary, save_iteration_summary
+from .tracker_generator import load_tracker
 from .utils import (
     checkbox_stats,
     detect_readonly_block,
@@ -99,7 +100,27 @@ def should_stop_for_completion(
     done_by_codex: bool,
     has_findings: bool,
     tasks_left: int | None,
+    tracker: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
+    if tracker:
+        completed_features = sum(
+            1
+            for f in tracker.get("features", [])
+            if f.get("status") in ("completed", "verified")
+        )
+        completed_tasks = sum(
+            1
+            for f in tracker.get("features", [])
+            for t in f.get("tasks", [])
+            if t.get("status") == "completed"
+        )
+
+        if completed_features == 0 and completed_tasks == 0:
+            return (
+                False,
+                "Agent claims TASKS_LEFT=0 but tracker shows no completed work; continuing loop.",
+            )
+
     if has_findings or not (done_by_checkboxes or done_by_codex):
         return False, ""
     if tasks_left is None and not done_by_checkboxes:
@@ -140,6 +161,8 @@ def orchestrate_local_loop(
     """
     unchecked, total_checkboxes = checkbox_stats(prd_path)
     print(f"Unchecked checkboxes in PRD (heuristic): {unchecked}/{total_checkboxes}")
+
+    tracker = load_tracker(repo_root)
 
     # Initialize state - restore from checkpoint if resuming
     # Defensive checks for potentially corrupted or missing checkpoint data
@@ -553,7 +576,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         done_by_codex = tasks_left == 0 if tasks_left is not None else False
 
         should_stop, completion_msg = should_stop_for_completion(
-            done_by_checkboxes, done_by_codex, has_findings, tasks_left
+            done_by_checkboxes, done_by_codex, has_findings, tasks_left, tracker
         )
 
         # Save checkpoint after each iteration
