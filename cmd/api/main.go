@@ -26,20 +26,32 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Error channel for server start failures
+	errCh := make(chan error, 1)
+
 	go func() {
 		log.Printf("starting api server on %s", server.Addr())
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			log.Printf("server error: %v", err)
+			errCh <- err
 		}
 	}()
 
-	<-ctx.Done()
+	// Wait for signal or server error
+	select {
+	case <-ctx.Done():
+		// Signal received, proceed to shutdown
+	case err := <-errCh:
+		// Server failed to start
+		log.Fatalf("server startup failed: %v", err)
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("graceful shutdown failed: %v", err)
+		log.Printf("graceful shutdown failed: %v", err)
+		os.Exit(1)
 	}
 
 	log.Println("server shutdown complete")

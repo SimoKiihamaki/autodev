@@ -84,6 +84,26 @@ type Phases struct {
 	ReviewFix bool `yaml:"review_fix"`
 }
 
+// Ralph configures Ralph-style autonomous iteration features.
+// Ralph mode focuses on context hygiene, mistake prevention, and progress tracking.
+// See: docs/ralph-integration-plan.md
+//
+// NOTE: Boolean fields use Go's zero value (false) as default when omitted from config.
+// When customizing Ralph settings via partial config (e.g., setting only pointer fields
+// like gutter_output_timeout_sec), you must explicitly set all boolean fields to your
+// desired values, or they will default to false. This is a known limitation of using
+// non-pointer booleans in YAML config parsing.
+type Ralph struct {
+	Enabled                bool `yaml:"enabled"`                   // Enable all Ralph features
+	ContextRotateEvery     *int `yaml:"context_rotate_every"`      // Rotate context every N iterations (0 = disabled)
+	MaxConsecutiveFailures *int `yaml:"max_consecutive_failures"`  // Gutter detection threshold (default: 3)
+	AutoAddSigns           bool `yaml:"auto_add_signs"`            // Automatically add signs on failures
+	ShowProgressLog        bool `yaml:"show_progress_log"`         // Print progress summary at end
+	ShowGuardrails         bool `yaml:"show_guardrails"`           // Show active guardrails on startup
+	GutterOutputTimeoutSec *int `yaml:"gutter_output_timeout_sec"` // Seconds without output before stall (default: 180)
+	GutterNoProgressIters  *int `yaml:"gutter_no_progress_iters"`  // Iterations without progress before stall (default: 3)
+}
+
 type Config struct {
 	Version           string             `yaml:"version,omitempty"` // Config schema version for migrations
 	ExecutorPolicy    string             `yaml:"executor_policy"`
@@ -101,6 +121,7 @@ type Config struct {
 	UI                UI                 `yaml:"ui"`
 	PhaseExecutors    PhaseExec          `yaml:"phase_executors"`
 	RunPhases         Phases             `yaml:"run_phases"`
+	Ralph             Ralph              `yaml:"ralph"`
 	AllowedPythonDirs []string           `yaml:"allowed_python_dirs"`
 	PRDs              map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
 }
@@ -139,8 +160,18 @@ func Defaults() Config {
 			MaxLogLines: intPtr(DefaultMaxLogLines),
 			ToastTTLMs:  intPtr(DefaultToastTTLMs),
 		},
-		PhaseExecutors:    PhaseExec{},
-		RunPhases:         Phases{Local: true, PR: true, ReviewFix: true},
+		PhaseExecutors: PhaseExec{},
+		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},
+		Ralph: Ralph{
+			Enabled:                false,
+			ContextRotateEvery:     intPtr(0),   // 0 = disabled
+			MaxConsecutiveFailures: intPtr(3),   // Default gutter threshold
+			AutoAddSigns:           true,        // Auto-add signs on failures
+			ShowProgressLog:        false,       // Don't show progress log by default
+			ShowGuardrails:         false,       // Don't show guardrails by default
+			GutterOutputTimeoutSec: intPtr(180), // 3 minutes default
+			GutterNoProgressIters:  intPtr(3),   // 3 iterations default
+		},
 		AllowedPythonDirs: []string{},
 		PRDs:              map[string]PRDMeta{},
 	}
@@ -351,6 +382,36 @@ func LoadWithWarnings() LoadResult {
 		c.UI.ToastTTLMs = intPtr(*defaults.UI.ToastTTLMs)
 	}
 
+	// Apply Ralph config defaults for pointer fields
+	// Track if the entire Ralph section is absent (all pointers nil) to avoid overwriting user-set booleans.
+	// See Ralph struct documentation for limitations of partial Ralph config with boolean fields.
+	ralphAllPointersNil := c.Ralph.ContextRotateEvery == nil &&
+		c.Ralph.MaxConsecutiveFailures == nil &&
+		c.Ralph.GutterOutputTimeoutSec == nil &&
+		c.Ralph.GutterNoProgressIters == nil
+
+	if c.Ralph.ContextRotateEvery == nil {
+		c.Ralph.ContextRotateEvery = intPtr(*defaults.Ralph.ContextRotateEvery)
+	}
+	if c.Ralph.MaxConsecutiveFailures == nil {
+		c.Ralph.MaxConsecutiveFailures = intPtr(*defaults.Ralph.MaxConsecutiveFailures)
+	}
+	if c.Ralph.GutterOutputTimeoutSec == nil {
+		c.Ralph.GutterOutputTimeoutSec = intPtr(*defaults.Ralph.GutterOutputTimeoutSec)
+	}
+	if c.Ralph.GutterNoProgressIters == nil {
+		c.Ralph.GutterNoProgressIters = intPtr(*defaults.Ralph.GutterNoProgressIters)
+	}
+
+	// Apply Ralph config defaults for boolean fields only when the entire Ralph section is absent
+	// (all pointer fields were nil). This prevents overwriting user-specified boolean values.
+	if ralphAllPointersNil {
+		c.Ralph.Enabled = defaults.Ralph.Enabled
+		c.Ralph.AutoAddSigns = defaults.Ralph.AutoAddSigns
+		c.Ralph.ShowProgressLog = defaults.Ralph.ShowProgressLog
+		c.Ralph.ShowGuardrails = defaults.Ralph.ShowGuardrails
+	}
+
 	// Initialize slices/maps if nil
 	if c.AllowedPythonDirs == nil {
 		c.AllowedPythonDirs = defaults.AllowedPythonDirs
@@ -470,6 +531,20 @@ func (c Config) Clone() Config {
 		copyCfg.UI.ToastTTLMs = intPtr(*c.UI.ToastTTLMs)
 	}
 
+	// Clone Ralph pointer fields
+	if c.Ralph.ContextRotateEvery != nil {
+		copyCfg.Ralph.ContextRotateEvery = intPtr(*c.Ralph.ContextRotateEvery)
+	}
+	if c.Ralph.MaxConsecutiveFailures != nil {
+		copyCfg.Ralph.MaxConsecutiveFailures = intPtr(*c.Ralph.MaxConsecutiveFailures)
+	}
+	if c.Ralph.GutterOutputTimeoutSec != nil {
+		copyCfg.Ralph.GutterOutputTimeoutSec = intPtr(*c.Ralph.GutterOutputTimeoutSec)
+	}
+	if c.Ralph.GutterNoProgressIters != nil {
+		copyCfg.Ralph.GutterNoProgressIters = intPtr(*c.Ralph.GutterNoProgressIters)
+	}
+
 	if c.PRDs != nil {
 		clone := make(map[string]PRDMeta, len(c.PRDs))
 		for k, meta := range c.PRDs {
@@ -533,6 +608,20 @@ func (c Config) Equal(other Config) bool {
 	// Compare UI pointer fields
 	if !equalIntPointers(c.UI.MaxLogLines, other.UI.MaxLogLines) ||
 		!equalIntPointers(c.UI.ToastTTLMs, other.UI.ToastTTLMs) {
+		return false
+	}
+	// Compare Ralph pointer fields
+	if !equalIntPointers(c.Ralph.ContextRotateEvery, other.Ralph.ContextRotateEvery) ||
+		!equalIntPointers(c.Ralph.MaxConsecutiveFailures, other.Ralph.MaxConsecutiveFailures) ||
+		!equalIntPointers(c.Ralph.GutterOutputTimeoutSec, other.Ralph.GutterOutputTimeoutSec) ||
+		!equalIntPointers(c.Ralph.GutterNoProgressIters, other.Ralph.GutterNoProgressIters) {
+		return false
+	}
+	// Compare Ralph boolean fields
+	if c.Ralph.Enabled != other.Ralph.Enabled ||
+		c.Ralph.AutoAddSigns != other.Ralph.AutoAddSigns ||
+		c.Ralph.ShowProgressLog != other.Ralph.ShowProgressLog ||
+		c.Ralph.ShowGuardrails != other.Ralph.ShowGuardrails {
 		return false
 	}
 	if c.PhaseExecutors != other.PhaseExecutors {

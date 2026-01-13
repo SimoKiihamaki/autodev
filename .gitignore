@@ -17,3 +17,7 @@ servers/
 # Claude Code generated context files
 .claude/context/
 **/.claude/context/
+
+# claude-mem generated session files
+CLAUDE.md
+**/CLAUDE.md

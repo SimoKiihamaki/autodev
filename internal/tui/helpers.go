@@ -23,6 +23,23 @@ func atoiSafe(s string) (int, error) {
 	return n, nil
 }
 
+// parseBoolSafe trims whitespace and converts to bool, accepting: true, false, 1, 0, yes, no.
+// Returns (false, error) when parsing fails with an unrecognized value.
+func parseBoolSafe(s string) (bool, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false, nil
+	}
+	switch s {
+	case "true", "1", "yes", "on", "enabled":
+		return true, nil
+	case "false", "0", "no", "off", "disabled":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid boolean %q: use true/false, 1/0, yes/no, on/off, enabled/disabled", s)
+	}
+}
+
 // wrapIndex normalizes (current + delta) into the range [0, n). It gracefully handles
 // negative offsets and values greater than n by applying modular arithmetic.
 // Callers should pass the current index, the desired increment or decrement (delta),
