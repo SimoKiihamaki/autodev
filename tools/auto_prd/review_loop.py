@@ -30,14 +30,24 @@ from .gh_ops import (
     trigger_copilot,
 )
 from .git_ops import git_head_sha
+from .guardrails import (
+    add_sign,
+    format_signs_for_prompt,
+    load_guardrails,
+    suggest_sign_from_error,
+)
 from .logging_utils import logger
 from .policy import policy_runner
+from .progress_renderer import IterationSummary, save_iteration_summary
 from .utils import (
     extract_called_process_error_details,
     is_valid_int,
     is_valid_numeric,
     scrub_cli_text,
 )
+
+# Import StallDetector for Ralph-style gutter detection
+from .context import StallDetector
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
@@ -520,12 +530,31 @@ def review_fix_loop(
             f"Resuming with {len(processed_comment_ids)} previously processed comments."
         )
 
+    # Load guardrails for Ralph-style mistake prevention
+    # Signs from previous iterations are injected into the agent context
+    guardrails = load_guardrails(repo_root)
+    if guardrails:
+        print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
+        logger.info("Loaded %d guardrail signs for repo %s", len(guardrails), repo_root)
+
     def sleep_with_jitter(base: float) -> None:
         jitter = _JITTER_RNG.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)
         duration = max(1.0, base + jitter)
         time.sleep(duration)
 
     consecutive_failures = 0
+
+    # Initialize StallDetector for Ralph-style gutter detection in review loop.
+    # NOTE: Output-based detection (no_output_threshold_seconds) is currently limited:
+    # record_output() is called once per loop iteration after completion, not during
+    # streaming. For proper time-based detection, record_output() would need to be
+    # wired into the streaming output handler. Currently, only iteration-based
+    # detection (no_progress_threshold_iterations) is fully functional.
+    stall_detector = StallDetector(
+        no_output_threshold_seconds=1e9,  # Effectively disabled; not integrated with streaming
+        no_progress_threshold_iterations=5,  # 5 iterations without feedback reduction
+    )
+    stall_detector.reset()
 
     while True:
         current_head = git_head_sha(repo_root)
@@ -581,6 +610,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # scrub_cli_text() is preferred over sanitize_for_cli() as it's the
                 # established utility used throughout the codebase (pr_flow.py, command.py)
                 # and includes early-exit optimization when no unsafe chars are present.
+                # Build context suffix (previous fixes + guardrails)
+                context_suffix = ""
                 if compacted_history:
                     # At this point, compacted_history is guaranteed non-empty (truthy check above).
                     # Sanitize history entries using the module-level helper function.
@@ -597,6 +628,14 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                         + "\n---\n".join(sanitized_history)
                         + "\n[/previous_fixes]"
                     )
+                # Add guardrails for mistake prevention (Ralph-style signs)
+                # Always include guardrails when available, not just when there's compacted history
+                if guardrails:
+                    guardrails_text = format_signs_for_prompt(guardrails)
+                    # Sanitize for CLI safety (remove shell metacharacters)
+                    guardrails_suffix = scrub_cli_text(guardrails_text)
+                    context_suffix += guardrails_suffix
+                if context_suffix:
                     runner_kwargs["system_prompt_suffix"] = context_suffix
 
             # Use streaming variant for claude_exec to show real-time progress.
@@ -653,6 +692,26 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                         consecutive_failures,
                     )
                 consecutive_failures = 0
+
+                # Ralph-style gutter detection: Record output and check for stalls
+                stall_detector.record_output()
+                # Record progress based on whether unresolved items decreased
+                stall_detector.record_iteration(tasks_left=len(unresolved))
+                is_stalled, stall_reason = stall_detector.check_stall()
+                if is_stalled:
+                    logger.warning("Gutter detected in review loop: %s", stall_reason)
+                    print(f"  ⚠️  Gutter detection: {stall_reason}")
+                    # Add a guardrail sign for this stall pattern
+                    add_sign(
+                        name="gutter_review_no_progress",
+                        trigger="Multiple review iterations without feedback reduction",
+                        instruction=stall_reason,
+                        iteration=cycles,
+                        repo_root=repo_root,
+                        category="gutter",
+                        phase="review_fix",
+                    )
+
                 # Determine completion status message (independent of streaming mode)
                 if not (stderr and stderr.strip()):
                     status_msg = "Review fix completed successfully"
@@ -680,6 +739,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 else:
                     error_detail = f"Execution timed out after {timeout_secs} seconds"
                 stderr_text = _decode_stderr(getattr(exc, "stderr", None))
+                # Suggest a sign for Ralph-style learning from timeout failures
+                suggested_sign = suggest_sign_from_error(
+                    error_message=error_detail,
+                    iteration=cycles,
+                    repo_root=repo_root,
+                    phase="review_fix",
+                )
+                if suggested_sign:
+                    logger.info(
+                        "Suggested guardrail sign '%s' from timeout error",
+                        suggested_sign.name,
+                    )
                 if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,
@@ -694,6 +765,18 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 consecutive_failures += 1
                 error_detail = extract_called_process_error_details(exc)
                 stderr_text = _decode_stderr(exc.stderr)
+                # Suggest a sign for Ralph-style learning from process errors
+                suggested_sign = suggest_sign_from_error(
+                    error_message=error_detail,
+                    iteration=cycles,
+                    repo_root=repo_root,
+                    phase="review_fix",
+                )
+                if suggested_sign:
+                    logger.info(
+                        "Suggested guardrail sign '%s' from process error",
+                        suggested_sign.name,
+                    )
                 if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,

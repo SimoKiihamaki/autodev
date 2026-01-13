@@ -22,7 +22,7 @@ const runScrollHelp = "↑/↓ scroll · PgUp/PgDn jump · Home/End align · f t
 // CleanupFinalModel performs cleanup on the final model returned by p.Run().
 // It handles the type assertion and calls the model's cleanup logic.
 // This is the recommended way to clean up resources after the TUI exits.
-func CleanupFinalModel(finalModel interface{}) {
+func CleanupFinalModel(finalModel any) {
 	if m, ok := finalModel.(model); ok {
 		m.cleanup()
 	}
@@ -207,13 +207,6 @@ type model struct {
 	trackerLoaded bool
 }
 
-// settingsInputNames defines the navigation order for Settings inputs; keep the
-// explicit sequence so keyboard traversal remains predictable.
-var settingsInputNames = []string{
-	"repo", "base", "branch", "codex", "pycmd", "pyscript", "policy",
-	"waitmin", "pollsec", "idlemin", "maxiters", "codextimeout", "claudetimeout",
-}
-
 var envFlagNames = []string{
 	FlagNameLocal,
 	FlagNamePR,
@@ -222,6 +215,24 @@ var envFlagNames = []string{
 	FlagNameDryRun,
 	FlagNameSyncGit,
 	FlagNameInfinite,
+}
+
+// settingsInputNames enumerates every text input tracked in settingsInputs.
+// Keep this list in sync with initSettingsInputs and related tests.
+var settingsInputNames = []string{
+	"repo",
+	"base",
+	"branch",
+	"codex",
+	"pycmd",
+	"pyscript",
+	"policy",
+	"waitmin",
+	"pollsec",
+	"idlemin",
+	"maxiters",
+	"codextimeout",
+	"claudetimeout",
 }
 
 func New() model {

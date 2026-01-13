@@ -7,6 +7,7 @@ providing automated code review feedback between iterations.
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,24 @@ from .constants import (
     get_tool_allowlist,
 )
 from .git_ops import git_head_sha, git_status_snapshot
+from .guardrails import (
+    add_sign,
+    format_signs_for_prompt,
+    load_guardrails,
+    suggest_sign_from_error,
+)
 from .logging_utils import logger
 from .policy import policy_runner
-from .utils import checkbox_stats, detect_readonly_block, parse_tasks_left
+from .progress_renderer import IterationSummary, save_iteration_summary
+from .utils import (
+    checkbox_stats,
+    detect_readonly_block,
+    parse_tasks_left,
+    scrub_cli_text,
+)
+
+# Import StallDetector for Ralph-style gutter detection
+from .context import StallDetector
 
 LOCAL_QA_SNIPPET = """
 Use zsh for shell commands.
@@ -60,6 +76,22 @@ IMPL_RETRY_BACKOFF_BASE = 10
 # 137: Process killed by SIGKILL (often OOM)
 # 139: Segmentation fault (SIGSEGV)
 NON_RETRYABLE_EXIT_CODES = frozenset({126, 127, 137, 139})
+
+
+def sanitize_session_id(stem: str) -> str:
+    r"""Sanitize a PRD stem to be safe for use as a session_id.
+
+    Replaces any characters not matching [\w\-] with hyphens to ensure
+    compatibility with get_progress_path validation.
+
+    Args:
+        stem: The PRD filename stem (without extension).
+
+    Returns:
+        A sanitized session ID safe for use in file paths.
+    """
+    # Replace any non-alphanumeric, non-hyphen, non-underscore characters with hyphen
+    return re.sub(r"[^\w\-]", "-", stem)
 
 
 def should_stop_for_completion(
@@ -149,6 +181,21 @@ def orchestrate_local_loop(
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
 
+    # Load guardrails for Ralph-style mistake prevention
+    # Signs from previous iterations are injected into the agent context
+    guardrails = load_guardrails(repo_root)
+    if guardrails:
+        print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
+        logger.info("Loaded %d guardrail signs for repo %s", len(guardrails), repo_root)
+
+    # Initialize StallDetector for Ralph-style gutter detection
+    # Detects when the agent is stuck in a loop (repeated failures, no progress)
+    stall_detector = StallDetector(
+        no_output_threshold_seconds=180.0,  # 3 minutes without output
+        no_progress_threshold_iterations=3,  # 3 iterations without task progress
+    )
+    stall_detector.reset()
+
     # If resuming, restore from checkpoint state if available
     if start_iteration > 1:
         logger.info("Resuming local loop from iteration %d", start_iteration)
@@ -195,6 +242,12 @@ At the end, print: TASKS_LEFT=<N>
         elif runner is claude_exec:
             # Add phase-specific tool restrictions for Claude
             runner_kwargs["allowed_tools"] = get_tool_allowlist("implement")
+            # Add guardrails for mistake prevention (Ralph-style signs)
+            if guardrails:
+                guardrails_text = format_signs_for_prompt(guardrails)
+                # Sanitize for CLI safety (remove shell metacharacters)
+                guardrails_suffix = scrub_cli_text(guardrails_text)
+                runner_kwargs["system_prompt_suffix"] = guardrails_suffix
 
         # Implementation pass with retry logic for transient failures.
         # Retries on CalledProcessError and TimeoutExpired which may include transient
@@ -265,6 +318,23 @@ At the end, print: TASKS_LEFT=<N>
         # failures (see below) are non-fatal because the implementation already
         # exists and the loop can continue with potentially incomplete fixes.
         if last_impl_error is not None:
+            # Suggest a sign for Ralph-style learning from this failure
+            error_message = str(last_impl_error)
+            suggested_sign = suggest_sign_from_error(
+                error_message=error_message,
+                iteration=i,
+                repo_root=repo_root,
+                phase="local",
+            )
+            if suggested_sign:
+                print(
+                    f"  💡 Suggested sign from error: {suggested_sign.name}",
+                    flush=True,
+                )
+                logger.info(
+                    "Suggested guardrail sign '%s' from implementation error",
+                    suggested_sign.name,
+                )
             raise last_impl_error
 
         # Check for empty output which may indicate the runner failed silently
@@ -292,6 +362,24 @@ At the end, print: TASKS_LEFT=<N>
             print(f"Codex reported TASKS_LEFT={tasks_left}")
         else:
             print("Codex did not report TASKS_LEFT (continuing)")
+
+        # Ralph-style gutter detection: Record iteration and check for stalls
+        stall_detector.record_output()  # We got output, so reset output timeout
+        stall_detector.record_iteration(tasks_left)
+        is_stalled, stall_reason = stall_detector.check_stall()
+        if is_stalled:
+            logger.warning("Gutter detected: %s", stall_reason)
+            print(f"  ⚠️  Gutter detection: {stall_reason}")
+            # Add a guardrail sign for this stall pattern
+            add_sign(
+                name="gutter_no_progress",
+                trigger="Multiple iterations without task progress",
+                instruction=stall_reason,
+                iteration=i,
+                repo_root=repo_root,
+                category="gutter",
+                phase="local",
+            )
 
         qa_context_shared = True
 
@@ -377,6 +465,23 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                         "CodeRabbit findings will NOT be addressed this iteration.",
                         flush=True,
                     )
+                    # Suggest a sign for Ralph-style learning from fix pass failures
+                    error_message = str(e)
+                    suggested_sign = suggest_sign_from_error(
+                        error_message=error_message,
+                        iteration=i,
+                        repo_root=repo_root,
+                        phase="local_fix",
+                    )
+                    if suggested_sign:
+                        print(
+                            f"  💡 Suggested sign from error: {suggested_sign.name}",
+                            flush=True,
+                        )
+                        logger.info(
+                            "Suggested guardrail sign '%s' from fix pass error",
+                            suggested_sign.name,
+                        )
                     fix_output = ""
                 # Check for empty output which may indicate the runner failed silently
                 if not fix_output.strip():
@@ -417,6 +522,30 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
         repo_changed_after_actions = (
             status_after_iteration != before_status
             or head_after_iteration != before_head
+        )
+
+        # Ralph-style progress tracking: Save iteration summary
+        # Must be after all iteration state is computed
+        iteration_summary = IterationSummary(
+            iteration=i,
+            status="completed",
+            tasks_remaining=tasks_left if tasks_left is not None else -1,
+            phase="local",
+            commits_made=1 if repo_changed_after_actions else 0,
+        )
+        # Add learnings based on iteration state
+        if no_findings_streak > 0:
+            iteration_summary.learnings.append(
+                f"Clean code: {no_findings_streak} reviews without findings"
+            )
+        # Add issues if any
+        if fix_pass_failed:
+            iteration_summary.issues_found.append(
+                "Fix pass failed during this iteration"
+            )
+
+        save_iteration_summary(
+            f"local-{sanitize_session_id(prd_path.stem)}", iteration_summary
         )
 
         unchecked, total_checkboxes = checkbox_stats(prd_path)
