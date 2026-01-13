@@ -695,8 +695,23 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
 
                 # Ralph-style gutter detection: Record output and check for stalls
                 stall_detector.record_output()
-                # Record progress based on whether unresolved items decreased
-                stall_detector.record_iteration(tasks_left=len(unresolved))
+                # Recompute unresolved after the fix pass to get accurate progress count
+                # The stale `unresolved` was collected before fixes ran; recompute to detect
+                # if the current iteration actually reduced feedback items
+                current_head_after = git_head_sha(repo_root)
+                unresolved_raw_after = get_unresolved_feedback(
+                    owner_repo, pr_number, current_head_after
+                )
+                unresolved_after = [
+                    item
+                    for item in unresolved_raw_after
+                    if not (
+                        isinstance(item.get("comment_id"), int)
+                        and item.get("comment_id") in processed_comment_ids
+                    )
+                ]
+                # Record progress based on the fresh unresolved count after the fix pass
+                stall_detector.record_iteration(tasks_left=len(unresolved_after))
                 is_stalled, stall_reason = stall_detector.check_stall()
                 if is_stalled:
                     logger.warning("Gutter detected in review loop: %s", stall_reason)

@@ -509,7 +509,7 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                             suggested_sign.name,
                         )
                         # Persist the suggested sign so it prevents future recurrences
-                        add_sign(
+                        new_sign = add_sign(
                             name=suggested_sign.name,
                             trigger=suggested_sign.trigger,
                             instruction=suggested_sign.instruction,
@@ -519,6 +519,8 @@ Apply targeted changes, commit frequently, and re-run the QA gates until green.
                             category=suggested_sign.category,
                             phase=suggested_sign.phase,
                         )
+                        # Update in-memory guardrails so this fix is effective immediately
+                        guardrails.append(new_sign)
                     fix_output = ""
                 # Check for empty output which may indicate the runner failed silently
                 if not fix_output.strip():
