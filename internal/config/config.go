@@ -87,6 +87,12 @@ type Phases struct {
 // Ralph configures Ralph-style autonomous iteration features.
 // Ralph mode focuses on context hygiene, mistake prevention, and progress tracking.
 // See: docs/ralph-integration-plan.md
+//
+// NOTE: Boolean fields use Go's zero value (false) as default when omitted from config.
+// When customizing Ralph settings via partial config (e.g., setting only pointer fields
+// like gutter_output_timeout_sec), you must explicitly set all boolean fields to your
+// desired values, or they will default to false. This is a known limitation of using
+// non-pointer booleans in YAML config parsing.
 type Ralph struct {
 	Enabled                bool `yaml:"enabled"`                   // Enable all Ralph features
 	ContextRotateEvery     *int `yaml:"context_rotate_every"`      // Rotate context every N iterations (0 = disabled)
@@ -377,7 +383,8 @@ func LoadWithWarnings() LoadResult {
 	}
 
 	// Apply Ralph config defaults for pointer fields
-	// Track if the entire Ralph section is absent (all pointers nil) to avoid overwriting user-set booleans
+	// Track if the entire Ralph section is absent (all pointers nil) to avoid overwriting user-set booleans.
+	// See Ralph struct documentation for limitations of partial Ralph config with boolean fields.
 	ralphAllPointersNil := c.Ralph.ContextRotateEvery == nil &&
 		c.Ralph.MaxConsecutiveFailures == nil &&
 		c.Ralph.GutterOutputTimeoutSec == nil &&

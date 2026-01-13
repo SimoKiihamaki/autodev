@@ -119,17 +119,17 @@ class Sign(NamedTuple):
     added_at: str = ""  # ISO timestamp
 
 # Example: Get guardrails path for a repository
-# repo_slug would be derived from git remote or directory name
+# repo_slug is derived from git remote or directory name
 # e.g., "owner_repo" for https://github.com/owner/repo
-GUARDRAILS_PATH = Path.home() / ".config" / "aprd" / "guardrails" / f"{repo_slug}.md"
+# Actual usage: guardrails_path = get_guardrails_path(repo_root)
 
 def add_sign(
     name: str,
     trigger: str,
     instruction: str,
     iteration: int,
-    file_context: str | None = None,
     repo_root: Path,
+    file_context: str | None = None,
 ) -> None:
     """Add a new sign to guardrails after detecting a mistake pattern."""
 

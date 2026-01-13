@@ -27,6 +27,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 	renderRepositoryGroup(b, m)
 	renderExecutorsGroup(b, m)
 	renderTimingsGroup(b, m)
+	renderRalphGroup(b, m)
 	renderSettingsHelp(b, m)
 }
 
@@ -77,6 +78,34 @@ func renderTimingsGroup(b *strings.Builder, m model) {
 	timingsBox := NewBorderedBox("Timings", timingsContent)
 	timingsBox.Focused = isInSettingsGroup(m.focusedInput, []string{"waitmin", "pollsec", "idlemin", "maxiters", "codextimeout", "claudetimeout"})
 	b.WriteString(timingsBox.Render() + "\n")
+}
+
+// renderRalphGroup renders the Ralph autonomous iteration settings group.
+// Ralph mode focuses on context hygiene, mistake prevention, and progress tracking.
+// See: docs/ralph-integration-plan.md
+func renderRalphGroup(b *strings.Builder, m model) {
+	ralphRow1 := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inRalphEnabled.View()+"  ",
+		m.inRalphContextRotate.View()+"  ",
+		m.inRalphMaxConsecutive.View()+"  ",
+	)
+	ralphRow2 := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inRalphAutoAddSigns.View()+"  ",
+		m.inRalphShowProgressLog.View()+"  ",
+		m.inRalphShowGuardrails.View(),
+	)
+	ralphRow3 := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inRalphGutterTimeout.View()+"  ",
+		m.inRalphGutterNoProgress.View(),
+	)
+	ralphContent := lipgloss.JoinVertical(lipgloss.Left, ralphRow1, ralphRow2, ralphRow3)
+	ralphBox := NewBorderedBox("Ralph (Autonomous Mode)", ralphContent)
+	ralphBox.Focused = isInSettingsGroup(m.focusedInput, []string{
+		"ralphenabled", "ralphcontextrotate", "ralphmaxconsecutive",
+		"ralphautoaddsigns", "ralphshowprogresslog", "ralphshowguardrails",
+		"ralphguttertimeout", "ralphgutternoprogress",
+	})
+	b.WriteString(ralphBox.Render() + "\n")
 }
 
 // renderSettingsHelp renders the contextual help for settings.

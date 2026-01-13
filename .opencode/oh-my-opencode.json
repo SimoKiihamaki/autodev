@@ -5,7 +5,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "LM Studio (local)",
       "options": {
-        "baseURL": "http://192.168.1.180:1234/v1"
+        "baseURL": "${LM_STUDIO_BASE_URL:-http://192.168.1.180:1234/v1}"
       },
       "models": {
         "glm-4.5-air-dwq-v2": {

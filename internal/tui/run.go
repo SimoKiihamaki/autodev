@@ -255,7 +255,7 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.PythonScript = strings.TrimSpace(m.inPyScript.Value())
 	dst.ExecutorPolicy = strings.TrimSpace(m.inPolicy.Value())
 
-	const numNumericFields = 6 // Update if more numeric fields are added
+	const numNumericFields = 10 // Update if more numeric fields are added (6 timings + 4 Ralph numeric)
 	invalid := make([]string, 0, numNumericFields)
 	parseErrs := make([]numericParseError, 0, numNumericFields)
 
@@ -310,6 +310,47 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 		val := v
 		dst.Timings.ClaudeTimeoutSeconds = &val
 	})
+
+	// Ralph settings parsing
+	setNumeric(m.inRalphContextRotate.Value(), "Context rotate every", func(v int) {
+		val := v
+		dst.Ralph.ContextRotateEvery = &val
+	})
+	setNumeric(m.inRalphMaxConsecutive.Value(), "Max consecutive failures", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Ralph.MaxConsecutiveFailures = &val
+	})
+	setNumeric(m.inRalphGutterTimeout.Value(), "Gutter timeout sec", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Ralph.GutterOutputTimeoutSec = &val
+	})
+	setNumeric(m.inRalphGutterNoProgress.Value(), "Gutter no progress iters", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		val := v
+		dst.Ralph.GutterNoProgressIters = &val
+	})
+
+	// Ralph boolean parsing
+	setBool := func(raw, label string, apply func(bool)) {
+		val, err := parseBoolSafe(raw)
+		if err != nil {
+			invalid = append(invalid, label)
+			parseErrs = append(parseErrs, numericParseError{label: label, raw: raw, err: err})
+		}
+		apply(val)
+	}
+	setBool(m.inRalphEnabled.Value(), "Ralph enabled", func(v bool) { dst.Ralph.Enabled = v })
+	setBool(m.inRalphAutoAddSigns.Value(), "Auto add signs", func(v bool) { dst.Ralph.AutoAddSigns = v })
+	setBool(m.inRalphShowProgressLog.Value(), "Show progress log", func(v bool) { dst.Ralph.ShowProgressLog = v })
+	setBool(m.inRalphShowGuardrails.Value(), "Show guardrails", func(v bool) { dst.Ralph.ShowGuardrails = v })
 
 	dst.Flags.AllowUnsafe = m.flagAllowUnsafe
 	dst.Flags.DryRun = m.flagDryRun

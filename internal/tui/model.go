@@ -147,6 +147,16 @@ type model struct {
 	inCodexTimeout  textinput.Model
 	inClaudeTimeout textinput.Model
 
+	// Ralph settings inputs
+	inRalphEnabled          textinput.Model
+	inRalphContextRotate    textinput.Model
+	inRalphMaxConsecutive   textinput.Model
+	inRalphAutoAddSigns     textinput.Model
+	inRalphShowProgressLog  textinput.Model
+	inRalphShowGuardrails   textinput.Model
+	inRalphGutterTimeout    textinput.Model
+	inRalphGutterNoProgress textinput.Model
+
 	settingsInputs map[string]*textinput.Model
 
 	execLocalChoice  executorChoice
@@ -233,6 +243,15 @@ var settingsInputNames = []string{
 	"maxiters",
 	"codextimeout",
 	"claudetimeout",
+	// Ralph settings
+	"ralphenabled",
+	"ralphcontextrotate",
+	"ralphmaxconsecutive",
+	"ralphautoaddsigns",
+	"ralphshowprogresslog",
+	"ralphshowguardrails",
+	"ralphguttertimeout",
+	"ralphgutternoprogress",
 }
 
 func New() model {
@@ -373,6 +392,14 @@ func mkInput(placeholder, value string, width int) textinput.Model {
 	return ti
 }
 
+// formatBool formats a boolean value as "true" or "false" for display in text inputs.
+func formatBool(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 func (m *model) initSettingsInputs() {
 	cfg := m.cfg
 
@@ -389,6 +416,16 @@ func (m *model) initSettingsInputs() {
 	m.inMaxIters = mkInput("Max local iters", formatIntPtr(cfg.Timings.MaxLocalIters), 6)
 	m.inCodexTimeout = mkInput("Codex timeout (0=none)", formatIntPtr(cfg.Timings.CodexTimeoutSeconds), 8)
 	m.inClaudeTimeout = mkInput("Claude timeout (0=none)", formatIntPtr(cfg.Timings.ClaudeTimeoutSeconds), 8)
+
+	// Ralph settings inputs
+	m.inRalphEnabled = mkInput("Ralph enabled (true/false)", formatBool(cfg.Ralph.Enabled), 6)
+	m.inRalphContextRotate = mkInput("Context rotate every (0=disabled)", formatIntPtr(cfg.Ralph.ContextRotateEvery), 6)
+	m.inRalphMaxConsecutive = mkInput("Max consecutive failures", formatIntPtr(cfg.Ralph.MaxConsecutiveFailures), 6)
+	m.inRalphAutoAddSigns = mkInput("Auto add signs (true/false)", formatBool(cfg.Ralph.AutoAddSigns), 6)
+	m.inRalphShowProgressLog = mkInput("Show progress log (true/false)", formatBool(cfg.Ralph.ShowProgressLog), 6)
+	m.inRalphShowGuardrails = mkInput("Show guardrails (true/false)", formatBool(cfg.Ralph.ShowGuardrails), 6)
+	m.inRalphGutterTimeout = mkInput("Gutter timeout sec", formatIntPtr(cfg.Ralph.GutterOutputTimeoutSec), 6)
+	m.inRalphGutterNoProgress = mkInput("Gutter no progress iters", formatIntPtr(cfg.Ralph.GutterNoProgressIters), 6)
 
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring
@@ -411,6 +448,16 @@ func (m *model) initSettingsInputs() {
 		// timeouts
 		"codextimeout":  &m.inCodexTimeout,
 		"claudetimeout": &m.inClaudeTimeout,
+
+		// Ralph settings
+		"ralphenabled":          &m.inRalphEnabled,
+		"ralphcontextrotate":    &m.inRalphContextRotate,
+		"ralphmaxconsecutive":   &m.inRalphMaxConsecutive,
+		"ralphautoaddsigns":     &m.inRalphAutoAddSigns,
+		"ralphshowprogresslog":  &m.inRalphShowProgressLog,
+		"ralphshowguardrails":   &m.inRalphShowGuardrails,
+		"ralphguttertimeout":    &m.inRalphGutterTimeout,
+		"ralphgutternoprogress": &m.inRalphGutterNoProgress,
 	}
 }
 
