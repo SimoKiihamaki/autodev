@@ -833,7 +833,7 @@ def run_verification_gates(
     verifier_results = []
 
     if tracker_path.exists():
-        with open(tracker_path) as f:
+        with open(tracker_path, encoding="utf-8") as f:
             tracker = json.load(f)
 
         features = tracker.get("features", [])
@@ -955,7 +955,8 @@ def run_playwright_verifier(
     for suite in test_results.get("suites", []):
         for spec in suite.get("specs", []):
             for test in spec.get("tests", []):
-                if test["results"][0]["status"] == "passed":
+                results = test.get("results", [])
+                if results and results[0].get("status") == "passed":
                     passed_criteria.append(test["title"])
 
     screenshots = []
@@ -1024,13 +1025,13 @@ def run_ml_evaluation_verifier(
 
     for gate in evaluation_report.get("quality_gates", []):
         gate_result = {
-            "name": gate["name"],
-            "threshold": gate["threshold"],
-            "actual": gate["actual"],
-            "status": gate["status"],
+            "name": gate.get("name", "unknown"),
+            "threshold": gate.get("threshold"),
+            "actual": gate.get("actual"),
+            "status": gate.get("status", "unknown"),
         }
 
-        if gate["status"] == "passed":
+        if gate.get("status") == "passed":
             gates_passed.append(gate_result)
         else:
             gates_failed.append(gate_result)
