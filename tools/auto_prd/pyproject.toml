@@ -62,7 +62,7 @@ ignore = [
 "tests/*.py" = ["ARG001", "ARG002"]
 
 [tool.pytest.ini_options]
-addopts = "-n auto"
+# addopts = "-n auto"  # Removed to avoid pytest -n flag conflict
 
 [[tool.mypy.overrides]]
 # Ignore errors in test files completely

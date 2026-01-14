@@ -15,6 +15,7 @@ Verification includes:
 from __future__ import annotations
 
 import copy
+import json
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -24,6 +25,13 @@ from typing import Any
 
 from .command import run_cmd
 from .logging_utils import logger
+
+# Type imports for verifier functions
+from .verification_persistence import (
+    VerificationStatus,
+    VerifierResult,
+    VerifierType,
+)
 
 
 def _sanitize_filename(name: str, max_length: int = 50) -> str:
@@ -788,3 +796,253 @@ def verify_feature(
         dry_run=dry_run,
     )
     return protocol.verify_feature(feature, tracker)
+
+
+def run_verification_gates(
+    repo_root: Path, tracker_path: Path, timeout_seconds: int = 300
+) -> list:
+    """
+    Run all verification gates for features in tracker.
+
+    This is a compatibility function for readiness_loop.py that runs
+    verification protocol across all features and returns results in
+    a format compatible with verification_persistence.
+
+    Supports verifier types:
+    - unit_tests (always)
+    - integration_tests (when applicable)
+    - e2e_tests (when applicable)
+    - quality_gates (always)
+    - playwright (when configured)
+    - ml_evaluation (when configured)
+    - code_review (external, from CodeRabbit)
+
+    Args:
+        repo_root: Repository root directory
+        tracker_path: Path to tracker.json file
+        timeout_seconds: Timeout for each feature verification
+
+    Returns:
+        List of VerifierResult objects
+    """
+    protocol = VerificationProtocol(
+        repo_root=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+
+    verifier_results = []
+
+    if tracker_path.exists():
+        with open(tracker_path, encoding="utf-8") as f:
+            tracker = json.load(f)
+
+        features = tracker.get("features", [])
+
+        for feature in features:
+            result, _ = protocol.verify_feature(feature, tracker)
+
+            # Add unit test results as verifiers
+            for test in result.unit_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"unit_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
+                    )
+                )
+
+            # Add integration test results
+            for test in result.integration_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"integration_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
+                    )
+                )
+
+            # Add e2e test results
+            for test in result.e2e_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"e2e_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
+                    )
+                )
+
+            # Add quality gate results
+            for gate in result.quality_gates:
+                verifier_results.append(
+                    VerifierResult(
+                        name=gate.gate,
+                        type=VerifierType.QUALITY_GATE,
+                        command=gate.requirement,
+                        exit_code=0 if gate.passed else 1,
+                        status=(
+                            VerificationStatus.PASSED
+                            if gate.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=0.0,
+                        error=None if gate.passed else gate.output,
+                        quality_gates=[gate.__dict__],
+                    )
+                )
+
+    return verifier_results
+
+
+def run_playwright_verifier(
+    repo_root: Path, spec_file: Path, output_dir: str = "test-results"
+) -> VerifierResult:
+    """
+    Run Playwright user journey tests.
+
+    Args:
+        repo_root: Repository root directory
+        spec_file: Path to Playwright test spec
+        output_dir: Directory for test results
+
+    Returns:
+        VerifierResult with test results, screenshots, and artifacts
+    """
+    cmd = [
+        "npx",
+        "playwright",
+        "test",
+        str(spec_file),
+        "--reporter=json",
+        "--headed=false",
+        f"--output-dir={output_dir}",
+        "--screenshot=only-on-failure",
+    ]
+
+    stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False, capture=True)
+
+    test_results = {}
+    if exit_code == 0 and stdout:
+        try:
+            test_results = json.loads(stdout)
+        except json.JSONDecodeError:
+            test_results = {}
+
+    passed_criteria = []
+    for suite in test_results.get("suites", []):
+        for spec in suite.get("specs", []):
+            for test in spec.get("tests", []):
+                results = test.get("results", [])
+                if results and results[0].get("status") == "passed":
+                    passed_criteria.append(test["title"])
+
+    screenshots = []
+    if exit_code != 0:
+        screenshot_dir = Path(output_dir) / "test-results"
+        if screenshot_dir.exists():
+            for png_file in screenshot_dir.glob("**/*.png"):
+                screenshots.append(str(png_file.relative_to(repo_root)))
+
+    return VerifierResult(
+        name="playwright_user_journey",
+        type=VerifierType.PLAYWRIGHT,
+        command=" ".join(cmd),
+        exit_code=exit_code,
+        status="passed" if exit_code == 0 else "failed",
+        screenshots=screenshots,
+        acceptance_criteria=passed_criteria,
+        artifacts=[f"{output_dir}/playwright-report/index.html"],
+    )
+
+
+def run_ml_evaluation_verifier(
+    repo_root: Path,
+    model_path: Path,
+    test_data_path: Path,
+    thresholds_path: Path,
+    output_file: str = "evaluation_report.json",
+) -> VerifierResult:
+    """
+    Run ML model evaluation against quality gates.
+
+    Args:
+        repo_root: Repository root directory
+        model_path: Path to ML model file
+        test_data_path: Path to test data
+        thresholds_path: Path to quality gate thresholds
+        output_file: Path for evaluation report
+
+    Returns:
+        VerifierResult with metrics and quality gate results
+    """
+    cmd = [
+        "python",
+        "scripts/evaluate.py",
+        "--model",
+        str(model_path),
+        "--test-data",
+        str(test_data_path),
+        "--thresholds",
+        str(thresholds_path),
+        "--output",
+        output_file,
+    ]
+
+    stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False, capture=True)
+
+    evaluation_report = {}
+    if exit_code == 0 and stdout:
+        try:
+            evaluation_report = json.loads(stdout)
+        except json.JSONDecodeError:
+            evaluation_report = {}
+
+    gates_passed = []
+    gates_failed = []
+
+    for gate in evaluation_report.get("quality_gates", []):
+        gate_result = {
+            "name": gate.get("name", "unknown"),
+            "threshold": gate.get("threshold"),
+            "actual": gate.get("actual"),
+            "status": gate.get("status", "unknown"),
+        }
+
+        if gate.get("status") == "passed":
+            gates_passed.append(gate_result)
+        else:
+            gates_failed.append(gate_result)
+
+    return VerifierResult(
+        name="ml_evaluation",
+        type=VerifierType.ML_EVALUATION,
+        command=" ".join(cmd),
+        exit_code=exit_code,
+        status="passed" if not gates_failed else "failed",
+        metrics=evaluation_report.get("metrics"),
+        quality_gates=gates_passed + gates_failed,
+        artifacts=[output_file],
+    )

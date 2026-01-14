@@ -245,7 +245,7 @@ def sanitize_for_cli(text: str) -> str:
     """Sanitize text to replace unsafe CLI characters.
 
     Replaces characters that could trigger validate_command_args() security
-    checks when the text is passed as CLI arguments. This is used for context
+    checks when text is passed as CLI arguments. This is used for context
     strings that are passed via --append-system-prompt.
 
     Args:
@@ -257,3 +257,28 @@ def sanitize_for_cli(text: str) -> str:
     for unsafe, safe in CLI_ARG_REPLACEMENTS.items():
         text = text.replace(unsafe, safe)
     return text
+
+
+def get_git_sha(repo_root: Path) -> str:
+    """Get current git commit SHA."""
+    out, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root)
+    return out.strip()
+
+
+def get_prd_hash(repo_root: Path) -> str:
+    """Compute SHA256 hash of PRD file for change detection."""
+    prd_path = repo_root / "PRD.md"
+    if prd_path.exists():
+        return compute_file_hash(prd_path)
+    return ""
+
+
+def compute_file_hash(file_path: Path) -> str:
+    """Compute SHA256 hash of a file for change detection."""
+    import hashlib
+
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    return sha256_hash.hexdigest()

@@ -377,6 +377,12 @@ def run(args) -> None:
             # Generate implementation tracker from PRD (Phase 3.0)
             # The tracker is the contract between all agent invocations
             tracker_path = get_tracker_path(repo_root)
+
+            # Always start fresh - delete existing tracker to force regeneration
+            if tracker_path.exists():
+                logger.info("Removing existing tracker for fresh start")
+                tracker_path.unlink()
+
             existing_tracker = load_tracker(repo_root)
             if existing_tracker is None:
                 print("Generating implementation tracker from PRD...", flush=True)
@@ -396,7 +402,7 @@ def run(args) -> None:
                         prd_path=prd_path,
                         repo_root=repo_root,
                         executor=tracker_executor,
-                        force=False,
+                        force=True,
                         dry_run=args.dry_run,
                         allow_unsafe_execution=args.allow_unsafe_execution,
                     )
