@@ -35,8 +35,14 @@ def correct_ac_ids(tracker: dict[str, Any]) -> dict[str, Any]:
                 # Extract all digits from ID and format as AC + 3 digits
                 digits = re.sub(r"[^0-9]", "", ac_id)
                 if digits:
-                    # Take first 3 digits and pad to 3
-                    corrected_id = f"AC{digits[:3].zfill(3)}"
+                    # For IDs with more than 3 digits, take the last 3 (e.g., AC0001 → AC001)
+                    # For IDs with fewer digits, pad to 3 (e.g., AC1 → AC001)
+                    if len(digits) > 3:
+                        # Take the last 3 meaningful digits
+                        corrected_id = f"AC{digits[-3:]}"
+                    else:
+                        # Pad shorter IDs to 3 digits
+                        corrected_id = f"AC{digits.zfill(3)}"
                     criterion["id"] = corrected_id
                     corrections_made += 1
 

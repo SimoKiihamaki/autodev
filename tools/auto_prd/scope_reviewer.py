@@ -7,12 +7,13 @@ and tracks PRD changes for selective invalidation.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from enum import Enum
-import re
 
 from .utils import get_git_sha, get_prd_hash, compute_file_hash
 from .guardrails import add_sign
@@ -77,7 +78,8 @@ class FailureFingerprint:
 
     def to_key(self) -> str:
         """Generate unique key for deduplication."""
-        return f"{self.phase}:{self.gate_name}:{self.error_type}:{hash(self.normalized_error)}"
+        error_hash = hashlib.sha256(self.normalized_error.encode()).hexdigest()[:16]
+        return f"{self.phase}:{self.gate_name}:{self.error_type}:{error_hash}"
 
     def should_become_sign(self, threshold: int = 2) -> bool:
         """Check if repeated enough to become a guardrail sign."""
@@ -276,18 +278,38 @@ class ScopeReviewer:
         lines = prd_content.split("\n")
         sections = self._extract_sections(lines)
 
-        for section in sections:
-            section_hash = compute_file_hash(section["content"])
+        # Load previous section hashes if available
+        section_hashes_file = self.state_dir / "prd_section_hashes.json"
+        old_section_hashes: Dict[str, str] = {}
+        if section_hashes_file.exists():
+            import json
 
-            if len(section["content"]) > 100:
+            with open(section_hashes_file) as f:
+                old_section_hashes = json.load(f)
+
+        new_section_hashes: Dict[str, str] = {}
+
+        for section in sections:
+            section_hash = hashlib.sha256(section["content"].encode()).hexdigest()
+            section_title = section["title"]
+            new_section_hashes[section_title] = section_hash
+
+            old_hash = old_section_hashes.get(section_title)
+            if old_hash is not None and old_hash != section_hash:
                 changes.append(
                     ScopeChange(
                         type="invalidate_tasks",
-                        description=f"PRD section '{section['title']}' may have changed",
+                        description=f"PRD section '{section_title}' changed",
                         reason="PRD hash changed",
                         severity="warning",
                     )
                 )
+
+        # Persist new hashes for next comparison
+        import json
+
+        with open(section_hashes_file, "w") as f:
+            json.dump(new_section_hashes, f)
 
         return changes
 
@@ -398,9 +420,9 @@ class ScopeReviewer:
         checked_checkboxes = prd_content.count("- [x]")
 
         if total_checkboxes == 0:
-            return {"total": 0, "completed": 0, "completion_rate": 100.0}
+            return {"total": 0, "completed": 0, "completion_rate": 1.0}
 
-        completion_rate = (checked_checkboxes / total_checkboxes) * 100
+        completion_rate = checked_checkboxes / total_checkboxes
         return {
             "total": total_checkboxes,
             "completed": checked_checkboxes,
@@ -411,10 +433,10 @@ class ScopeReviewer:
         """Calculate overall feature completion rate from tracker."""
         features = tracker.get("features", [])
         if not features:
-            return 100.0
+            return 1.0
 
         completed = sum(1 for f in features if f.get("status") == "verified")
-        return (completed / len(features)) * 100
+        return completed / len(features)
 
     def record_failure(
         self,
@@ -433,7 +455,8 @@ class ScopeReviewer:
         whitespace_normalized = " ".join(number_normalized.split())
         normalized_error = whitespace_normalized.lower()
 
-        key = f"{phase}:{gate_name}:{error_type}:{hash(normalized_error)}"
+        error_hash = hashlib.sha256(normalized_error.encode()).hexdigest()[:16]
+        key = f"{phase}:{gate_name}:{error_type}:{error_hash}"
 
         now = datetime.now().isoformat()
 

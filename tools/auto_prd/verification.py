@@ -789,132 +789,133 @@ def verify_feature(
     )
     return protocol.verify_feature(feature, tracker)
 
-    def run_verification_gates(
-        repo_root: Path, tracker_path: Path, timeout_seconds: int = 300
-    ) -> list:
-        """
-        Run all verification gates for features in tracker.
 
-        This is a compatibility function for readiness_loop.py that runs
-        verification protocol across all features and returns results in
-        a format compatible with verification_persistence.
+def run_verification_gates(
+    repo_root: Path, tracker_path: Path, timeout_seconds: int = 300
+) -> list:
+    """
+    Run all verification gates for features in tracker.
 
-        Supports verifier types:
-        - unit_tests (always)
-        - integration_tests (when applicable)
-        - e2e_tests (when applicable)
-        - quality_gates (always)
-        - playwright (when configured)
-        - ml_evaluation (when configured)
-        - code_review (external, from CodeRabbit)
+    This is a compatibility function for readiness_loop.py that runs
+    verification protocol across all features and returns results in
+    a format compatible with verification_persistence.
 
-        Args:
-            repo_root: Repository root directory
-            tracker_path: Path to tracker.json file
-            timeout_seconds: Timeout for each feature verification
+    Supports verifier types:
+    - unit_tests (always)
+    - integration_tests (when applicable)
+    - e2e_tests (when applicable)
+    - quality_gates (always)
+    - playwright (when configured)
+    - ml_evaluation (when configured)
+    - code_review (external, from CodeRabbit)
 
-        Returns:
-            List of VerifierResult objects
-        """
-        import json
+    Args:
+        repo_root: Repository root directory
+        tracker_path: Path to tracker.json file
+        timeout_seconds: Timeout for each feature verification
 
-        from .verification_persistence import (
-            VerifierResult,
-            VerifierType,
-            VerificationStatus,
-        )
+    Returns:
+        List of VerifierResult objects
+    """
+    import json
 
-        protocol = VerificationProtocol(
-            repo_root=repo_root,
-            timeout_seconds=timeout_seconds,
-        )
+    from .verification_persistence import (
+        VerifierResult,
+        VerifierType,
+        VerificationStatus,
+    )
 
-        verifier_results = []
+    protocol = VerificationProtocol(
+        repo_root=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
 
-        if tracker_path.exists():
-            with open(tracker_path) as f:
-                tracker = json.load(f)
+    verifier_results = []
 
-            features = tracker.get("features", [])
+    if tracker_path.exists():
+        with open(tracker_path) as f:
+            tracker = json.load(f)
 
-            for feature in features:
-                feature_id = feature.get("id", "unknown")
-                result, _ = protocol.verify_feature(feature, tracker)
+        features = tracker.get("features", [])
 
-                # Add unit test results as verifiers
-                for test in result.unit_tests:
-                    verifier_results.append(
-                        VerifierResult(
-                            name=f"unit_test_{test.name}",
-                            type=VerifierType.TEST,
-                            command=test.name,
-                            exit_code=test.exit_code,
-                            status=(
-                                VerificationStatus.PASSED
-                                if test.passed
-                                else VerificationStatus.FAILED
-                            ),
-                            duration_sec=test.duration_seconds,
-                            error=None if test.passed else test.output,
-                        )
+        for feature in features:
+            feature_id = feature.get("id", "unknown")
+            result, _ = protocol.verify_feature(feature, tracker)
+
+            # Add unit test results as verifiers
+            for test in result.unit_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"unit_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
                     )
+                )
 
-                # Add integration test results
-                for test in result.integration_tests:
-                    verifier_results.append(
-                        VerifierResult(
-                            name=f"integration_test_{test.name}",
-                            type=VerifierType.TEST,
-                            command=test.name,
-                            exit_code=test.exit_code,
-                            status=(
-                                VerificationStatus.PASSED
-                                if test.passed
-                                else VerificationStatus.FAILED
-                            ),
-                            duration_sec=test.duration_seconds,
-                            error=None if test.passed else test.output,
-                        )
+            # Add integration test results
+            for test in result.integration_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"integration_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
                     )
+                )
 
-                # Add e2e test results
-                for test in result.e2e_tests:
-                    verifier_results.append(
-                        VerifierResult(
-                            name=f"e2e_test_{test.name}",
-                            type=VerifierType.TEST,
-                            command=test.name,
-                            exit_code=test.exit_code,
-                            status=(
-                                VerificationStatus.PASSED
-                                if test.passed
-                                else VerificationStatus.FAILED
-                            ),
-                            duration_sec=test.duration_seconds,
-                            error=None if test.passed else test.output,
-                        )
+            # Add e2e test results
+            for test in result.e2e_tests:
+                verifier_results.append(
+                    VerifierResult(
+                        name=f"e2e_test_{test.name}",
+                        type=VerifierType.TEST,
+                        command=test.name,
+                        exit_code=test.exit_code,
+                        status=(
+                            VerificationStatus.PASSED
+                            if test.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=test.duration_seconds,
+                        error=None if test.passed else test.output,
                     )
+                )
 
-                    # Add quality gate results
-                for gate in result.quality_gates:
-                    verifier_results.append(
-                        VerifierResult(
-                            name=gate.gate,
-                            type=VerifierType.QUALITY_GATE,
-                            command=gate.requirement,
-                            exit_code=0 if gate.passed else 1,
-                            status=(
-                                VerificationStatus.PASSED
-                                if gate.passed
-                                else VerificationStatus.FAILED
-                            ),
-                            duration_sec=0.0,
-                            error=None if gate.passed else gate.output,
-                            quality_gates=[gate.__dict__],
-                        )
+            # Add quality gate results
+            for gate in result.quality_gates:
+                verifier_results.append(
+                    VerifierResult(
+                        name=gate.gate,
+                        type=VerifierType.QUALITY_GATE,
+                        command=gate.requirement,
+                        exit_code=0 if gate.passed else 1,
+                        status=(
+                            VerificationStatus.PASSED
+                            if gate.passed
+                            else VerificationStatus.FAILED
+                        ),
+                        duration_sec=0.0,
+                        error=None if gate.passed else gate.output,
+                        quality_gates=[gate.__dict__],
                     )
+                )
 
-        return verifier_results
+    return verifier_results
 
 
 def run_playwright_verifier(

@@ -375,7 +375,7 @@ def run(args) -> None:
             save_checkpoint(checkpoint)
 
             # Generate implementation tracker from PRD (Phase 3.0)
-            # The tracker is contract between all agent invocations
+            # The tracker is the contract between all agent invocations
             tracker_path = get_tracker_path(repo_root)
 
             # Always start fresh - delete existing tracker to force regeneration

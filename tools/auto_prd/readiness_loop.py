@@ -8,7 +8,6 @@ with scope review, adaptive guardrails, and termination convergence logic.
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +24,7 @@ from .verification_persistence import (
 )
 from .context import StallDetector
 from .verification import run_verification_gates
+from .command import run_cmd, CalledProcessError
 
 
 class ReadinessState(str, Enum):
@@ -170,13 +170,10 @@ class ReadinessOrchestrator:
                 )
 
                 if review_result.needs_full_rescoping:
-                    print("⚠️  Full rescopning may be required")
+                    print("⚠️  Full rescoping may be required")
 
     def _handle_execution(self, tracker: Dict[str, Any]) -> None:
         """Handle execution phase (local → pr → review_fix)."""
-        import subprocess
-        from . import cli
-
         print(f"\n🚀 Execution Phase: Iteration {self.stats.iteration}")
         print(f"   Features: {self._count_features(tracker)}")
         print(
@@ -184,10 +181,12 @@ class ReadinessOrchestrator:
         )
 
         try:
-            subprocess.run(
-                ["python3", "-m", "tools.auto_prd.cli"], check=True, cwd=self.repo_root
+            run_cmd(
+                ["python3", "-m", "tools.auto_prd.cli"],
+                cwd=self.repo_root,
+                check=True,
             )
-        except subprocess.CalledProcessError as e:
+        except CalledProcessError as e:
             print(f"\n❌ Execution phase failed: {e}")
             if self.stats.iteration >= 3:
                 self.state = ReadinessState.STALLED
@@ -468,8 +467,6 @@ class ReadinessOrchestrator:
     def _create_stall_issue(self, missing_reasons: List[str]) -> None:
         """Create GitHub issue for stall escalation."""
         try:
-            import subprocess
-
             stall_result = self.stall_detector.check_stall()
             is_stalled, stall_reason = stall_result
             stall_text = f"{stall_reason}" if is_stalled else ""
@@ -514,7 +511,7 @@ class ReadinessOrchestrator:
                 ]
             )
 
-            subprocess.run(
+            run_cmd(
                 [
                     "gh",
                     "issue",
@@ -529,6 +526,8 @@ class ReadinessOrchestrator:
             )
         except FileNotFoundError:
             print("⚠️  gh CLI not available - skipping issue creation")
+        except CalledProcessError:
+            print("⚠️  Failed to create GitHub issue")
 
 
 def run_ralph_wiggum_loop(

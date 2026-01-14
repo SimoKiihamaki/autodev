@@ -126,7 +126,7 @@ def evolve_guardrails_from_failures(self, threshold=2, iteration=0) -> list[str]
       "status": "pending",
       "version": 1
     }],
-    "criteria_version": 2
+    "criteria_version": 2,
     "needs_reverify": false
   }],
   "criteria_changelog": [{
@@ -335,8 +335,8 @@ def run_ml_evaluation_verifier(repo_root, model_path, test_data_path, thresholds
 
 **Breakdown**:
 - ✅ High Priority: 3/3 (100%)
-- 🟡 Medium Priority: 2/5 (40%) - Playwright & ML eval stubs created
-- ✅ Low Priority: 0/1 (0%) - Documentation updated with implementation details
+- 🟡 Medium Priority: 2/5 (40%) - Playwright & ML eval stubs created, need actual implementations
+- 🟡 Low Priority: 1/1 (100%) - Documentation updated with implementation details (additional docs remaining)
 
 **Key Achievement**: Full Ralph Wiggum Loop core infrastructure is complete and ready for integration testing and documentation phase.
 

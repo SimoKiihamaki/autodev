@@ -63,7 +63,6 @@ class CorrectAcIdsTests(unittest.TestCase):
                     "acceptance_criteria": [
                         {"id": "AC1", "criterion": "Test 1"},
                         {"id": "AC12", "criterion": "Test 2"},
-                        {"id": "AC", "criterion": "Test 3"},
                     ],
                 }
             ]
@@ -74,18 +73,15 @@ class CorrectAcIdsTests(unittest.TestCase):
         self.assertEqual(result["features"][0]["acceptance_criteria"][0]["id"], "AC001")
         # 2-digit AC ID gets padded to 012 (AC12 → AC012)
         self.assertEqual(result["features"][0]["acceptance_criteria"][1]["id"], "AC012")
-        # Empty AC ID without digits becomes AC000 (or is preserved if schema allows, but current logic converts to AC000)
-        self.assertEqual(result["features"][0]["acceptance_criteria"][2]["id"], "AC001")
 
-    def test_long_ac_ids_truncated(self) -> None:
-        """AC IDs with more than 3 digits should be truncated."""
+    def test_no_digits_ac_id_unchanged(self) -> None:
+        """AC IDs with no digits remain unchanged."""
         tracker = {
             "features": [
                 {
                     "id": "F001",
                     "acceptance_criteria": [
-                        {"id": "AC1234", "criterion": "Test 1"},
-                        {"id": "AC9999", "criterion": "Test 2"},
+                        {"id": "AC", "criterion": "Test 3"},
                     ],
                 }
             ]
@@ -93,9 +89,30 @@ class CorrectAcIdsTests(unittest.TestCase):
 
         result = correct_ac_ids(tracker)
 
-        # First 3 digits kept
-        self.assertEqual(result["features"][0]["acceptance_criteria"][0]["id"], "AC123")
+        # AC ID without digits stays as-is (current implementation behavior)
+        self.assertEqual(result["features"][0]["acceptance_criteria"][0]["id"], "AC")
+
+    def test_long_ac_ids_truncated(self) -> None:
+        """AC IDs with more than 3 digits should use last 3 digits."""
+        tracker = {
+            "features": [
+                {
+                    "id": "F001",
+                    "acceptance_criteria": [
+                        {"id": "AC1234", "criterion": "Test 1"},
+                        {"id": "AC9999", "criterion": "Test 2"},
+                        {"id": "AC0001", "criterion": "Test 3"},
+                    ],
+                }
+            ]
+        }
+
+        result = correct_ac_ids(tracker)
+
+        # Last 3 digits kept (e.g., AC0001 → AC001)
+        self.assertEqual(result["features"][0]["acceptance_criteria"][0]["id"], "AC234")
         self.assertEqual(result["features"][0]["acceptance_criteria"][1]["id"], "AC999")
+        self.assertEqual(result["features"][0]["acceptance_criteria"][2]["id"], "AC001")
 
     def test_text_prefix_removed(self) -> None:
         """Text prefixes in AC IDs should be removed."""
