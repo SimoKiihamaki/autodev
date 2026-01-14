@@ -1,30 +1,22 @@
-"""
-Readiness orchestrator for Ralph Wiggum Loop.
-
-Implements outer loop that wraps existing phases (local → pr → review_fix)
-with scope review, adaptive guardrails, and termination convergence logic.
-"""
-
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from datetime import datetime
-from pathlib import Path
-from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
+from .command import CalledProcessError, run_cmd
+from .context import StallDetector
+from .scope_reviewer import ScopeChange, ScopeReviewer, ScopeReviewResult, TriggerType
 from .utils import get_prd_hash
-from .scope_reviewer import ScopeReviewer, TriggerType, ScopeReviewResult, ScopeChange
+from .verification import run_verification_gates
 from .verification_persistence import (
     VerificationPersistence,
     VerificationRun,
     VerificationStatus,
     create_verification_run,
 )
-from .context import StallDetector
-from .verification import run_verification_gates
-from .command import run_cmd, CalledProcessError
 
 
 class ReadinessState(str, Enum):
@@ -76,8 +68,8 @@ class ReadinessOrchestrator:
     def __init__(
         self,
         repo_root: Path,
-        config: Optional[ReadinessConfig] = None,
-        state_dir: Optional[Path] = None,
+        config: ReadinessConfig | None = None,
+        state_dir: Path | None = None,
     ):
         self.repo_root = Path(repo_root)
         self.config = config or ReadinessConfig()
@@ -91,7 +83,7 @@ class ReadinessOrchestrator:
         self.verification_persistence = VerificationPersistence(self.repo_root)
         self.stall_detector = StallDetector()
 
-    def run(self, tracker: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, tracker: dict[str, Any]) -> dict[str, Any]:
         """
         Run Ralph Wiggum Loop until ready or max iterations.
 
@@ -105,6 +97,14 @@ class ReadinessOrchestrator:
             self.stats.iteration < self.config.max_iterations
             and self.state != ReadinessState.READY
         ):
+            # Track iteration for stall detection
+            tasks_left = sum(
+                1
+                for f in tracker.get("features", [])
+                if f.get("status") not in ("completed", "verified")
+            )
+            self.stall_detector.record_iteration(tasks_left)
+
             self.state = ReadinessState.SCOPE_REVIEW
             self._handle_scope_review(tracker)
 
@@ -132,7 +132,7 @@ class ReadinessOrchestrator:
                 "message": self._get_stall_message(),
             }
 
-    def _handle_scope_review(self, tracker: Dict[str, Any]) -> None:
+    def _handle_scope_review(self, tracker: dict[str, Any]) -> None:
         """Handle scope review phase."""
         is_stalled, _ = self.stall_detector.check_stall()
         should_review, trigger_type = self.scope_reviewer.should_review_scope(
@@ -146,7 +146,6 @@ class ReadinessOrchestrator:
         )
 
         if should_review:
-            import json
 
             prd_content = (
                 (self.repo_root / "PRD.md").read_text()
@@ -172,7 +171,7 @@ class ReadinessOrchestrator:
                 if review_result.needs_full_rescoping:
                     print("⚠️  Full rescoping may be required")
 
-    def _handle_execution(self, tracker: Dict[str, Any]) -> None:
+    def _handle_execution(self, tracker: dict[str, Any]) -> None:
         """Handle execution phase (local → pr → review_fix)."""
         print(f"\n🚀 Execution Phase: Iteration {self.stats.iteration}")
         print(f"   Features: {self._count_features(tracker)}")
@@ -223,7 +222,7 @@ class ReadinessOrchestrator:
         return run
 
     def _handle_evaluation(
-        self, verification_result: VerificationRun, tracker: Dict[str, Any]
+        self, verification_result: VerificationRun, tracker: dict[str, Any]
     ) -> None:
         """Handle evaluation phase - check termination conditions."""
         print(f"\n📊 Evaluation Phase: Iteration {self.stats.iteration}")
@@ -255,8 +254,8 @@ class ReadinessOrchestrator:
                     print(f"   - {reason}")
 
     def _is_ready(
-        self, verification_result: VerificationRun, tracker: Dict[str, Any]
-    ) -> tuple[bool, List[str]]:
+        self, verification_result: VerificationRun, tracker: dict[str, Any]
+    ) -> tuple[bool, list[str]]:
         """
         Check if all readiness conditions are met via convergence of multiple signals.
 
@@ -323,7 +322,7 @@ class ReadinessOrchestrator:
         is_ready = len(reasons) == 0
         return (is_ready, reasons)
 
-    def _evaluate_guardrail_evolution(self, tracker: Dict[str, Any]) -> None:
+    def _evaluate_guardrail_evolution(self, _tracker: dict[str, Any]) -> None:
         """Check if guardrails should evolve from failures."""
         signs_created = self.scope_reviewer.evolve_guardrails_from_failures(
             threshold=self.config.failure_to_sign_threshold,
@@ -332,7 +331,7 @@ class ReadinessOrchestrator:
         self.stats.guardrail_signs_added += len(signs_created)
 
     def _apply_scope_changes(
-        self, review_result: ScopeReviewResult, tracker: Dict[str, Any]
+        self, review_result: ScopeReviewResult, tracker: dict[str, Any]
     ) -> None:
         """Apply scope changes to tracker."""
         import json
@@ -353,7 +352,7 @@ class ReadinessOrchestrator:
             json.dump(tracker, f, indent=2)
 
     def _add_acceptance_criterion(
-        self, tracker: Dict[str, Any], change: ScopeChange
+        self, tracker: dict[str, Any], change: ScopeChange
     ) -> None:
         """Add new acceptance criterion to feature."""
         for feature in tracker.get("features", []):
@@ -373,7 +372,7 @@ class ReadinessOrchestrator:
                 break
 
     def _invalidate_feature_tasks(
-        self, tracker: Dict[str, Any], change: ScopeChange
+        self, tracker: dict[str, Any], change: ScopeChange
     ) -> None:
         """Mark feature tasks as needing reverification."""
         for feature in tracker.get("features", []):
@@ -383,7 +382,7 @@ class ReadinessOrchestrator:
                     task["status"] = "pending"
 
     def _mark_needs_reverify(
-        self, tracker: Dict[str, Any], change: ScopeChange
+        self, tracker: dict[str, Any], change: ScopeChange
     ) -> None:
         """Mark feature as needing reverification."""
         for feature in tracker.get("features", []):
@@ -392,22 +391,25 @@ class ReadinessOrchestrator:
                 for criterion in feature.get("acceptance_criteria", []):
                     criterion["status"] = "pending"
 
-    def _load_tracker(self) -> Dict[str, Any]:
+    def _load_tracker(self) -> dict[str, Any]:
         """Load tracker from file."""
         tracker_path = self.repo_root / ".aprd" / "tracker.json"
-        with open(tracker_path, "r") as f:
-            import json
+        try:
+            with open(tracker_path) as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Tracker not found: {tracker_path}") from None
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid tracker JSON: {e}") from e
 
-            return json.load(f)
-
-    def _last_verification_failed(self, tracker: Dict[str, Any]) -> bool:
+    def _last_verification_failed(self, _tracker: dict[str, Any]) -> bool:
         """Check if last verification failed."""
         last_run = self.verification_persistence.get_latest_run()
         if not last_run:
             return False
         return last_run.overall_status == VerificationStatus.FAILED
 
-    def _tracker_done_but_verification_failed(self, tracker: Dict[str, Any]) -> bool:
+    def _tracker_done_but_verification_failed(self, tracker: dict[str, Any]) -> bool:
         """Check if tracker shows done but verification fails."""
         all_complete = all(
             f.get("status") in ["completed", "verified"]
@@ -418,7 +420,7 @@ class ReadinessOrchestrator:
             return False
         return all_complete and last_run.overall_status == VerificationStatus.FAILED
 
-    def _get_review_feedback(self) -> List[str]:
+    def _get_review_feedback(self) -> list[str]:
         """Get unresolved review feedback from CodeRabbit."""
         last_run = self.verification_persistence.get_latest_run()
         if not last_run:
@@ -441,7 +443,7 @@ class ReadinessOrchestrator:
         current_review = self.stats.iteration
         return (current_review - last_review) >= self.config.scope_review_interval
 
-    def _count_features(self, tracker: Dict[str, Any]) -> Dict[str, int]:
+    def _count_features(self, tracker: dict[str, Any]) -> dict[str, int]:
         """Count features by status."""
         features = tracker.get("features", [])
         counts = {"pending": 0, "in_progress": 0, "completed": 0, "verified": 0}
@@ -465,7 +467,7 @@ class ReadinessOrchestrator:
         )
         return f"{stall_text}\n\n{stats_summary}"
 
-    def _create_stall_issue(self, missing_reasons: List[str]) -> None:
+    def _create_stall_issue(self, missing_reasons: list[str]) -> None:
         """Create GitHub issue for stall escalation."""
         try:
             stall_result = self.stall_detector.check_stall()
@@ -486,8 +488,6 @@ class ReadinessOrchestrator:
                 f"- Scope reviews: {self.stats.scope_reviews}",
                 f"- Verification runs: {self.stats.verification_runs}",
                 f"- Guardrail signs: {self.stats.guardrail_signs_added}",
-                "",
-                "### Missing Conditions",
                 "",
             ]
 
@@ -532,8 +532,8 @@ class ReadinessOrchestrator:
 
 
 def run_ralph_wiggum_loop(
-    repo_root: Path, config: Optional[ReadinessConfig] = None
-) -> Dict[str, Any]:
+    repo_root: Path, config: ReadinessConfig | None = None
+) -> dict[str, Any]:
     """
     Entry point for Ralph Wiggum Loop.
 
