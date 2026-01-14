@@ -23,9 +23,9 @@ class CriteriaChange:
 
     type: str
     feature_id: str
+    description: str
     criterion_id: Optional[str] = None
     criterion_type: Optional[str] = None
-    description: str
     reason: str = ""
     new_status: Optional[str] = None
 
@@ -186,6 +186,8 @@ class VersionedCriteriaManager:
         """Add new criterion to feature."""
         new_id = f"AC{self._next_id}"
         self._next_id += 1
+        # Update change object so changelog captures the actual ID
+        change.criterion_id = new_id
 
         new_criterion = {
             "id": new_id,
