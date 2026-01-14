@@ -114,8 +114,24 @@ def should_stop_for_completion(
             for t in f.get("tasks", [])
             if t.get("status") == "completed"
         )
+        total_features = len(tracker.get("features", []))
+        total_tasks = sum(len(f.get("tasks", [])) for f in tracker.get("features", []))
 
-        if completed_features == 0 and completed_tasks == 0:
+        # Check if we have significant completion (>75% tasks or >50% features)
+        significant_task_completion = (
+            total_tasks > 0 and (completed_tasks / total_tasks) >= 0.75
+        )
+        significant_feature_completion = (
+            total_features > 0 and (completed_features / total_features) >= 0.5
+        )
+
+        # Stop if: agent reports 0 tasks left AND we have significant completion evidence
+        if (
+            completed_features == 0
+            and completed_tasks == 0
+            and not significant_task_completion
+            and not significant_feature_completion
+        ):
             return (
                 False,
                 "Agent claims TASKS_LEFT=0 but tracker shows no completed work; continuing loop.",
@@ -253,6 +269,12 @@ def orchestrate_local_loop(
 Read the spec at '{prd_path}'. Implement the NEXT uncompleted tasks in '{repo_root}'.
 
 {qa_section}
+
+CRITICAL: You MUST update the tracker.json file at '.aprd/tracker.json' after completing tasks:
+1. Mark completed task statuses as "completed"
+2. Mark completed feature statuses as "completed"
+3. Save the updated tracker.json file
+4. Report remaining task count via TASKS_LEFT=<N>
 
 At the end, print: TASKS_LEFT=<N>
 """
@@ -449,7 +471,13 @@ You are fixing findings reported by CodeRabbit CLI:
 {cr[:CODERABBIT_FINDINGS_CHAR_LIMIT]}
 </CODE_RABBIT_FINDINGS>
 
-Apply targeted changes, commit frequently, and re-run the QA gates until green.
+CRITICAL: You MUST update tracker.json file at '.aprd/tracker.json' after fixing issues:
+1. Mark completed task statuses as "completed"
+2. Mark completed feature statuses as "completed"
+3. Save the updated tracker.json file
+4. Report remaining task count via TASKS_LEFT=<N>
+
+Apply targeted changes, commit frequently, and re-run QA gates until green.
 
 {LOCAL_QA_REMINDER}
 """

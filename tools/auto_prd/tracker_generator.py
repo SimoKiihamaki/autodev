@@ -26,6 +26,7 @@ except ImportError:
 from .agents import claude_exec, codex_exec
 from .command import CalledProcessError, TimeoutExpired
 from .logging_utils import logger
+from .tracker_correction import apply_auto_corrections
 
 TRACKER_VERSION = "2.0.0"
 TRACKER_DIR = ".aprd"
@@ -73,17 +74,23 @@ Your task is to output a comprehensive implementation tracker as a JSON object.
    - Include both implementation and testing tasks
 
 3. **Acceptance Criteria**: Define clear, testable criteria
-   - Each criterion must be verifiable
-   - Specify the verification method (unit_test, e2e_test, etc.)
+    - Each criterion must be verifiable
+    - CRITICAL: criterion id MUST match pattern "AC###" (e.g., AC001, AC002, AC003)
+      - NO dashes, NO text prefixes, NO extra digits (must be exactly AC + 3 digits)
+      - Examples: AC001 ✓, AC123 ✓, AC999 ✓
+      - INVALID: AC-001, AC01, AC0001, AC-DOC-003 ✗
+    - CRITICAL: verification_method MUST be one of: unit_test, integration_test, e2e_test, manual_test, code_review, type_check, lint_check
+    - NEVER use: performance_test, load_test, stress_test, or any other verification method not in allowed list
 
 4. **Testing Requirements**: Specify required tests
-   - Unit tests for individual components
-   - Integration tests for component interactions
-   - E2E tests for user-facing features
+    - Unit tests for individual components
+    - Integration tests for component interactions
+    - E2E tests for user-facing features
+    - Performance-related validation should use benchmarks in the validation.benchmarks field, NOT verification_method
 
 5. **Validation Benchmarks**: Define measurable quality targets
-   - Performance targets where applicable
-   - Quality gates (type safety, accessibility, coverage)
+    - Performance targets where applicable (use validation.benchmarks, NOT verification_method = "performance_test")
+    - Quality gates (type safety, accessibility, coverage)
 
 6. **File Mapping**: Predict files to create/modify
    - Use project conventions from context provided
@@ -145,7 +152,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
         {{
           "id": "AC001",
           "criterion": "<testable criterion>",
-          "verification_method": "unit_test|integration_test|e2e_test|manual_test|code_review|type_check|lint_check",
+          "verification_method": "unit_test",  // MUST be one of: unit_test, integration_test, e2e_test, manual_test, code_review, type_check, lint_check
           "status": "pending"
         }}
       ],
@@ -198,7 +205,17 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
 }}
 
 REMINDER: Output ONLY the JSON object above. Do not include any text, summary, or
-explanation. Your entire response must be parseable as JSON. Begin with the opening brace now:
+explanation. Your entire response must be parseable as JSON.
+
+CRITICAL WARNINGS - MUST FOLLOW:
+1. criterion id MUST match pattern "AC###" (AC + exactly 3 digits, e.g., AC001, AC999)
+2. NEVER use dashes, text prefixes, or extra digits in AC IDs (INVALID: AC-001, AC01, AC-DOC-003)
+3. verification_method values MUST be one of: unit_test, integration_test, e2e_test, manual_test, code_review, type_check, lint_check
+4. NEVER use: performance_test, load_test, stress_test, or any other value not in allowed list
+5. For performance-related criteria, use benchmarks in validation.benchmarks instead
+6. Any tracker with invalid criterion id or verification_method will fail validation
+
+Begin with the opening brace now:
 """
 
 
@@ -840,6 +857,9 @@ def generate_tracker(
         logger.error("Failed to parse tracker JSON: %s", e)
         logger.debug("Raw response: %s", result[:1000])
         raise ValueError(f"Agent returned invalid JSON: {e}") from e
+
+    # Apply automatic corrections for common AI mistakes
+    tracker = apply_auto_corrections(tracker)
 
     # Inject/update metadata
     tracker["version"] = TRACKER_VERSION
