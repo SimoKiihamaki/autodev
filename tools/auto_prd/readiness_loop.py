@@ -360,9 +360,10 @@ class ReadinessOrchestrator:
             if feature["id"] == change.feature_id:
                 if not feature.get("acceptance_criteria"):
                     feature["acceptance_criteria"] = []
+                n = len(feature["acceptance_criteria"]) + 1
                 feature["acceptance_criteria"].append(
                     {
-                        "id": f"AC{len(feature['acceptance_criteria']) + 1}",
+                        "id": f"AC{n:03d}",
                         "type": "unit_test",
                         "description": change.description,
                         "status": "pending",
