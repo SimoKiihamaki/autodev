@@ -15,6 +15,7 @@ Verification includes:
 from __future__ import annotations
 
 import copy
+import json
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -24,6 +25,13 @@ from typing import Any
 
 from .command import run_cmd
 from .logging_utils import logger
+
+# Type imports for verifier functions
+from .verification_persistence import (
+    VerificationStatus,
+    VerifierResult,
+    VerifierType,
+)
 
 
 def _sanitize_filename(name: str, max_length: int = 50) -> str:
@@ -817,14 +825,6 @@ def run_verification_gates(
     Returns:
         List of VerifierResult objects
     """
-    import json
-
-    from .verification_persistence import (
-        VerifierResult,
-        VerifierType,
-        VerificationStatus,
-    )
-
     protocol = VerificationProtocol(
         repo_root=repo_root,
         timeout_seconds=timeout_seconds,
@@ -839,7 +839,6 @@ def run_verification_gates(
         features = tracker.get("features", [])
 
         for feature in features:
-            feature_id = feature.get("id", "unknown")
             result, _ = protocol.verify_feature(feature, tracker)
 
             # Add unit test results as verifiers
@@ -932,22 +931,25 @@ def run_playwright_verifier(
     Returns:
         VerifierResult with test results, screenshots, and artifacts
     """
-    import subprocess
-
     cmd = [
         "npx",
         "playwright",
         "test",
-        spec_file,
+        str(spec_file),
         "--reporter=json",
         "--headed=false",
         f"--output-dir={output_dir}",
         "--screenshot=only-on-failure",
     ]
 
-    process = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)
+    stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False, capture=True)
 
-    test_results = json.loads(process.stdout) if process.returncode == 0 else {}
+    test_results = {}
+    if exit_code == 0 and stdout:
+        try:
+            test_results = json.loads(stdout)
+        except json.JSONDecodeError:
+            test_results = {}
 
     passed_criteria = []
     for suite in test_results.get("suites", []):
@@ -957,7 +959,7 @@ def run_playwright_verifier(
                     passed_criteria.append(test["title"])
 
     screenshots = []
-    if process.returncode != 0:
+    if exit_code != 0:
         screenshot_dir = Path(output_dir) / "test-results"
         if screenshot_dir.exists():
             for png_file in screenshot_dir.glob("**/*.png"):
@@ -967,8 +969,8 @@ def run_playwright_verifier(
         name="playwright_user_journey",
         type=VerifierType.PLAYWRIGHT,
         command=" ".join(cmd),
-        exit_code=process.returncode,
-        status="passed" if process.returncode == 0 else "failed",
+        exit_code=exit_code,
+        status="passed" if exit_code == 0 else "failed",
         screenshots=screenshots,
         acceptance_criteria=passed_criteria,
         artifacts=[f"{output_dir}/playwright-report/index.html"],
@@ -995,24 +997,27 @@ def run_ml_evaluation_verifier(
     Returns:
         VerifierResult with metrics and quality gate results
     """
-    import subprocess
-
     cmd = [
         "python",
         "scripts/evaluate.py",
         "--model",
-        model_path,
+        str(model_path),
         "--test-data",
-        test_data_path,
+        str(test_data_path),
         "--thresholds",
-        thresholds_path,
+        str(thresholds_path),
         "--output",
         output_file,
     ]
 
-    process = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)
+    stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False, capture=True)
 
-    evaluation_report = json.loads(process.stdout) if process.returncode == 0 else {}
+    evaluation_report = {}
+    if exit_code == 0 and stdout:
+        try:
+            evaluation_report = json.loads(stdout)
+        except json.JSONDecodeError:
+            evaluation_report = {}
 
     gates_passed = []
     gates_failed = []
@@ -1034,7 +1039,7 @@ def run_ml_evaluation_verifier(
         name="ml_evaluation",
         type=VerifierType.ML_EVALUATION,
         command=" ".join(cmd),
-        exit_code=process.returncode,
+        exit_code=exit_code,
         status="passed" if not gates_failed else "failed",
         metrics=evaluation_report.get("metrics"),
         quality_gates=gates_passed + gates_failed,
