@@ -28,8 +28,6 @@ class CriteriaChange:
     description: str
     reason: str = ""
     new_status: Optional[str] = None
-    feature_id: Optional[str] = None
-    criterion_id: Optional[str] = None
 
 
 @dataclass
