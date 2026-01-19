@@ -1,13 +1,10 @@
 """Tests for the guardrails module."""
 
-import json
 import os
 import tempfile
 from pathlib import Path
 from unittest import mock
-from unittest.mock import MagicMock
 
-from auto_prd.git_ops import parse_owner_repo_from_git
 from auto_prd.guardrails import (
     Sign,
     _get_repo_slug,
@@ -329,7 +326,7 @@ class TestSuggestSignFromError:
         sign = suggest_sign_from_error(
             "ModuleNotFoundError: No module named 'requests'",
             iteration=1,
-            repo_root=Path("/tmp/test"),
+            _repo_root=Path("/tmp/test"),
         )
 
         assert sign is not None
@@ -341,7 +338,7 @@ class TestSuggestSignFromError:
         sign = suggest_sign_from_error(
             "Column already exists: users.email",
             iteration=1,
-            repo_root=Path("/tmp/test"),
+            _repo_root=Path("/tmp/test"),
         )
 
         assert sign is not None
@@ -353,7 +350,7 @@ class TestSuggestSignFromError:
         sign = suggest_sign_from_error(
             "TypeError: Cannot convert string to int",
             iteration=1,
-            repo_root=Path("/tmp/test"),
+            _repo_root=Path("/tmp/test"),
         )
 
         assert sign is not None
@@ -365,7 +362,7 @@ class TestSuggestSignFromError:
         sign = suggest_sign_from_error(
             "Some unrecognized error message",
             iteration=1,
-            repo_root=Path("/tmp/test"),
+            _repo_root=Path("/tmp/test"),
         )
 
         assert sign is None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -82,6 +83,11 @@ class ReadinessOrchestrator:
         self.scope_reviewer = ScopeReviewer(self.repo_root, self.state_dir)
         self.verification_persistence = VerificationPersistence(self.repo_root)
         self.stall_detector = StallDetector()
+        self._execution_runner = None
+
+    def set_execution_runner(self, runner: Callable[[], None]) -> None:
+        """Override the default execution runner used during the loop."""
+        self._execution_runner = runner
 
     def run(self, tracker: dict[str, Any]) -> dict[str, Any]:
         """
@@ -146,7 +152,6 @@ class ReadinessOrchestrator:
         )
 
         if should_review:
-
             prd_content = (
                 (self.repo_root / "PRD.md").read_text()
                 if (self.repo_root / "PRD.md").exists()
@@ -180,11 +185,14 @@ class ReadinessOrchestrator:
         )
 
         try:
-            run_cmd(
-                ["python3", "-m", "tools.auto_prd.cli"],
-                cwd=self.repo_root,
-                check=True,
-            )
+            if self._execution_runner is not None:
+                self._execution_runner()
+            else:
+                run_cmd(
+                    ["python3", "-m", "tools.auto_prd.cli"],
+                    cwd=self.repo_root,
+                    check=True,
+                )
         except CalledProcessError as e:
             print(f"\n❌ Execution phase failed: {e}")
             if self.stats.iteration >= 3:
@@ -532,7 +540,9 @@ class ReadinessOrchestrator:
 
 
 def run_ralph_wiggum_loop(
-    repo_root: Path, config: ReadinessConfig | None = None
+    repo_root: Path,
+    config: ReadinessConfig | None = None,
+    execution_runner: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """
     Entry point for Ralph Wiggum Loop.
@@ -545,7 +555,18 @@ def run_ralph_wiggum_loop(
         Final execution state with statistics
     """
     orchestrator = ReadinessOrchestrator(repo_root, config)
-    tracker = orchestrator._load_tracker()
+    if execution_runner is not None:
+        orchestrator.set_execution_runner(execution_runner)
+
+    # Try to load existing tracker; a valid tracker is required for the loop
+    try:
+        tracker = orchestrator._load_tracker()
+    except FileNotFoundError as exc:
+        # No tracker exists - fail fast instead of proceeding with an invalid minimal tracker
+        raise FileNotFoundError(
+            "No tracker file found. The Ralph readiness loop requires an existing tracker. "
+            "Please run the tracker initialization step before invoking run_ralph_wiggum_loop()."
+        ) from exc
 
     print("\n" + "=" * 70)
     print("🔄 RALPH WIGGUM LOOP STARTED")

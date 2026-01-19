@@ -1,13 +1,11 @@
 """Tests for versioned acceptance criteria module."""
 
-import json
 import tempfile
 from pathlib import Path
 
 from auto_prd.versioned_criteria import (
-    VersionedCriteriaManager,
     CriteriaChange,
-    ChangelogEntry,
+    VersionedCriteriaManager,
 )
 
 

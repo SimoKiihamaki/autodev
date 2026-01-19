@@ -25,6 +25,11 @@ func renderRunDashboard(b *strings.Builder, m model) {
 
 	b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 	fmt.Fprintf(b, "Executor policy: %s\n", m.cfg.ExecutorPolicy)
+	mode := "Standard"
+	if m.flagSupport {
+		mode = "Support (continuous reviewer)"
+	}
+	fmt.Fprintf(b, "Mode: %s\n", mode)
 	fmt.Fprintf(b, "Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview)
 
 	renderRunStatus(b, m)
@@ -45,6 +50,11 @@ func renderRunIdle(b *strings.Builder, m model) {
 
 	b.WriteString("PRD: " + formatPRDDisplay(m.selectedPRD) + "\n")
 	fmt.Fprintf(b, "Executor policy: %s\n", m.cfg.ExecutorPolicy)
+	mode := "Standard"
+	if m.flagSupport {
+		mode = "Support (continuous reviewer)"
+	}
+	fmt.Fprintf(b, "Mode: %s\n", mode)
 	fmt.Fprintf(b, "Phases -> local:%v pr:%v review_fix:%v\n", m.runLocal, m.runPR, m.runReview)
 
 	if m.errMsg != "" {
@@ -199,6 +209,13 @@ func renderRunHelpFooter(b *strings.Builder, m model) {
 
 // renderProgressStepper creates a visual progress indicator for the run phases.
 func renderProgressStepper(m model) string {
+	if m.flagSupport {
+		status := StepPending
+		if m.running {
+			status = StepActive
+		}
+		return NewStepper([]StepperStep{{Label: "Support", Status: status}}).Render()
+	}
 	steps := []StepperStep{}
 
 	if m.runLocal {

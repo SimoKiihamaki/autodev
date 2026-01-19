@@ -45,7 +45,7 @@ func (m *model) handleEnvTabActions(actions []Action, msg tea.KeyMsg) (bool, tea
 				m.toggleFocusedFlag()
 			}
 			handled = true
-		case ActToggleFlagLocal, ActToggleFlagPR, ActToggleFlagReview, ActToggleFlagUnsafe, ActToggleFlagDryRun, ActToggleFlagSyncGit, ActToggleFlagInfinite:
+		case ActToggleFlagLocal, ActToggleFlagPR, ActToggleFlagReview, ActToggleFlagUnsafe, ActToggleFlagDryRun, ActToggleFlagSyncGit, ActToggleFlagInfinite, ActToggleFlagSupport:
 			if flag := flagNameForAction(act); flag != "" {
 				m.focusFlag(flag)
 				m.toggleFocusedFlag()
@@ -74,6 +74,8 @@ func flagNameForAction(act Action) string {
 		return FlagNameSyncGit
 	case ActToggleFlagInfinite:
 		return FlagNameInfinite
+	case ActToggleFlagSupport:
+		return FlagNameSupport
 	default:
 		return ""
 	}

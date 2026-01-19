@@ -38,6 +38,7 @@ from .guardrails import (
 from .logging_utils import logger
 from .policy import policy_runner
 from .progress_renderer import IterationSummary, save_iteration_summary
+from .ralph import RalphSettings
 from .tracker_generator import load_tracker
 from .utils import (
     checkbox_stats,
@@ -159,6 +160,7 @@ def orchestrate_local_loop(
     allow_unsafe_execution: bool,
     dry_run: bool,
     checkpoint: dict[str, Any] | None = None,
+    ralph_settings: RalphSettings | None = None,
 ) -> tuple[int, bool]:
     """Orchestrate the local Codex/CodeRabbit iteration loop.
 
@@ -171,6 +173,7 @@ def orchestrate_local_loop(
         allow_unsafe_execution: Allow unsafe execution mode.
         dry_run: If True, skip actual execution.
         checkpoint: Optional checkpoint dict for resume support.
+        ralph_settings: Optional Ralph settings for guardrails/stall detection.
 
     Returns:
         Tuple of (tasks_left, appears_complete).
@@ -220,20 +223,31 @@ def orchestrate_local_loop(
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
 
+    ralph = (ralph_settings or RalphSettings()).normalized()
+
     # Load guardrails for Ralph-style mistake prevention
     # Signs from previous iterations are injected into the agent context
-    guardrails = load_guardrails(repo_root)
-    if guardrails:
-        print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
-        logger.info("Loaded %d guardrail signs for repo %s", len(guardrails), repo_root)
+    guardrails = []
+    if ralph.enabled:
+        guardrails = load_guardrails(repo_root)
+        if guardrails and ralph.show_guardrails:
+            print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
+        if guardrails:
+            logger.info(
+                "Loaded %d guardrail signs for repo %s", len(guardrails), repo_root
+            )
 
     # Initialize StallDetector for Ralph-style gutter detection
     # Detects when the agent is stuck in a loop (repeated failures, no progress)
-    stall_detector = StallDetector(
-        no_output_threshold_seconds=180.0,  # 3 minutes without output
-        no_progress_threshold_iterations=3,  # 3 iterations without task progress
-    )
-    stall_detector.reset()
+    stall_detector = None
+    thresholds = ralph.stall_thresholds()
+    if thresholds:
+        no_output_threshold, no_progress_threshold = thresholds
+        stall_detector = StallDetector(
+            no_output_threshold_seconds=no_output_threshold,
+            no_progress_threshold_iterations=no_progress_threshold,
+        )
+        stall_detector.reset()
 
     # If resuming, restore from checkpoint state if available
     if start_iteration > 1:
@@ -368,33 +382,35 @@ At the end, print: TASKS_LEFT=<N>
         # exists and the loop can continue with potentially incomplete fixes.
         if last_impl_error is not None:
             # Suggest a sign for Ralph-style learning from this failure
-            error_message = str(last_impl_error)
-            suggested_sign = suggest_sign_from_error(
-                error_message=error_message,
-                iteration=i,
-                repo_root=repo_root,
-                phase="local",
-            )
-            if suggested_sign:
-                print(
-                    f"  💡 Suggested sign from error: {suggested_sign.name}",
-                    flush=True,
-                )
-                logger.info(
-                    "Suggested guardrail sign '%s' from implementation error",
-                    suggested_sign.name,
-                )
-                # Persist the suggested sign so it prevents future recurrences
-                add_sign(
-                    name=suggested_sign.name,
-                    trigger=suggested_sign.trigger,
-                    instruction=suggested_sign.instruction,
+            if ralph.enabled:
+                error_message = str(last_impl_error)
+                suggested_sign = suggest_sign_from_error(
+                    error_message=error_message,
                     iteration=i,
-                    repo_root=repo_root,
-                    file_context=suggested_sign.file_context,
-                    category=suggested_sign.category,
-                    phase=suggested_sign.phase,
+                    _repo_root=repo_root,
+                    phase="local",
                 )
+                if suggested_sign:
+                    print(
+                        f"  💡 Suggested sign from error: {suggested_sign.name}",
+                        flush=True,
+                    )
+                    logger.info(
+                        "Suggested guardrail sign '%s' from implementation error",
+                        suggested_sign.name,
+                    )
+                    if ralph.auto_add_signs:
+                        # Persist the suggested sign so it prevents future recurrences
+                        add_sign(
+                            name=suggested_sign.name,
+                            trigger=suggested_sign.trigger,
+                            instruction=suggested_sign.instruction,
+                            iteration=i,
+                            repo_root=repo_root,
+                            file_context=suggested_sign.file_context,
+                            category=suggested_sign.category,
+                            phase=suggested_sign.phase,
+                        )
             raise last_impl_error
 
         # Check for empty output which may indicate the runner failed silently
@@ -520,35 +536,37 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                         flush=True,
                     )
                     # Suggest a sign for Ralph-style learning from fix pass failures
-                    error_message = str(e)
-                    suggested_sign = suggest_sign_from_error(
-                        error_message=error_message,
-                        iteration=i,
-                        repo_root=repo_root,
-                        phase="local_fix",
-                    )
-                    if suggested_sign:
-                        print(
-                            f"  💡 Suggested sign from error: {suggested_sign.name}",
-                            flush=True,
-                        )
-                        logger.info(
-                            "Suggested guardrail sign '%s' from fix pass error",
-                            suggested_sign.name,
-                        )
-                        # Persist the suggested sign so it prevents future recurrences
-                        new_sign = add_sign(
-                            name=suggested_sign.name,
-                            trigger=suggested_sign.trigger,
-                            instruction=suggested_sign.instruction,
+                    if ralph.enabled:
+                        error_message = str(e)
+                        suggested_sign = suggest_sign_from_error(
+                            error_message=error_message,
                             iteration=i,
-                            repo_root=repo_root,
-                            file_context=suggested_sign.file_context,
-                            category=suggested_sign.category,
-                            phase=suggested_sign.phase,
+                            _repo_root=repo_root,
+                            phase="local_fix",
                         )
-                        # Update in-memory guardrails so this fix is effective immediately
-                        guardrails.append(new_sign)
+                        if suggested_sign:
+                            print(
+                                f"  💡 Suggested sign from error: {suggested_sign.name}",
+                                flush=True,
+                            )
+                            logger.info(
+                                "Suggested guardrail sign '%s' from fix pass error",
+                                suggested_sign.name,
+                            )
+                            if ralph.auto_add_signs:
+                                # Persist the suggested sign so it prevents future recurrences
+                                new_sign = add_sign(
+                                    name=suggested_sign.name,
+                                    trigger=suggested_sign.trigger,
+                                    instruction=suggested_sign.instruction,
+                                    iteration=i,
+                                    repo_root=repo_root,
+                                    file_context=suggested_sign.file_context,
+                                    category=suggested_sign.category,
+                                    phase=suggested_sign.phase,
+                                )
+                                # Update in-memory guardrails so this fix is effective immediately
+                                guardrails.append(new_sign)
                     fix_output = ""
                 # Check for empty output which may indicate the runner failed silently
                 if not fix_output.strip():
@@ -593,48 +611,51 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
 
         # Ralph-style gutter detection: record once per iteration using final tasks_left
         # This runs after both impl and fix passes so tasks_left reflects all progress
-        if had_output:
-            stall_detector.record_output()
-        stall_detector.record_iteration(tasks_left)
-        is_stalled, stall_reason = stall_detector.check_stall()
-        if is_stalled:
-            logger.warning("Gutter detected: %s", stall_reason)
-            print(f"  ⚠️  Gutter detection: {stall_reason}")
-            # Add a guardrail sign for this stall pattern and update in-memory list
-            new_sign = add_sign(
-                name="gutter_no_progress",
-                trigger="Multiple iterations without task progress",
-                instruction=stall_reason,
-                iteration=i,
-                repo_root=repo_root,
-                category="gutter",
-                phase="local",
-            )
-            guardrails.append(new_sign)
+        if stall_detector:
+            if had_output:
+                stall_detector.record_output()
+            stall_detector.record_iteration(tasks_left)
+            is_stalled, stall_reason = stall_detector.check_stall()
+            if is_stalled:
+                logger.warning("Gutter detected: %s", stall_reason)
+                print(f"  ⚠️  Gutter detection: {stall_reason}")
+                if ralph.enabled and ralph.auto_add_signs:
+                    # Add a guardrail sign for this stall pattern and update in-memory list
+                    new_sign = add_sign(
+                        name="gutter_no_progress",
+                        trigger="Multiple iterations without task progress",
+                        instruction=stall_reason,
+                        iteration=i,
+                        repo_root=repo_root,
+                        category="gutter",
+                        phase="local",
+                    )
+                    guardrails.append(new_sign)
 
         # Ralph-style progress tracking: Save iteration summary
         # Must be after all iteration state is computed
-        iteration_summary = IterationSummary(
-            iteration=i,
-            status="completed",
-            tasks_remaining=tasks_left if tasks_left is not None else -1,
-            phase="local",
-            commits_made=1 if repo_changed_after_actions else 0,
-        )
-        # Add learnings based on iteration state
-        if no_findings_streak > 0:
-            iteration_summary.learnings.append(
-                f"Clean code: {no_findings_streak} reviews without findings"
+        if ralph.enabled:
+            iteration_summary = IterationSummary(
+                iteration=i,
+                status="completed",
+                tasks_remaining=tasks_left if tasks_left is not None else -1,
+                phase="local",
+                commits_made=1 if repo_changed_after_actions else 0,
             )
-        # Add issues if any
-        if fix_pass_failed:
-            iteration_summary.issues_found.append(
-                "Fix pass failed during this iteration"
-            )
+            # Add learnings based on iteration state
+            if no_findings_streak > 0:
+                iteration_summary.learnings.append(
+                    f"Clean code: {no_findings_streak} reviews without findings"
+                )
+            # Add issues if any
+            if fix_pass_failed:
+                iteration_summary.issues_found.append(
+                    "Fix pass failed during this iteration"
+                )
 
-        save_iteration_summary(
-            f"local-{sanitize_session_id(prd_path.stem)}", iteration_summary
-        )
+            save_iteration_summary(
+                f"local-{sanitize_session_id(prd_path.stem)}", iteration_summary
+            )
 
         unchecked, total_checkboxes = checkbox_stats(prd_path)
         done_by_checkboxes = total_checkboxes > 0 and unchecked == 0

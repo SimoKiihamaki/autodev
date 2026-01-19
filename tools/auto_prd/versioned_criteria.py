@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, List
+from typing import Any
 
 
 @dataclass
@@ -24,10 +24,10 @@ class CriteriaChange:
     type: str
     feature_id: str
     description: str
-    criterion_id: Optional[str] = None
-    criterion_type: Optional[str] = None
+    criterion_id: str | None = None
+    criterion_type: str | None = None
     reason: str = ""
-    new_status: Optional[str] = None
+    new_status: str | None = None
 
 
 @dataclass
@@ -37,8 +37,8 @@ class ChangelogEntry:
     version: int
     timestamp: str
     reason: str
-    changes: List[dict[str, Any]] = field(default_factory=list)
-    invalidated_tasks: List[str] = field(default_factory=list)
+    changes: list[dict[str, Any]] = field(default_factory=list)
+    invalidated_tasks: list[str] = field(default_factory=list)
 
 
 class VersionedCriteriaManager:
@@ -61,7 +61,7 @@ class VersionedCriteriaManager:
     def _load_tracker(self) -> dict[str, Any]:
         """Load tracker from file."""
         if self.tracker_path.exists():
-            with open(self.tracker_path, "r") as f:
+            with open(self.tracker_path) as f:
                 return json.load(f)
         return {
             "features": [],
@@ -88,7 +88,7 @@ class VersionedCriteriaManager:
                         pass
         return max_id + 1
 
-    def get_feature(self, feature_id: str) -> Optional[dict[str, Any]]:
+    def get_feature(self, feature_id: str) -> dict[str, Any] | None:
         """Get feature by ID."""
         for feature in self.tracker.get("features", []):
             if feature.get("id") == feature_id:
@@ -97,7 +97,7 @@ class VersionedCriteriaManager:
 
     def find_criterion(
         self, feature: dict[str, Any], criterion_id: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Find criterion by ID within feature."""
         if not feature:
             return None
@@ -116,7 +116,7 @@ class VersionedCriteriaManager:
 
     def get_invalidated_tasks(
         self, feature: dict[str, Any], new_version: int
-    ) -> List[str]:
+    ) -> list[str]:
         """Get list of task IDs invalidated by criteria change."""
         invalidated = []
         for task in feature.get("tasks", []):
@@ -126,7 +126,7 @@ class VersionedCriteriaManager:
         return invalidated
 
     def update_acceptance_criteria(
-        self, feature_id: str, changes: List[CriteriaChange]
+        self, feature_id: str, changes: list[CriteriaChange]
     ) -> None:
         """
         Update acceptance criteria with version control and rollback support.
@@ -249,7 +249,7 @@ class VersionedCriteriaManager:
         return new_version
 
     def is_criteria_fresh(
-        self, feature_id: str, task_version: Optional[int] = None
+        self, feature_id: str, task_version: int | None = None
     ) -> bool:
         """
         Check if acceptance criteria is fresh relative to task.
@@ -278,7 +278,7 @@ class VersionedCriteriaManager:
         # Stale if task version < feature version
         return task_version >= feature_version
 
-    def get_criteria_history(self, feature_id: str) -> List[dict[str, Any]]:
+    def get_criteria_history(self, feature_id: str) -> list[dict[str, Any]]:
         """Get changelog history for a feature's criteria."""
         history = []
         for entry in self.tracker.get("criteria_changelog", []):

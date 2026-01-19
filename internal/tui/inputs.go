@@ -24,6 +24,15 @@ var settingsGrid = map[string][2]int{
 	"maxiters":      {8, 3},
 	"codextimeout":  {9, 0},
 	"claudetimeout": {9, 1},
+	// Ralph settings (rows 10-12)
+	"ralphenabled":          {10, 0},
+	"ralphcontextrotate":    {10, 1},
+	"ralphmaxconsecutive":   {10, 2},
+	"ralphautoaddsigns":     {11, 0},
+	"ralphshowprogresslog":  {11, 1},
+	"ralphshowguardrails":   {11, 2},
+	"ralphguttertimeout":    {12, 0},
+	"ralphgutternoprogress": {12, 1},
 }
 
 func (m *model) blurAllInputs() {
@@ -40,6 +49,15 @@ func (m *model) blurAllInputs() {
 	m.inMaxIters.Blur()
 	m.inCodexTimeout.Blur()
 	m.inClaudeTimeout.Blur()
+	// Ralph inputs
+	m.inRalphEnabled.Blur()
+	m.inRalphContextRotate.Blur()
+	m.inRalphMaxConsecutive.Blur()
+	m.inRalphAutoAddSigns.Blur()
+	m.inRalphShowProgressLog.Blur()
+	m.inRalphShowGuardrails.Blur()
+	m.inRalphGutterTimeout.Blur()
+	m.inRalphGutterNoProgress.Blur()
 	m.prompt.Blur()
 	m.tagInput.Blur()
 	m.focusedInput = ""
@@ -80,6 +98,23 @@ func (m *model) focusInput(inputName string) {
 		m.inCodexTimeout.Focus()
 	case "claudetimeout":
 		m.inClaudeTimeout.Focus()
+	// Ralph settings
+	case "ralphenabled":
+		m.inRalphEnabled.Focus()
+	case "ralphcontextrotate":
+		m.inRalphContextRotate.Focus()
+	case "ralphmaxconsecutive":
+		m.inRalphMaxConsecutive.Focus()
+	case "ralphautoaddsigns":
+		m.inRalphAutoAddSigns.Focus()
+	case "ralphshowprogresslog":
+		m.inRalphShowProgressLog.Focus()
+	case "ralphshowguardrails":
+		m.inRalphShowGuardrails.Focus()
+	case "ralphguttertimeout":
+		m.inRalphGutterTimeout.Focus()
+	case "ralphgutternoprogress":
+		m.inRalphGutterNoProgress.Focus()
 	case "prompt":
 		m.prompt.Focus()
 	default:
@@ -299,6 +334,8 @@ func (m *model) toggleFocusedFlag() {
 		m.flagSyncGit = !m.flagSyncGit
 	case "infinite":
 		m.flagInfinite = !m.flagInfinite
+	case "support":
+		m.flagSupport = !m.flagSupport
 	}
 	m.updateDirtyState()
 }

@@ -58,6 +58,7 @@ const (
 	FlagNameDryRun   = "dryrun"
 	FlagNameSyncGit  = "syncgit"
 	FlagNameInfinite = "infinite"
+	FlagNameSupport  = "support"
 )
 
 type item struct {
@@ -174,6 +175,7 @@ type model struct {
 	flagDryRun      bool
 	flagSyncGit     bool
 	flagInfinite    bool
+	flagSupport     bool
 
 	prompt textarea.Model
 
@@ -225,6 +227,7 @@ var envFlagNames = []string{
 	FlagNameDryRun,
 	FlagNameSyncGit,
 	FlagNameInfinite,
+	FlagNameSupport,
 }
 
 // settingsInputNames enumerates every text input tracked in settingsInputs.
@@ -299,6 +302,7 @@ func New() model {
 	m.flagDryRun = cfg.Flags.DryRun
 	m.flagSyncGit = cfg.Flags.SyncGit
 	m.flagInfinite = cfg.Flags.InfiniteReviews
+	m.flagSupport = cfg.Flags.SupportMode
 
 	m.prompt = textarea.New()
 	m.prompt.Placeholder = "Optional initial instruction injected above the PRD…"
@@ -365,6 +369,7 @@ func (m *model) resetToDefaults() tea.Cmd {
 	m.flagDryRun = base.Flags.DryRun
 	m.flagSyncGit = base.Flags.SyncGit
 	m.flagInfinite = base.Flags.InfiniteReviews
+	m.flagSupport = base.Flags.SupportMode
 
 	m.tags = nil
 	m.tagInput.SetValue("")

@@ -72,6 +72,9 @@ Your task is to output a comprehensive implementation tracker as a JSON object.
 2. **Task Breakdown**: For each feature, define specific tasks
    - Tasks should be atomic (completable in 15-60 minutes)
    - Include both implementation and testing tasks
+   - **CRITICAL: Task IDs (T001, T002, etc.) must be UNIQUE across ALL features in the tracker**
+   - Do NOT restart task numbering for each feature - increment sequentially across all features
+   - Example: F001 has T001-T003, F002 has T004-T006, F003 has T007-T010
 
 3. **Acceptance Criteria**: Define clear, testable criteria
     - Each criterion must be verifiable
@@ -146,6 +149,16 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
           "id": "T001",
           "description": "<what to do>",
           "status": "pending"
+        }},
+        {{
+          "id": "T002",
+          "description": "<next task>",
+          "status": "pending"
+        }},
+        {{
+          "id": "T003",
+          "description": "<next task>",
+          "status": "pending"
         }}
       ],
       "acceptance_criteria": [
@@ -194,6 +207,60 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
       }},
       "commits": [],
       "verification_evidence": {{}}
+    }},
+    {{
+      "id": "F002",
+      "name": "<second feature>",
+      "description": "<detailed description>",
+      "priority": "high|medium|low",
+      "complexity": "S|M|L|XL",
+      "status": "pending",
+      "dependencies": [],
+      "goals": {{
+        "primary": "<single sentence goal>",
+        "secondary": [],
+        "measurable_outcomes": []
+      }},
+      "tasks": [
+        {{
+          "id": "T004",
+          "description": "<what to do>",
+          "status": "pending"
+        }},
+        {{
+          "id": "T005",
+          "description": "<next task>",
+          "status": "pending"
+        }},
+        {{
+          "id": "T006",
+          "description": "<next task>",
+          "status": "pending"
+        }}
+      ],
+      "acceptance_criteria": [
+        {{
+          "id": "AC002",
+          "criterion": "<testable criterion>",
+          "verification_method": "integration_test",
+          "status": "pending"
+        }}
+      ],
+      "testing": {{
+        "unit_tests": [],
+        "integration_tests": [],
+        "e2e_tests": []
+      }},
+      "validation": {{
+        "benchmarks": [],
+        "quality_gates": []
+      }},
+      "files": {{
+        "to_create": [],
+        "to_modify": []
+      }},
+      "commits": [],
+      "verification_evidence": {{}}
     }}
   ],
   "validation_summary": {{
@@ -214,6 +281,12 @@ CRITICAL WARNINGS - MUST FOLLOW:
 4. NEVER use: performance_test, load_test, stress_test, or any other value not in allowed list
 5. For performance-related criteria, use benchmarks in validation.benchmarks instead
 6. Any tracker with invalid criterion id or verification_method will fail validation
+7. **Task IDs MUST be globally unique across ALL features in the tracker**
+   - DO NOT restart task numbering for each feature (F001 with T001-T003, F002 with T001-T003 is INVALID)
+   - MUST increment sequentially: F001 with T001-T003, F002 with T004-T006, F003 with T007-T010
+   - ANY duplicate task IDs will cause tracker validation to FAIL
+8. **AC IDs MUST also be globally unique across ALL features** (AC001, AC002, AC003... AC099)
+9. NEVER include JSON comments (// ...) in your output - JSON does not support comments
 
 Begin with the opening brace now:
 """

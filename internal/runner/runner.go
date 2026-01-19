@@ -457,6 +457,37 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	if cfg.Flags.InfiniteReviews {
 		args = append(args, "--infinite-reviews")
 	}
+	if cfg.Flags.SupportMode {
+		args = append(args, "--support-mode")
+	}
+
+	// Ralph mode flags
+	if cfg.Ralph.Enabled {
+		args = append(args, "--ralph-ready-loop")
+		if cfg.Ralph.ContextRotateEvery != nil {
+			args = append(args, "--ralph-context-rotate-every", fmt.Sprint(*cfg.Ralph.ContextRotateEvery))
+		}
+		if cfg.Ralph.MaxConsecutiveFailures != nil {
+			args = append(args, "--ralph-max-consecutive-failures", fmt.Sprint(*cfg.Ralph.MaxConsecutiveFailures))
+		}
+		if cfg.Ralph.AutoAddSigns {
+			args = append(args, "--auto-add-signs")
+		} else {
+			args = append(args, "--no-auto-add-signs")
+		}
+		if cfg.Ralph.ShowProgressLog {
+			args = append(args, "--show-progress-log")
+		}
+		if cfg.Ralph.ShowGuardrails {
+			args = append(args, "--show-guardrails")
+		}
+		if cfg.Ralph.GutterOutputTimeoutSec != nil {
+			args = append(args, "--gutter-output-timeout-sec", fmt.Sprint(*cfg.Ralph.GutterOutputTimeoutSec))
+		}
+		if cfg.Ralph.GutterNoProgressIters != nil {
+			args = append(args, "--gutter-no-progress-iters", fmt.Sprint(*cfg.Ralph.GutterNoProgressIters))
+		}
+	}
 
 	// Timings
 	if cfg.Timings.WaitMinutes != nil && *cfg.Timings.WaitMinutes > 0 {
@@ -472,19 +503,21 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 		args = append(args, "--max-local-iters", fmt.Sprint(*cfg.Timings.MaxLocalIters))
 	}
 
-	// Phases selection
-	phases := []string{}
-	if cfg.RunPhases.Local {
-		phases = append(phases, "local")
-	}
-	if cfg.RunPhases.PR {
-		phases = append(phases, "pr")
-	}
-	if cfg.RunPhases.ReviewFix {
-		phases = append(phases, "review_fix")
-	}
-	if len(phases) > 0 {
-		args = append(args, "--phases", strings.Join(phases, ","))
+	// Phases selection (ignored in support mode)
+	if !cfg.Flags.SupportMode {
+		phases := []string{}
+		if cfg.RunPhases.Local {
+			phases = append(phases, "local")
+		}
+		if cfg.RunPhases.PR {
+			phases = append(phases, "pr")
+		}
+		if cfg.RunPhases.ReviewFix {
+			phases = append(phases, "review_fix")
+		}
+		if len(phases) > 0 {
+			args = append(args, "--phases", strings.Join(phases, ","))
+		}
 	}
 
 	// Executor policy

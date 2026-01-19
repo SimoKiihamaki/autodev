@@ -36,10 +36,12 @@ from .git_ops import (
     print_codex_diagnostics,
     safe_stash_pop,
 )
-from .local_loop import orchestrate_local_loop
+from .local_loop import orchestrate_local_loop, sanitize_session_id
 from .logging_utils import logger, setup_file_logging
 from .policy import policy_runner
 from .pr_flow import open_or_get_pr
+from .progress_renderer import render_progress_txt
+from .ralph import RalphSettings
 from .review_loop import review_fix_loop
 from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .utils import extract_called_process_error_details, now_stamp, slugify
@@ -117,6 +119,12 @@ def run(args) -> None:
 
         ensure_gh_alias()
 
+        ralph_settings = getattr(args, "ralph_settings", None)
+        if ralph_settings is None:
+            ralph_settings = RalphSettings().normalized()
+        else:
+            ralph_settings = ralph_settings.normalized()
+
         prd_candidate = Path(args.prd)
         if prd_candidate.is_absolute():
             prd_path = prd_candidate.resolve()
@@ -151,6 +159,30 @@ def run(args) -> None:
         print(f"Using PRD: {prd_path}")
         logger.info("Resolved repository root to %s", repo_root)
         logger.info("Resolved PRD path to %s", prd_path)
+
+        if ralph_settings.enabled and ralph_settings.show_guardrails:
+            from .guardrails import load_guardrails
+
+            guardrails = load_guardrails(repo_root)
+            if guardrails:
+                print("Active guardrail signs:")
+                for sign in guardrails:
+                    print(f" - {sign.name}: {sign.trigger}")
+            else:
+                print("No guardrail signs found.")
+
+        if getattr(args, "support_mode", False):
+            from .support_loop import MIN_POLL_SECONDS, run_support_mode
+
+            poll_seconds = args.review_poll_seconds or 0
+            if poll_seconds < MIN_POLL_SECONDS:
+                poll_seconds = MIN_POLL_SECONDS
+            run_support_mode(
+                repo_root=repo_root,
+                prd_path=prd_path,
+                poll_seconds=poll_seconds,
+            )
+            return
 
         # Initialize or load checkpoint
         checkpoint: dict[str, Any] | None = getattr(args, "checkpoint", None)
@@ -467,6 +499,7 @@ def run(args) -> None:
                 allow_unsafe_execution=args.allow_unsafe_execution,
                 dry_run=args.dry_run,
                 checkpoint=checkpoint,  # Pass checkpoint for iteration-level updates
+                ralph_settings=ralph_settings,
             )
 
             mark_phase_complete(checkpoint, "local")
@@ -534,6 +567,7 @@ def run(args) -> None:
                 initial_wait_minutes=args.wait_minutes,
                 infinite_reviews=args.infinite_reviews,
                 checkpoint=checkpoint,  # Pass checkpoint for comment tracking
+                ralph_settings=ralph_settings,
             )
 
             if not review_succeeded:
@@ -575,6 +609,15 @@ def run(args) -> None:
                 "Session %s completed with partial success (review terminated early)",
                 session_id,
             )
+
+        if ralph_settings.enabled and ralph_settings.show_progress_log:
+            session_id = f"local-{sanitize_session_id(prd_path.stem)}"
+            progress_txt = render_progress_txt(session_id)
+            if progress_txt:
+                print("\n=== Ralph Progress Log ===")
+                print(progress_txt)
+            else:
+                print("\nNo Ralph progress log found for this session.")
 
         if appears_complete:
             print(f"Final TASKS_LEFT={tasks_left}", flush=True)

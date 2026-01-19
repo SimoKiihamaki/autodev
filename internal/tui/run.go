@@ -356,6 +356,7 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	dst.Flags.DryRun = m.flagDryRun
 	dst.Flags.SyncGit = m.flagSyncGit
 	dst.Flags.InfiniteReviews = m.flagInfinite
+	dst.Flags.SupportMode = m.flagSupport
 	dst.RunPhases.Local = m.runLocal
 	dst.RunPhases.PR = m.runPR
 	dst.RunPhases.ReviewFix = m.runReview

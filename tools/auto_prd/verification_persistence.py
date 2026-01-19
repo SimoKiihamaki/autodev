@@ -8,11 +8,11 @@ with git_sha + prd_hash for reproducibility and freshness checking.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional, List
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
 from .utils import get_git_sha, get_prd_hash
 
@@ -40,18 +40,18 @@ class VerifierResult:
 
     name: str
     type: VerifierType
-    command: Optional[str] = None
-    exit_code: Optional[int] = None
+    command: str | None = None
+    exit_code: int | None = None
     status: VerificationStatus = VerificationStatus.PENDING
     duration_sec: float = 0.0
-    error: Optional[str] = None
-    stderr: Optional[str] = None
-    screenshots: List[str] = field(default_factory=list)
-    acceptance_criteria: List[str] = field(default_factory=list)
-    metrics: Optional[dict[str, Any]] = None
-    quality_gates: List[dict[str, Any]] = field(default_factory=list)
-    findings: List[dict[str, Any]] = field(default_factory=list)
-    artifacts: List[str] = field(default_factory=list)
+    error: str | None = None
+    stderr: str | None = None
+    screenshots: list[str] = field(default_factory=list)
+    acceptance_criteria: list[str] = field(default_factory=list)
+    metrics: dict[str, Any] | None = None
+    quality_gates: list[dict[str, Any]] = field(default_factory=list)
+    findings: list[dict[str, Any]] = field(default_factory=list)
+    artifacts: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -75,9 +75,9 @@ class VerificationRun:
     base_branch: str
     prd_hash: str
     phase: str = "verification"  # Can be "local", "pr", "review_fix"
-    verifiers: List[VerifierResult] = field(default_factory=list)
+    verifiers: list[VerifierResult] = field(default_factory=list)
     overall_status: VerificationStatus = VerificationStatus.PENDING
-    artifact_paths: List[str] = field(default_factory=list)
+    artifact_paths: list[str] = field(default_factory=list)
     tool_versions: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -130,11 +130,11 @@ class VerificationPersistence:
 
     def load_runs(
         self,
-        limit: Optional[int] = None,
-        since_hours: Optional[int] = None,
-        git_sha: Optional[str] = None,
-        prd_hash: Optional[str] = None,
-    ) -> List[VerificationRun]:
+        limit: int | None = None,
+        since_hours: int | None = None,
+        git_sha: str | None = None,
+        prd_hash: str | None = None,
+    ) -> list[VerificationRun]:
         """
         Load verification runs from JSONL log.
 
@@ -151,13 +151,13 @@ class VerificationPersistence:
             return []
 
         runs = []
-        with open(self.runs_log, "r") as f:
+        with open(self.runs_log) as f:
             for line in f:
                 try:
                     run_dict = json.loads(line)
                     run = self._dict_to_run(run_dict)
                     runs.append(run)
-                except (json.JSONDecodeError, KeyError, ValueError) as e:
+                except (json.JSONDecodeError, KeyError, ValueError):
                     # Skip malformed lines
                     continue
 
@@ -187,8 +187,8 @@ class VerificationPersistence:
         return filtered_runs
 
     def get_latest_run(
-        self, git_sha: Optional[str] = None, prd_hash: Optional[str] = None
-    ) -> Optional[VerificationRun]:
+        self, git_sha: str | None = None, prd_hash: str | None = None
+    ) -> VerificationRun | None:
         """
         Get the most recent verification run.
 
@@ -228,18 +228,23 @@ class VerificationPersistence:
             and verification_ref.get("prd_hash") == current_prd_hash
         )
 
-    def is_run_fresh(self, run: VerificationRun) -> bool:
+    def is_run_fresh(
+        self, run: VerificationRun, current_prd_hash: str | None = None
+    ) -> bool:
         """
         Check if a verification run is still fresh for current state.
 
         Args:
             run: VerificationRun to check
+            current_prd_hash: Optional PRD hash for support mode where PRD path may differ.
+                If not provided, falls back to default PRD.md hash.
 
         Returns:
             True if run is fresh, False otherwise
         """
         current_git_sha = get_git_sha(self.repo_root)
-        current_prd_hash = get_prd_hash(self.repo_root)
+        if current_prd_hash is None:
+            current_prd_hash = get_prd_hash(self.repo_root)
 
         return self.is_verification_fresh(
             run.to_dict(), current_git_sha, current_prd_hash
@@ -273,6 +278,7 @@ class VerificationPersistence:
                 acceptance_criteria=v_dict.get("acceptance_criteria", []),
                 metrics=v_dict.get("metrics"),
                 quality_gates=v_dict.get("quality_gates", []),
+                findings=v_dict.get("findings", []),
                 artifacts=v_dict.get("artifacts", []),
             )
             verifiers.append(verifier)
@@ -299,7 +305,7 @@ def generate_run_id() -> str:
 
 def create_verification_run(
     repo_root: Path,
-    verifiers: List[VerifierResult],
+    verifiers: list[VerifierResult],
     phase: str = "verification",
     base_branch: str = "main",
 ) -> VerificationRun:
