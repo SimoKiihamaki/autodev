@@ -84,6 +84,8 @@ def _collect_tracker_text(tracker: dict[str, Any]) -> list[str]:
                 texts.append(val)
         # Coerce tasks to list to handle malformed "tasks": null entries
         for task in feature.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
             desc = task.get("description")
             if isinstance(desc, str) and desc.strip():
                 texts.append(desc)
