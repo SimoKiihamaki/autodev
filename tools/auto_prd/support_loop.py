@@ -275,6 +275,8 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                             seen = set()
                             dupes = 0
                             for criterion in criteria:
+                                if not isinstance(criterion, dict):
+                                    continue
                                 text = criterion.get("criterion", "")
                                 key = _normalize_text(text)
                                 if key:
@@ -299,6 +301,8 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                                 )
 
                         for task in feature.get("tasks", []):
+                            if not isinstance(task, dict):
+                                continue
                             task_id = task.get("id", "?")
                             status = task.get("status", "")
                             blockers = task.get("blockers") or []
