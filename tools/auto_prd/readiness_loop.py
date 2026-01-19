@@ -557,7 +557,21 @@ def run_ralph_wiggum_loop(
     orchestrator = ReadinessOrchestrator(repo_root, config)
     if execution_runner is not None:
         orchestrator.set_execution_runner(execution_runner)
-    tracker = orchestrator._load_tracker()
+
+    # Try to load existing tracker, or create a minimal one for PR-only mode
+    try:
+        tracker = orchestrator._load_tracker()
+    except FileNotFoundError:
+        # No tracker exists - this is expected for PR-only mode or first run
+        # Create a minimal tracker to allow the loop to proceed
+        print("⚠️  No tracker found. Creating minimal tracker for PR review mode.")
+        tracker = {
+            "features": [],
+            "metadata": {
+                "source": "minimal",
+                "created_for": "pr_review_only",
+            },
+        }
 
     print("\n" + "=" * 70)
     print("🔄 RALPH WIGGUM LOOP STARTED")
