@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Use float('inf') to represent a disabled threshold (effectively infinite)
+THRESHOLD_DISABLED = float("inf")
+
 
 @dataclass
 class RalphSettings:
@@ -27,9 +30,7 @@ class RalphSettings:
             auto_add_signs=bool(self.auto_add_signs),
             show_progress_log=bool(self.show_progress_log),
             show_guardrails=bool(self.show_guardrails),
-            gutter_output_timeout_sec=max(
-                0, int(self.gutter_output_timeout_sec or 0)
-            ),
+            gutter_output_timeout_sec=max(0, int(self.gutter_output_timeout_sec or 0)),
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
         )
 
@@ -42,8 +43,8 @@ class RalphSettings:
         if no_output <= 0 and no_progress <= 0:
             return None
         if no_output <= 0:
-            no_output = 1_000_000_000
+            no_output = THRESHOLD_DISABLED
         if no_progress <= 0:
+            # Use a very large int for no_progress (can't use float('inf') for int)
             no_progress = 1_000_000_000
         return float(no_output), int(no_progress)
-

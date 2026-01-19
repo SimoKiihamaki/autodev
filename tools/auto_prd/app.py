@@ -172,11 +172,11 @@ def run(args) -> None:
                 print("No guardrail signs found.")
 
         if getattr(args, "support_mode", False):
-            from .support_loop import run_support_mode
+            from .support_loop import MIN_POLL_SECONDS, run_support_mode
 
             poll_seconds = args.review_poll_seconds or 0
-            if poll_seconds < 5:
-                poll_seconds = 5
+            if poll_seconds < MIN_POLL_SECONDS:
+                poll_seconds = MIN_POLL_SECONDS
             run_support_mode(
                 repo_root=repo_root,
                 prd_path=prd_path,

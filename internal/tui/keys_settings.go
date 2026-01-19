@@ -300,11 +300,6 @@ func (m *model) syncInputFieldFromModel(name string, field *textinput.Model) {
 	}
 }
 
-// isBooleanInput checks if the given input name is a boolean field.
-func (m *model) isBooleanInputCheck(name string) bool {
-	return isBooleanInput(name)
-}
-
 // getActualInputField returns a pointer to the actual model field for the given input name.
 // This returns the real field in the model, not a stale pointer from the settingsInputs map.
 func (m *model) getActualInputField(name string) *textinput.Model {

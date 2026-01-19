@@ -558,20 +558,15 @@ def run_ralph_wiggum_loop(
     if execution_runner is not None:
         orchestrator.set_execution_runner(execution_runner)
 
-    # Try to load existing tracker, or create a minimal one for PR-only mode
+    # Try to load existing tracker; a valid tracker is required for the loop
     try:
         tracker = orchestrator._load_tracker()
-    except FileNotFoundError:
-        # No tracker exists - this is expected for PR-only mode or first run
-        # Create a minimal tracker to allow the loop to proceed
-        print("⚠️  No tracker found. Creating minimal tracker for PR review mode.")
-        tracker = {
-            "features": [],
-            "metadata": {
-                "source": "minimal",
-                "created_for": "pr_review_only",
-            },
-        }
+    except FileNotFoundError as exc:
+        # No tracker exists - fail fast instead of proceeding with an invalid minimal tracker
+        raise FileNotFoundError(
+            "No tracker file found. The Ralph readiness loop requires an existing tracker. "
+            "Please run the tracker initialization step before invoking run_ralph_wiggum_loop()."
+        ) from exc
 
     print("\n" + "=" * 70)
     print("🔄 RALPH WIGGUM LOOP STARTED")

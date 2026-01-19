@@ -12,6 +12,12 @@ from typing import Any
 from .git_ops import git_head_sha, git_status_snapshot
 from .tracker_generator import load_tracker
 
+# Minimum confidence threshold for considering a task as completed
+MIN_COMPLETION_CONFIDENCE = 0.5
+
+# Maximum reasonable decrease in TASKS_LEFT between iterations
+MAX_REASONABLE_TASK_DECREASE = 10
+
 
 def detect_completed_task_from_changes(
     tracker: dict[str, Any],
@@ -77,7 +83,7 @@ def detect_completed_task_from_changes(
             changed_files = set()
             for line in after_status:
                 if len(line) >= 4:  # git status --porcelain format
-                    filepath = line[3:] if line[0:2] in ("  ", "??") else line[3:]
+                    filepath = line[3:]
                     changed_files.add(filepath.strip())
 
             # Check overlap
@@ -89,9 +95,7 @@ def detect_completed_task_from_changes(
                 result["confidence"] += 0.2
 
     # Determine completion based on confidence threshold
-    CONFIDENCE_THRESHOLD = 0.5
-
-    if result["confidence"] >= CONFIDENCE_THRESHOLD:
+    if result["confidence"] >= MIN_COMPLETION_CONFIDENCE:
         result["completed"] = True
 
     return result
@@ -130,7 +134,7 @@ def validate_tasks_left_progression(
 
     # Check 2: Large decreases are suspicious
     decrease = previous_tasks_left - current_tasks_left
-    if decrease > 10:
+    if decrease > MAX_REASONABLE_TASK_DECREASE:
         return (
             False,
             f"TASKS_LEFT decreased by {decrease} (from {previous_tasks_left} to {current_tasks_left}). "

@@ -15,8 +15,6 @@ from .tracker_generator import save_tracker
 class TrackerValidationError(Exception):
     """Raised when tracker state is invalid."""
 
-    pass
-
 
 def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
     """Validate tracker state and return list of issues.
