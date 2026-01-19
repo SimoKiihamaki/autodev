@@ -36,11 +36,23 @@ _resolve_unsafe_flag = safe_import(
 _build_claude_args = safe_import(
     "tools.auto_prd.agents", "auto_prd.agents", "_build_claude_args"
 )
+_safe_typename = safe_import(
+    "tools.auto_prd.agents", "auto_prd.agents", "_safe_typename"
+)
 ClaudeHeadlessResponse = safe_import(
     "tools.auto_prd.agents", "auto_prd.agents", "ClaudeHeadlessResponse"
 )
 parse_claude_json_response = safe_import(
     "tools.auto_prd.agents", "auto_prd.agents", "parse_claude_json_response"
+)
+parse_rate_limit_sleep = safe_import(
+    "tools.auto_prd.agents", "auto_prd.agents", "parse_rate_limit_sleep"
+)
+coderabbit_prompt_only = safe_import(
+    "tools.auto_prd.agents", "auto_prd.agents", "coderabbit_prompt_only"
+)
+coderabbit_has_findings = safe_import(
+    "tools.auto_prd.agents", "auto_prd.agents", "coderabbit_has_findings"
 )
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
@@ -1161,6 +1173,170 @@ class ParseClaudeJsonResponseTests(unittest.TestCase):
         error_msg = str(ctx.exception)
         self.assertNotIn("sk-1234567890abcdefghij", error_msg)
         self.assertIn("REDACTED", error_msg)
+
+
+class RateLimitParsingTests(unittest.TestCase):
+    """Test parse_rate_limit_sleep() function."""
+
+    def test_parse_rate_limit_sleep_with_minutes_and_seconds(self) -> None:
+        """Test parsing rate limit message with minutes and seconds."""
+        message = "Rate limit exceeded. Try after 5 minutes and 30 seconds"
+        sleep_time = parse_rate_limit_sleep(message)
+        # 5 minutes + 30 seconds + 5 seconds jitter = 335 seconds
+        self.assertEqual(sleep_time, 335)
+
+    def test_parse_rate_limit_sleep_with_minutes_only(self) -> None:
+        """Test parsing rate limit message with minutes and zero seconds."""
+        message = "Rate limit exceeded. Try after 1 minute and 0 seconds"
+        sleep_time = parse_rate_limit_sleep(message)
+        # 1 minute + 0 seconds + 5 seconds jitter = 65 seconds
+        self.assertEqual(sleep_time, 65)
+
+    def test_parse_rate_limit_sleep_without_match(self) -> None:
+        """Test parsing message without rate limit pattern."""
+        message = "Some other error message"
+        sleep_time = parse_rate_limit_sleep(message)
+        self.assertIsNone(sleep_time)
+
+    def test_parse_rate_limit_sleep_case_insensitive(self) -> None:
+        """Test that parsing is case-insensitive."""
+        message = "try again after 2 mins and 15 secs"
+        sleep_time = parse_rate_limit_sleep(message)
+        # 2 minutes + 15 seconds + 5 seconds jitter = 140 seconds
+        self.assertEqual(sleep_time, 140)
+
+    def test_parse_rate_limit_sleep_with_zero_minutes(self) -> None:
+        """Test parsing rate limit message with zero minutes."""
+        message = "Rate limit exceeded. Try after 0 minutes and 45 seconds"
+        sleep_time = parse_rate_limit_sleep(message)
+        # 0 minutes + 45 seconds + 5 seconds jitter = 50 seconds
+        self.assertEqual(sleep_time, 50)
+
+
+class CodeRabbitTests(unittest.TestCase):
+    """Test CodeRabbit integration functions."""
+
+    @patch("auto_prd.agents.run_cmd")
+    def test_coderabbit_prompt_only(self, mock_run_cmd: MagicMock) -> None:
+        """Test coderabbit_prompt_only returns command output."""
+        from auto_prd.command import CommandResult
+
+        # Mock successful coderabbit command
+        mock_run_cmd.return_value = CommandResult(
+            "CodeRabbit prompt instructions here", "", 0
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            register_safe_cwd(repo_root)  # Register the temp dir as safe
+            prompt = coderabbit_prompt_only("main", repo_root)
+            self.assertEqual(prompt, "CodeRabbit prompt instructions here")
+            # Verify run_cmd was called with correct arguments
+            mock_run_cmd.assert_called_once()
+            call_args = mock_run_cmd.call_args[0]
+            self.assertEqual(call_args[0][0], "coderabbit")
+            self.assertIn("--prompt-only", call_args[0])
+
+    def test_coderabbit_has_findings_with_issue_marker(self) -> None:
+        """Test coderabbit_has_findings detects 'issue' keyword."""
+        text = "Found 1 issue to fix"
+        self.assertTrue(coderabbit_has_findings(text))
+
+    def test_coderabbit_has_findings_with_fix_marker(self) -> None:
+        """Test coderabbit_has_findings detects 'fix' keyword."""
+        text = "Consider fixing this bug"
+        self.assertTrue(coderabbit_has_findings(text))
+
+    def test_coderabbit_has_findings_with_line_marker(self) -> None:
+        """Test coderabbit_has_findings detects 'line' keyword."""
+        text = "Line 45 has a problem"
+        self.assertTrue(coderabbit_has_findings(text))
+
+    def test_coderabbit_has_findings_with_no_markers(self) -> None:
+        """Test coderabbit_has_findings returns False when no markers found."""
+        text = "Some other text without any markers"
+        self.assertFalse(coderabbit_has_findings(text))
+
+    def test_coderabbit_has_findings_case_insensitive(self) -> None:
+        """Test that coderabbit_has_findings is case-insensitive."""
+        # Uppercase should match
+        text = "FOUND AN ISSUE"
+        self.assertTrue(coderabbit_has_findings(text))
+
+        # Mixed case should match
+        text = "Fix The Bug"
+        self.assertTrue(coderabbit_has_findings(text))
+
+    def test_coderabbit_has_findings_empty_string(self) -> None:
+        """Test coderabbit_has_findings returns False for empty string."""
+        self.assertFalse(coderabbit_has_findings(""))
+        self.assertFalse(coderabbit_has_findings("   "))
+
+
+class BuildClaudeArgsTests(unittest.TestCase):
+    """Test _build_claude_args() function."""
+
+    def test_build_claude_args_basic(self) -> None:
+        """Test building basic claude args."""
+        args = _build_claude_args(False, None, False, None)
+        self.assertEqual(args[0], "claude")
+        self.assertIn("-p", args)
+
+    def test_build_claude_args_with_model(self) -> None:
+        """Test building claude args with custom model."""
+        args = _build_claude_args(False, "claude-3-5-sonnet", False, None)
+        self.assertIn("--model", args)
+        self.assertIn("claude-3-5-sonnet", args)
+
+    def test_build_claude_args_with_allow_flag(self) -> None:
+        """Test building claude args with allow flag."""
+        args = _build_claude_args(True, None, False, None)
+        self.assertIn("--dangerously-skip-permissions", args)
+
+    def test_build_claude_args_with_extra_args(self) -> None:
+        """Test building claude args with extra arguments."""
+        args = _build_claude_args(False, None, False, ["--arg1", "value1", "--arg2"])
+        self.assertIn("--arg1", args)
+        self.assertIn("value1", args)
+        self.assertIn("--arg2", args)
+
+
+class SafeTypenameTests(unittest.TestCase):
+    """Test _safe_typename() utility function."""
+
+    def test_safe_typename_with_string(self) -> None:
+        """Test _safe_typename with string type."""
+        result = _safe_typename("hello")
+        self.assertEqual(result, "str")
+
+    def test_safe_typename_with_int(self) -> None:
+        """Test _safe_typename with int type."""
+        result = _safe_typename(42)
+        self.assertEqual(result, "int")
+
+    def test_safe_typename_with_list(self) -> None:
+        """Test _safe_typename with list type."""
+        result = _safe_typename([1, 2, 3])
+        self.assertEqual(result, "list")
+
+    def test_safe_typename_with_dict(self) -> None:
+        """Test _safe_typename with dict type."""
+        result = _safe_typename({"key": "value"})
+        self.assertEqual(result, "dict")
+
+    def test_safe_typename_with_none(self) -> None:
+        """Test _safe_typename with None."""
+        result = _safe_typename(None)
+        self.assertEqual(result, "NoneType")
+
+    def test_safe_typename_with_custom_object(self) -> None:
+        """Test _safe_typename with custom object."""
+        class CustomClass:
+            pass
+
+        obj = CustomClass()
+        result = _safe_typename(obj)
+        self.assertEqual(result, "CustomClass")
 
 
 if __name__ == "__main__":
