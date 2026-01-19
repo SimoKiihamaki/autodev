@@ -73,6 +73,37 @@ class TestExtractPrdCheckboxes:
         result = _extract_prd_checkboxes(prd)
         assert result == ["Item one"]
 
+    def test_handles_checkboxes_without_space_after_bracket(self) -> None:
+        r"""Test that checkboxes without a space after the closing bracket are extracted.
+
+        This covers the edge case where markdown uses `- [x]item` instead of `- [x] item`.
+        The regex pattern uses `\s*` after the closing bracket to make the space optional.
+        """
+        # Table-driven test cases: (input, expected_output)
+        test_cases = [
+            # Standard format with space (original behavior)
+            ("- [ ] item one", ["item one"]),
+            ("- [x] item two", ["item two"]),
+            ("- [X] item three", ["item three"]),
+            # Edge case: no space after bracket (newly supported)
+            ("- [ ]item four", ["item four"]),
+            ("- [x]item five", ["item five"]),
+            ("- [X]item six", ["item six"]),
+            # Mixed content with both formats
+            ("- [ ] spaced item\n- [x]unspaced item", ["spaced item", "unspaced item"]),
+            # Asterisk bullet with both formats
+            (
+                "* [ ] spaced asterisk\n* [x]unspaced asterisk",
+                ["spaced asterisk", "unspaced asterisk"],
+            ),
+        ]
+
+        for prd_input, expected in test_cases:
+            result = _extract_prd_checkboxes(prd_input)
+            assert (
+                result == expected
+            ), f"Failed for input: {prd_input!r}. Expected {expected}, got {result}"
+
 
 class TestLimit:
     """Tests for _limit helper."""

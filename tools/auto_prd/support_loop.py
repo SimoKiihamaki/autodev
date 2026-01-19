@@ -65,7 +65,7 @@ def _normalize_text(text: str) -> str:
 
 def _extract_prd_checkboxes(prd_content: str) -> list[str]:
     items = []
-    pattern = re.compile(r"^\s*[-*]\s+\[( |x|X)\]\s+(.*)$")
+    pattern = re.compile(r"^\s*[-*]\s+\[( |x|X)\]\s*(.*)$")
     for line in prd_content.splitlines():
         match = pattern.match(line)
         if match:
@@ -342,6 +342,10 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                                     + "; ".join(suggestion_lines)
                                     + (f" (and {extra} more)" if extra else "")
                                 )
+                else:
+                    warnings.append(
+                        f"PRD file not found at '{prd_path}'; checkbox validation skipped."
+                    )
 
             try:
                 diff_out, _, _ = run_cmd(
