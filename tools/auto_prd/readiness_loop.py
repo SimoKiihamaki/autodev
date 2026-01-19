@@ -84,7 +84,7 @@ class ReadinessOrchestrator:
         self.stall_detector = StallDetector()
         self._execution_runner = None
 
-    def set_execution_runner(self, runner) -> None:
+    def set_execution_runner(self, runner: Callable[[], None]) -> None:
         """Override the default execution runner used during the loop."""
         self._execution_runner = runner
 

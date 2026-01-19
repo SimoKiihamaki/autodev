@@ -212,12 +212,16 @@ def calculate_completion_confidence(
     confidence = 0.0
 
     # Factor 1: Task status in tracker (weight: 0.4)
+    task_found = False
     for feature in tracker.get("features", []):
         for task in feature.get("tasks", []):
             if task.get("id") == task_id:
                 if task.get("status") == "completed":
                     confidence += 0.4
+                task_found = True
                 break
+        if task_found:
+            break
 
     # Factor 2: Git changes detected (weight: 0.3)
     if changes_detected:
