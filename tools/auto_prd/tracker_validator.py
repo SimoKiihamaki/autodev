@@ -27,6 +27,8 @@ def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
     # Check 1: Verify completed tasks have timestamps
     for feature in tracker.get("features", []):
         for task in feature.get("tasks", []):
+            if not isinstance(task, dict):
+                continue
             if task.get("status") == "completed":
                 if not task.get("completed_at"):
                     issues.append(
@@ -40,7 +42,11 @@ def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
         tasks = feature.get("tasks", [])
 
         if feature_status == "completed":
-            completed_count = sum(1 for t in tasks if t.get("status") == "completed")
+            completed_count = sum(
+                1
+                for t in tasks
+                if isinstance(t, dict) and t.get("status") == "completed"
+            )
             if completed_count != len(tasks):
                 issues.append(
                     f"Feature {feature.get('id')} marked completed "
@@ -49,7 +55,11 @@ def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
 
         # Check 3: Feature cannot be verified if tasks are pending
         if feature_status == "verified":
-            pending_count = sum(1 for t in tasks if t.get("status") != "completed")
+            pending_count = sum(
+                1
+                for t in tasks
+                if isinstance(t, dict) and t.get("status") != "completed"
+            )
             if pending_count > 0:
                 issues.append(
                     f"Feature {feature.get('id')} marked verified "
@@ -61,7 +71,7 @@ def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
         1
         for f in tracker.get("features", [])
         for t in f.get("tasks", [])
-        if t.get("status") == "completed"
+        if isinstance(t, dict) and t.get("status") == "completed"
     )
     total_tasks = sum(len(f.get("tasks", [])) for f in tracker.get("features", []))
 
@@ -92,7 +102,7 @@ def validate_completion_consistency(
         1
         for f in tracker.get("features", [])
         for t in f.get("tasks", [])
-        if t.get("status") == "completed"
+        if isinstance(t, dict) and t.get("status") == "completed"
     )
     total_tasks = sum(len(f.get("tasks", [])) for f in tracker.get("features", []))
 
@@ -152,6 +162,8 @@ def repair_tracker_state(
     # Repair 1: Remove completed_at from non-completed tasks
     for feature in repaired.get("features", []):
         for task in feature.get("tasks", []):
+            if not isinstance(task, dict):
+                continue
             if task.get("completed_at") and task.get("status") != "completed":
                 del task["completed_at"]
                 changes.append(f"Removed completed_at from task {task.get('id')}")
@@ -161,7 +173,9 @@ def repair_tracker_state(
         feature_status = feature.get("status")
         tasks = feature.get("tasks", [])
 
-        completed_count = sum(1 for t in tasks if t.get("status") == "completed")
+        completed_count = sum(
+            1 for t in tasks if isinstance(t, dict) and t.get("status") == "completed"
+        )
 
         # If all tasks completed but feature not marked completed
         if (
@@ -217,6 +231,8 @@ def calculate_completion_confidence(
     task_found = False
     for feature in tracker.get("features", []):
         for task in feature.get("tasks", []):
+            if not isinstance(task, dict):
+                continue
             if task.get("id") == task_id:
                 if task.get("status") == "completed":
                     confidence += 0.4
