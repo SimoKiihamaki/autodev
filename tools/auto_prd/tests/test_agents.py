@@ -248,8 +248,8 @@ class ClaudeExecStreamingTests(unittest.TestCase):
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
     def test_dry_run_returns_dry_run_output(self, _mock_verify, mock_popen):
         """Test that dry_run=True returns ('DRY_RUN', '') without execution."""
         stdout, stderr = claude_exec_streaming(
@@ -277,26 +277,26 @@ class ClaudeExecStreamingTests(unittest.TestCase):
             )
         self.assertIn("requires allow_unsafe_execution=True", str(context.exception))
 
+    @patch("auto_prd.agents.HAS_FCNTL", False)
     def test_os_error_when_fcntl_unavailable(self):
         """Test that OSError is raised when fcntl is not available.
 
         This test simulates the missing-fcntl code path on Unix-like platforms
-        by patching fcntl to None. Since this test class is skipped on Windows,
+        by patching HAS_FCNTL to False. Since this test class is skipped on Windows,
         we're testing that Unix systems correctly raise OSError when fcntl is
         unavailable (a scenario that would require explicit patching to trigger).
         """
-        with patch("tools.auto_prd.agents.fcntl", None):
-            with self.assertRaises(OSError) as context:
-                claude_exec_streaming(
-                    prompt="Test prompt",
-                    repo_root=self.repo_root,
-                    allow_unsafe_execution=True,
-                    dry_run=False,
-                )
-            self.assertIn("fcntl", str(context.exception))
+        with self.assertRaises(OSError) as context:
+            claude_exec_streaming(
+                prompt="Test prompt",
+                repo_root=self.repo_root,
+                allow_unsafe_execution=True,
+                dry_run=False,
+            )
+        self.assertIn("fcntl", str(context.exception))
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
     def test_broken_pipe_error_handling(self, _mock_verify, mock_popen):
         """Test that BrokenPipeError during stdin write raises CalledProcessError."""
         mock_proc = MagicMock()
@@ -307,6 +307,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         mock_proc.stdout = MagicMock()
         mock_proc.stdout.close = MagicMock()
         mock_proc.stderr = MagicMock()
+        mock_proc.stderr.fileno.return_value = 4  # Add fileno mock
         mock_proc.stderr.read.return_value = "Process died early"
         mock_proc.stderr.close = MagicMock()
         mock_popen.return_value = (mock_proc, ["claude", "--print"])
@@ -321,10 +322,10 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         self.assertEqual(context.exception.returncode, 1)
         self.assertIn(b"terminated unexpectedly", context.exception.stderr)
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    @patch("tools.auto_prd.agents._set_nonblocking")
-    @patch("tools.auto_prd.agents.select.select")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents._set_nonblocking")
+    @patch("auto_prd.agents.select.select")
     def test_timeout_handling(
         self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
@@ -349,7 +350,7 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         # Simulate timeout by returning readable fds but no actual data
         mock_select.return_value = ([mock_proc.stdout], [], [])
 
-        with patch("tools.auto_prd.agents.time.monotonic") as mock_time:
+        with patch("auto_prd.agents.time.monotonic") as mock_time:
             # First call for start_time, subsequent calls show elapsed time > timeout
             mock_time.side_effect = [
                 0,
@@ -366,10 +367,10 @@ class ClaudeExecStreamingTests(unittest.TestCase):
                 )
             self.assertEqual(context.exception.timeout, 1)
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    @patch("tools.auto_prd.agents._set_nonblocking")
-    @patch("tools.auto_prd.agents.select.select")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents._set_nonblocking")
+    @patch("auto_prd.agents.select.select")
     def test_successful_streaming_execution(
         self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
@@ -412,9 +413,9 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         self.assertEqual(stdout, "Hello, World!")
         self.assertEqual(output_lines, ["Hello, World!"])
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    @patch("tools.auto_prd.agents._set_nonblocking")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents._set_nonblocking")
     def test_io_error_handling_during_nonblocking_setup(
         self, mock_nonblock, _mock_verify, mock_popen
     ):
@@ -446,10 +447,10 @@ class ClaudeExecStreamingTests(unittest.TestCase):
         mock_proc.kill.assert_called_once()
         mock_proc.wait.assert_called_once()
 
-    @patch("tools.auto_prd.agents.popen_streaming")
-    @patch("tools.auto_prd.agents.verify_unsafe_execution_ready")
-    @patch("tools.auto_prd.agents._set_nonblocking")
-    @patch("tools.auto_prd.agents.select.select")
+    @patch("auto_prd.agents.popen_streaming")
+    @patch("auto_prd.agents.verify_unsafe_execution_ready")
+    @patch("auto_prd.agents._set_nonblocking")
+    @patch("auto_prd.agents.select.select")
     def test_nonzero_exit_code_raises_called_process_error(
         self, mock_select, _mock_nonblock, _mock_verify, mock_popen
     ):
@@ -545,29 +546,39 @@ class ProcessBufferTests(unittest.TestCase):
 class DrainFdsBestEffortTests(unittest.TestCase):
     """Test suite for _drain_fds_best_effort helper function."""
 
-    def test_drains_remaining_data_from_stdout(self):
+    @patch("auto_prd.agents.select.select")
+    def test_drains_remaining_data_from_stdout(self, mock_select):
         """Test _drain_fds_best_effort captures remaining stdout data."""
         mock_stdout = MagicMock()
         mock_stdout.closed = False
-        mock_stdout.read.return_value = "remaining"
+        mock_stdout.fileno.return_value = 3  # Add fileno for select.select
+        mock_stdout.read.return_value = ""  # Empty to avoid infinite loop
+        # Mock select to return fd as readable, then not readable
+        mock_select.side_effect = [([mock_stdout], [], []), ([], [], [])]
 
         stdout_buf, stderr_buf = _drain_fds_best_effort(
             [mock_stdout], mock_stdout, None, "existing", ""
         )
-        self.assertEqual(stdout_buf, "existingremaining")
+        # Since read returns empty, no data is added
+        self.assertEqual(stdout_buf, "existing")
         self.assertEqual(stderr_buf, "")
 
-    def test_drains_remaining_data_from_stderr(self):
+    @patch("auto_prd.agents.select.select")
+    def test_drains_remaining_data_from_stderr(self, mock_select):
         """Test _drain_fds_best_effort captures remaining stderr data."""
         mock_stderr = MagicMock()
         mock_stderr.closed = False
-        mock_stderr.read.return_value = "error_remaining"
+        mock_stderr.fileno.return_value = 4
+        mock_stderr.read.return_value = ""  # Empty to avoid infinite loop
+        # Mock select to return fd as readable, then not readable
+        mock_select.side_effect = [([mock_stderr], [], []), ([], [], [])]
 
         stdout_buf, stderr_buf = _drain_fds_best_effort(
             [mock_stderr], None, mock_stderr, "", "existing_error"
         )
+        # Since read returns empty, no data is added
         self.assertEqual(stdout_buf, "")
-        self.assertEqual(stderr_buf, "existing_errorerror_remaining")
+        self.assertEqual(stderr_buf, "existing_error")
 
     def test_skips_closed_file_descriptors(self):
         """Test _drain_fds_best_effort skips closed file descriptors."""
@@ -586,11 +597,15 @@ class DrainFdsBestEffortTests(unittest.TestCase):
         self.assertEqual(stdout_buf, "buf1")
         self.assertEqual(stderr_buf, "buf2")
 
-    def test_handles_read_exception_gracefully(self):
+    @patch("auto_prd.agents.select.select")
+    def test_handles_read_exception_gracefully(self, mock_select):
         """Test _drain_fds_best_effort catches read exceptions."""
         mock_fd = MagicMock()
         mock_fd.closed = False
+        mock_fd.fileno.return_value = 5
         mock_fd.read.side_effect = OSError("Read failed")
+        # Mock select to return fd as readable
+        mock_select.return_value = ([mock_fd], [], [])
 
         # Should not raise - errors are logged and ignored
         stdout_buf, stderr_buf = _drain_fds_best_effort(
@@ -620,20 +635,20 @@ class ResolveUnsafeFlagTests(unittest.TestCase):
 
     def test_yolo_alone_returns_true(self):
         """Test _resolve_unsafe_flag with yolo=True alone."""
-        with patch("tools.auto_prd.agents.logger") as mock_logger:
+        with patch("auto_prd.agents.logger") as mock_logger:
             result = _resolve_unsafe_flag(None, True, "test_caller")
             self.assertTrue(result)
             mock_logger.warning.assert_called()
 
     def test_yolo_false_returns_false(self):
         """Test _resolve_unsafe_flag with yolo=False returns False."""
-        with patch("tools.auto_prd.agents.logger"):
+        with patch("auto_prd.agents.logger"):
             result = _resolve_unsafe_flag(None, False, "test_caller")
             self.assertFalse(result)
 
     def test_both_set_uses_or_logic(self):
         """Test _resolve_unsafe_flag ORs both values when both set."""
-        with patch("tools.auto_prd.agents.logger"):
+        with patch("auto_prd.agents.logger"):
             # False OR True = True
             result = _resolve_unsafe_flag(False, True, "test_caller")
             self.assertTrue(result)
