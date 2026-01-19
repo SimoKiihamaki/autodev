@@ -259,12 +259,6 @@ def sanitize_for_cli(text: str) -> str:
     return text
 
 
-def get_git_sha(repo_root: Path) -> str:
-    """Get current git commit SHA."""
-    out, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root)
-    return out.strip()
-
-
 def get_prd_hash(repo_root: Path) -> str:
     """Compute SHA256 hash of PRD file for change detection."""
     prd_path = repo_root / "PRD.md"
