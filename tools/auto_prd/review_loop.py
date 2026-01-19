@@ -23,6 +23,9 @@ from .constants import (
     CODERABBIT_FINDINGS_CHAR_LIMIT,
     get_tool_allowlist,
 )
+
+# Import StallDetector for Ralph-style gutter detection
+from .context import StallDetector
 from .gh_ops import (
     acknowledge_review_items,
     get_unresolved_feedback,
@@ -38,7 +41,6 @@ from .guardrails import (
 )
 from .logging_utils import logger
 from .policy import policy_runner
-from .progress_renderer import IterationSummary, save_iteration_summary
 from .ralph import RalphSettings
 from .utils import (
     extract_called_process_error_details,
@@ -46,9 +48,6 @@ from .utils import (
     is_valid_numeric,
     scrub_cli_text,
 )
-
-# Import StallDetector for Ralph-style gutter detection
-from .context import StallDetector
 
 JITTER_MIN_SECONDS = 0.0
 JITTER_MAX_SECONDS = 3.0
@@ -277,8 +276,7 @@ def _should_stop_after_failure(
     # Provide user-facing feedback with error type if available
     type_suffix = f" ({error_type})" if error_type else ""
     print(
-        f"\nReview runner failed{type_suffix} "
-        f"(attempt {failure_count}/{max_failures})",
+        f"\nReview runner failed{type_suffix} (attempt {failure_count}/{max_failures})",
         flush=True,
     )
     # Reuse already-sanitized error_detail for user display (same truncation limit)
@@ -538,9 +536,7 @@ def review_fix_loop(
 
     ralph = (ralph_settings or RalphSettings()).normalized()
     max_failures = (
-        ralph.max_consecutive_failures
-        if ralph.enabled
-        else MAX_CONSECUTIVE_FAILURES
+        ralph.max_consecutive_failures if ralph.enabled else MAX_CONSECUTIVE_FAILURES
     )
 
     # Load guardrails for Ralph-style mistake prevention
@@ -932,9 +928,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     return False
                 sleep_with_jitter(float(poll))
                 continue
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
+            except Exception as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
                 # (e.g., malformed JSON responses). See the _PROGRAMMING_ERROR_TYPES definition

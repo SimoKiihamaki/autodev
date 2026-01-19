@@ -11,12 +11,12 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
-from .utils import get_git_sha, get_prd_hash, compute_file_hash
 from .guardrails import add_sign
+from .utils import get_prd_hash
 
 
 class TriggerType(str, Enum):
@@ -32,10 +32,10 @@ class ScopeChange:
     """Represents a change to apply to tracker/criteria."""
 
     type: str
-    feature_id: Optional[str] = None
-    criterion_id: Optional[str] = None
-    description: Optional[str] = None
-    reason: Optional[str] = None
+    feature_id: str | None = None
+    criterion_id: str | None = None
+    description: str | None = None
+    reason: str | None = None
     severity: str = "info"
 
 
@@ -47,14 +47,14 @@ class ScopeReviewResult:
     iteration: int
     trigger_type: TriggerType
     prd_hash: str
-    changes: List[ScopeChange] = field(default_factory=list)
+    changes: list[ScopeChange] = field(default_factory=list)
     needs_full_rescoping: bool = False
 
     def has_changes(self) -> bool:
         """Check if review identified any changes."""
         return len(self.changes) > 0
 
-    def get_severity_summary(self) -> Dict[str, int]:
+    def get_severity_summary(self) -> dict[str, int]:
         """Get summary of changes by severity."""
         summary = {"info": 0, "warning": 0, "error": 0}
         for change in self.changes:
@@ -71,7 +71,7 @@ class FailureFingerprint:
     gate_name: str
     error_type: str
     normalized_error: str
-    stack_frame: Optional[str] = None
+    stack_frame: str | None = None
     count: int = 1
     first_seen: str = ""
     last_seen: str = ""
@@ -94,7 +94,7 @@ class ScopeReviewer:
     REVIEW_INTERVAL = 5
     FAILURE_THRESHOLD = 2
 
-    def __init__(self, repo_root: Path, state_dir: Optional[Path] = None):
+    def __init__(self, repo_root: Path, state_dir: Path | None = None):
         self.repo_root = Path(repo_root)
         self.state_dir = Path(state_dir) if state_dir else self.repo_root / ".aprd"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -102,17 +102,17 @@ class ScopeReviewer:
         self.last_review_file = self.state_dir / "last_scope_review.json"
         self.fingerprint_history_file = self.state_dir / "failure_fingerprints.jsonl"
 
-        self.state: Dict[str, Any] = self._load_state()
-        self.failure_fingerprints: Dict[str, FailureFingerprint] = (
+        self.state: dict[str, Any] = self._load_state()
+        self.failure_fingerprints: dict[str, FailureFingerprint] = (
             self._load_fingerprints()
         )
 
-    def _load_state(self) -> Dict[str, Any]:
+    def _load_state(self) -> dict[str, Any]:
         """Load persistent state for scope review."""
         if self.last_review_file.exists():
             import json
 
-            with open(self.last_review_file, "r") as f:
+            with open(self.last_review_file) as f:
                 return json.load(f)
         return {
             "last_scope_review_iteration": 0,
@@ -120,13 +120,13 @@ class ScopeReviewer:
             "stall_count": 0,
         }
 
-    def _load_fingerprints(self) -> Dict[str, FailureFingerprint]:
+    def _load_fingerprints(self) -> dict[str, FailureFingerprint]:
         """Load failure fingerprint history."""
         import json
 
         fingerprints = {}
         if self.fingerprint_history_file.exists():
-            with open(self.fingerprint_history_file, "r") as f:
+            with open(self.fingerprint_history_file) as f:
                 for line in f:
                     try:
                         fp_dict = json.loads(line)
@@ -158,7 +158,7 @@ class ScopeReviewer:
         stall_detected: bool = False,
         verification_failed: bool = False,
         tracker_done_verification_failed: bool = False,
-    ) -> tuple[bool, Optional[TriggerType]]:
+    ) -> tuple[bool, TriggerType | None]:
         """
         Determine if scope review should run.
 
@@ -198,8 +198,8 @@ class ScopeReviewer:
         self,
         iteration: int,
         trigger_type: TriggerType,
-        tracker: Dict[str, Any],
-        prd_content: Optional[str] = None,
+        tracker: dict[str, Any],
+        prd_content: str | None = None,
     ) -> ScopeReviewResult:
         """
         Perform scope review and identify changes.
@@ -267,8 +267,8 @@ class ScopeReviewer:
         return result
 
     def _detect_prd_changes(
-        self, old_prd_hash: str, prd_content: Optional[str]
-    ) -> List[ScopeChange]:
+        self, old_prd_hash: str, prd_content: str | None
+    ) -> list[ScopeChange]:
         """Detect changes in PRD since last review."""
         changes = []
 
@@ -280,14 +280,14 @@ class ScopeReviewer:
 
         # Load previous section hashes if available
         section_hashes_file = self.state_dir / "prd_section_hashes.json"
-        old_section_hashes: Dict[str, str] = {}
+        old_section_hashes: dict[str, str] = {}
         if section_hashes_file.exists():
             import json
 
             with open(section_hashes_file) as f:
                 old_section_hashes = json.load(f)
 
-        new_section_hashes: Dict[str, str] = {}
+        new_section_hashes: dict[str, str] = {}
 
         for section in sections:
             section_hash = hashlib.sha256(section["content"].encode()).hexdigest()
@@ -313,7 +313,7 @@ class ScopeReviewer:
 
         return changes
 
-    def _extract_sections(self, lines: List[str]) -> List[Dict[str, Any]]:
+    def _extract_sections(self, lines: list[str]) -> list[dict[str, Any]]:
         """Extract markdown sections from PRD content."""
         sections = []
         current_section = None
@@ -332,8 +332,8 @@ class ScopeReviewer:
         return sections
 
     def _validate_acceptance_criteria(
-        self, tracker: Dict[str, Any]
-    ) -> List[ScopeChange]:
+        self, tracker: dict[str, Any]
+    ) -> list[ScopeChange]:
         """Check that all features have verifiable acceptance criteria."""
         issues = []
 
@@ -384,7 +384,7 @@ class ScopeReviewer:
 
         return issues
 
-    def _detect_criteria_conflicts(self, tracker: Dict[str, Any]) -> List[ScopeChange]:
+    def _detect_criteria_conflicts(self, tracker: dict[str, Any]) -> list[ScopeChange]:
         """Detect duplicate or conflicting acceptance criteria."""
         conflicts = []
         seen_criteria = set()
@@ -414,7 +414,7 @@ class ScopeReviewer:
 
         return conflicts
 
-    def _get_prd_checkbox_stats(self, prd_content: str) -> Dict[str, float]:
+    def _get_prd_checkbox_stats(self, prd_content: str) -> dict[str, float]:
         """Extract checkbox statistics from PRD."""
         total_checkboxes = prd_content.count("- [ ]") + prd_content.count("- [x]")
         checked_checkboxes = prd_content.count("- [x]")
@@ -429,7 +429,7 @@ class ScopeReviewer:
             "completion_rate": completion_rate,
         }
 
-    def _get_tracker_completion_rate(self, tracker: Dict[str, Any]) -> float:
+    def _get_tracker_completion_rate(self, tracker: dict[str, Any]) -> float:
         """Calculate overall feature completion rate from tracker."""
         features = tracker.get("features", [])
         if not features:
@@ -444,7 +444,7 @@ class ScopeReviewer:
         gate_name: str,
         error_type: str,
         error_message: str,
-        stack_frame: Optional[str] = None,
+        stack_frame: str | None = None,
     ) -> None:
         """Record a failure for pattern detection."""
         path_normalized = re.sub(r"[/\\][\w\-\.]+\d*:?\d*", "<path>", error_message)
@@ -484,7 +484,7 @@ class ScopeReviewer:
             self.state["recent_verification_failures"] = recent_failures + 1
             self._save_state()
 
-    def get_repeated_failures(self, threshold: int = 2) -> List[FailureFingerprint]:
+    def get_repeated_failures(self, threshold: int = 2) -> list[FailureFingerprint]:
         """Get failures that repeated enough to become guardrail signs."""
         return [
             fp
@@ -494,7 +494,7 @@ class ScopeReviewer:
 
     def evolve_guardrails_from_failures(
         self, threshold: int = 2, iteration: int = 0
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Analyze repeated failures and create guardrail signs.
 

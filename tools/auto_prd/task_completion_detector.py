@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
 # Minimum confidence threshold for considering a task as completed
 MIN_COMPLETION_CONFIDENCE = 0.5
 

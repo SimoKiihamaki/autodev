@@ -21,7 +21,7 @@ class RalphSettings:
     gutter_output_timeout_sec: int = 180
     gutter_no_progress_iters: int = 3
 
-    def normalized(self) -> "RalphSettings":
+    def normalized(self) -> RalphSettings:
         """Return a normalized copy with safe minimums."""
         return RalphSettings(
             enabled=bool(self.enabled),

@@ -40,9 +40,9 @@ from .local_loop import orchestrate_local_loop, sanitize_session_id
 from .logging_utils import logger, setup_file_logging
 from .policy import policy_runner
 from .pr_flow import open_or_get_pr
-from .review_loop import review_fix_loop
 from .progress_renderer import render_progress_txt
 from .ralph import RalphSettings
+from .review_loop import review_fix_loop
 from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 from .utils import extract_called_process_error_details, now_stamp, slugify
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -161,7 +161,9 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
             tracker = load_tracker(repo_root)
             if not tracker:
                 issues.append(
-                    "Tracker not found at .aprd/tracker.json. Generate it from the PRD."
+                    "Tracker file not found at .aprd/tracker.json. "
+                    "The Ralph Wiggum Loop requires an existing tracker. "
+                    "Please initialize the tracker before running this loop."
                 )
             else:
                 valid, errors = validate_tracker(tracker)

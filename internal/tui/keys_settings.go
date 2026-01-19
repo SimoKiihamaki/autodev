@@ -352,51 +352,10 @@ func (m *model) getActualInputField(name string) *textinput.Model {
 }
 
 // setActualInputField updates the actual model field with the given textinput.Model value.
+// It uses getActualInputField to avoid duplicating the switch statement.
 func (m *model) setActualInputField(name string, field textinput.Model) {
-	switch name {
-	case "repo":
-		m.inRepo = field
-	case "base":
-		m.inBase = field
-	case "branch":
-		m.inBranch = field
-	case "codex":
-		m.inCodexModel = field
-	case "pycmd":
-		m.inPyCmd = field
-	case "pyscript":
-		m.inPyScript = field
-	case "policy":
-		m.inPolicy = field
-	case "waitmin":
-		m.inWaitMin = field
-	case "pollsec":
-		m.inPollSec = field
-	case "idlemin":
-		m.inIdleMin = field
-	case "maxiters":
-		m.inMaxIters = field
-	case "codextimeout":
-		m.inCodexTimeout = field
-	case "claudetimeout":
-		m.inClaudeTimeout = field
-	// Ralph settings
-	case "ralphenabled":
-		m.inRalphEnabled = field
-	case "ralphcontextrotate":
-		m.inRalphContextRotate = field
-	case "ralphmaxconsecutive":
-		m.inRalphMaxConsecutive = field
-	case "ralphautoaddsigns":
-		m.inRalphAutoAddSigns = field
-	case "ralphshowprogresslog":
-		m.inRalphShowProgressLog = field
-	case "ralphshowguardrails":
-		m.inRalphShowGuardrails = field
-	case "ralphguttertimeout":
-		m.inRalphGutterTimeout = field
-	case "ralphgutternoprogress":
-		m.inRalphGutterNoProgress = field
+	if actual := m.getActualInputField(name); actual != nil {
+		*actual = field
 	}
 }
 

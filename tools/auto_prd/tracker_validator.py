@@ -6,10 +6,7 @@ remains consistent with actual implementation progress.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
-
-from .tracker_generator import save_tracker
 
 
 class TrackerValidationError(Exception):
@@ -100,7 +97,8 @@ def validate_completion_consistency(
     total_tasks = sum(len(f.get("tasks", [])) for f in tracker.get("features", []))
 
     # Case 1: Agent claims 0 tasks left but tracker shows no progress
-    if agent_tasks_left == 0 and completed_tasks == 0:
+    # Guard: empty tracker (total_tasks == 0) shouldn't be considered inconsistent
+    if total_tasks > 0 and agent_tasks_left == 0 and completed_tasks == 0:
         return (
             False,
             "Agent claims TASKS_LEFT=0 but tracker shows 0 completed tasks. "
@@ -108,7 +106,8 @@ def validate_completion_consistency(
         )
 
     # Case 2: Agent claims completion but no tasks completed
-    if agent_completed and completed_tasks == 0:
+    # Guard: empty tracker (total_tasks == 0) shouldn't be considered inconsistent
+    if total_tasks > 0 and agent_completed and completed_tasks == 0:
         return (
             False,
             "Agent claims completion but tracker shows 0 completed tasks. "
@@ -131,32 +130,34 @@ def validate_completion_consistency(
 
 def repair_tracker_state(
     tracker: dict[str, Any],
-    repo_root: Path,
     iteration: int,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, dict[str, Any]]:
     """Attempt to repair common tracker state issues.
+
+    This function is side-effect free - it returns a repaired tracker
+    but does not persist it. The caller must decide whether to save.
 
     Args:
         tracker: Tracker dictionary to repair
-        repo_root: Repository root directory
         iteration: Current iteration number (for logging)
 
     Returns:
-        Tuple of (success, message)
+        Tuple of (success, message, repaired_tracker)
     """
-    repaired = False
+    import copy
+
+    repaired = copy.deepcopy(tracker)
     changes: list[str] = []
 
     # Repair 1: Remove completed_at from non-completed tasks
-    for feature in tracker.get("features", []):
+    for feature in repaired.get("features", []):
         for task in feature.get("tasks", []):
             if task.get("completed_at") and task.get("status") != "completed":
                 del task["completed_at"]
                 changes.append(f"Removed completed_at from task {task.get('id')}")
-                repaired = True
 
     # Repair 2: Fix inconsistent feature status
-    for feature in tracker.get("features", []):
+    for feature in repaired.get("features", []):
         feature_status = feature.get("status")
         tasks = feature.get("tasks", [])
 
@@ -174,22 +175,19 @@ def repair_tracker_state(
         ):
             feature["status"] = "completed"
             changes.append(f"Marked feature {feature.get('id')} as completed")
-            repaired = True
 
         # If no tasks completed but feature marked completed
         if completed_count == 0 and feature_status in ("completed", "verified"):
             feature["status"] = "pending"
             changes.append(f"Reset feature {feature.get('id')} to pending")
-            repaired = True
 
-    if repaired:
-        save_tracker(tracker, repo_root)
+    if changes:
         message = f"Repaired tracker state in iteration {iteration}: " + "; ".join(
             changes
         )
-        return (True, message)
+        return (True, message, repaired)
 
-    return (False, "No repairs needed")
+    return (False, "No repairs needed", tracker)
 
 
 def calculate_completion_confidence(

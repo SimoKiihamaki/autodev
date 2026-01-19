@@ -12,6 +12,12 @@ build:
 	mkdir -p bin
 	go build -o bin/$(APP) ./cmd/aprd
 
+# Install target
+# Usage:
+#   make install              # Installs to /usr/local/bin (default PREFIX)
+#   make install PREFIX=/usr  # Installs to /usr/bin
+#   make install DESTDIR=/tmp/stage  # Stages installation under /tmp/stage for packaging
+# Note: DESTDIR should not have a trailing slash for proper path handling
 install: build
 	mkdir -p $(DESTDIR)$(BINDIR)
 	install -m 0755 bin/$(APP) $(DESTDIR)$(BINDIR)/$(APP)

@@ -7,14 +7,11 @@ for testing the readiness orchestrator without needing full dependencies.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import List, Dict, Any
 from dataclasses import dataclass, field
-from enum import Enum
+from pathlib import Path
+from typing import Any
 
 from .verification_persistence import (
-    VerificationResult,
-    VerificationRun,
     VerificationStatus,
     VerifierType,
 )
@@ -26,7 +23,7 @@ class MockVerificationRun:
 
     run_id: str
     overall_status: VerificationStatus
-    verifiers: List[VerifierResult] = field(default_factory=list)
+    verifiers: list[VerifierResult] = field(default_factory=list)
     git_sha: str = "abc123"
     prd_hash: str = "hash123"
     phase: str = "verification"
@@ -72,7 +69,7 @@ def run_verification_gates(repo_root: Path, tracker_path: Path) -> MockVerificat
 
 
 def is_verification_fresh(
-    verification_ref: Dict[str, Any], current_git_sha: str, current_prd_hash: str
+    verification_ref: dict[str, Any], current_git_sha: str, current_prd_hash: str
 ) -> bool:
     """
     Check if verification evidence is still valid (fresh).
@@ -83,7 +80,7 @@ def is_verification_fresh(
     return True
 
 
-def create_test_tracker(repo_root: Path) -> Dict[str, Any]:
+def create_test_tracker(repo_root: Path) -> dict[str, Any]:
     """
     Create a minimal test tracker for Ralph Wiggum Loop testing.
 

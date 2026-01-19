@@ -1,13 +1,10 @@
 """Tests for the guardrails module."""
 
-import json
 import os
 import tempfile
 from pathlib import Path
 from unittest import mock
-from unittest.mock import MagicMock
 
-from auto_prd.git_ops import parse_owner_repo_from_git
 from auto_prd.guardrails import (
     Sign,
     _get_repo_slug,

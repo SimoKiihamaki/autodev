@@ -383,7 +383,8 @@ def suggest_sign_from_error(
     Args:
         error_message: The error message to analyze.
         iteration: Current iteration number.
-        repo_root: Repository root directory.
+        _repo_root: Repository root directory (reserved for future use,
+            currently unused but kept for interface consistency).
         phase: Phase where error occurred.
         file_context: Optional file context.
 

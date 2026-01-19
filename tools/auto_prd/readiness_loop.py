@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .command import CalledProcessError, run_cmd
 from .context import StallDetector
@@ -151,7 +152,6 @@ class ReadinessOrchestrator:
         )
 
         if should_review:
-
             prd_content = (
                 (self.repo_root / "PRD.md").read_text()
                 if (self.repo_root / "PRD.md").exists()

@@ -223,7 +223,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
       }},
       "tasks": [
         {{
-          "id": "T004",  // NOTE: Task IDs continue sequentially - NOT T001 again!
+          "id": "T004",
           "description": "<what to do>",
           "status": "pending"
         }},
@@ -240,7 +240,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation):
       ],
       "acceptance_criteria": [
         {{
-          "id": "AC002",  // AC IDs also sequential across all features
+          "id": "AC002",
           "criterion": "<testable criterion>",
           "verification_method": "integration_test",
           "status": "pending"
@@ -285,6 +285,8 @@ CRITICAL WARNINGS - MUST FOLLOW:
    - DO NOT restart task numbering for each feature (F001 with T001-T003, F002 with T001-T003 is INVALID)
    - MUST increment sequentially: F001 with T001-T003, F002 with T004-T006, F003 with T007-T010
    - ANY duplicate task IDs will cause tracker validation to FAIL
+8. **AC IDs MUST also be globally unique across ALL features** (AC001, AC002, AC003... AC099)
+9. NEVER include JSON comments (// ...) in your output - JSON does not support comments
 
 Begin with the opening brace now:
 """

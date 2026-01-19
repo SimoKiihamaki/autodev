@@ -1,10 +1,9 @@
 """Tests for task completion detection module."""
 
-import pytest
 
 from tools.auto_prd.task_completion_detector import (
-    MIN_COMPLETION_CONFIDENCE,
     MAX_REASONABLE_TASK_DECREASE,
+    MIN_COMPLETION_CONFIDENCE,
     detect_completed_task_from_changes,
     validate_tasks_left_progression,
 )

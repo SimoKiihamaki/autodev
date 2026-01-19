@@ -1,8 +1,7 @@
 """Tests for Ralph mode configuration module."""
 
-import pytest
 
-from tools.auto_prd.ralph import RalphSettings, THRESHOLD_DISABLED
+from tools.auto_prd.ralph import THRESHOLD_DISABLED, RalphSettings
 
 
 class TestRalphSettings:
@@ -147,5 +146,5 @@ class TestModuleConstants:
 
     def test_threshold_disabled_is_infinity(self) -> None:
         """Test that THRESHOLD_DISABLED is float('inf')."""
-        assert THRESHOLD_DISABLED == float("inf")
+        assert float("inf") == THRESHOLD_DISABLED
         assert isinstance(THRESHOLD_DISABLED, float)
