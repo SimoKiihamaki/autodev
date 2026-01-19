@@ -111,12 +111,16 @@ def _recent_commits(repo_root: Path, last_sha: str, limit: int) -> list[str]:
             return lines
         except (OSError, subprocess.CalledProcessError):
             logger.debug("Support mode: falling back to recent commit scan")
-    out, _, _ = run_cmd(
-        ["git", "log", "--oneline", f"-{limit}"],
-        cwd=repo_root,
-        check=True,
-    )
-    return [line for line in out.splitlines() if line.strip()]
+    try:
+        out, _, _ = run_cmd(
+            ["git", "log", "--oneline", f"-{limit}"],
+            cwd=repo_root,
+            check=True,
+        )
+        return [line for line in out.splitlines() if line.strip()]
+    except (OSError, subprocess.CalledProcessError) as exc:
+        logger.warning("Support mode: unable to read git log: %s", exc)
+        return []
 
 
 def _limit(items: list[str], max_items: int = MAX_ITEMS) -> tuple[list[str], int]:
