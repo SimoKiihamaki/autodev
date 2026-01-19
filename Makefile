@@ -1,6 +1,8 @@
 APP := aprd
 PYTHON := python3
 TOOLS_DIR := tools
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
 
 .PHONY: build install run clean tidy ci lint lint-go lint-py test test-go test-go-race test-py fmt fmt-go fmt-py typecheck typecheck-lenient
 
@@ -11,7 +13,8 @@ build:
 	go build -o bin/$(APP) ./cmd/aprd
 
 install: build
-	install -m 0755 bin/$(APP) /usr/local/bin/$(APP)
+	mkdir -p $(DESTDIR)$(BINDIR)
+	install -m 0755 bin/$(APP) $(DESTDIR)$(BINDIR)/$(APP)
 
 run: build
 	./bin/$(APP)
