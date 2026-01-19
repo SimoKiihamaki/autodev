@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "004-implement-or-remove-progress-tab-handler",
+  "branch_name": "wreckit/004-implement-or-remove-progress-tab-handler",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Update CODEBASE_ANALYSIS_REPORT.md to remove outdated CRITICAL-004 entry",
+      "acceptance_criteria": [
+        "CRITICAL-004 entry (lines 99-112) is removed from CODEBASE_ANALYSIS_REPORT.md",
+        "Issue count statistics updated: 87→86 total issues, 8→7 critical issues",
+        "Immediate actions list updated (item #2 removed, subsequent items re-numbered)",
+        "Optional: Resolution note added explaining the handler was implemented in commit 98a50a3",
+        "Only documentation changes - no code files modified"
+      ],
+      "priority": 1,
+      "status": "pending",
+      "notes": "This is a documentation correction only. No code changes required. The handler exists and is functional."
+    },
+    {
+      "id": "US-002",
+      "title": "Create resolution documentation for Item 004",
+      "acceptance_criteria": [
+        "RESOLUTION.md file created in item directory",
+        "Resolution summary documents the investigation findings",
+        "Current state is documented (handler exists in keys_progress.go:6-34)",
+        "Git history is referenced (commit 98a50a3, 2025-11-27)",
+        "Follow-up recommendations are documented (optional test coverage, future feature expansion)",
+        "Item status updated to 'resolved' with appropriate metadata"
+      ],
+      "priority": 2,
+      "status": "pending",
+      "notes": "Resolution documentation prevents future confusion about why this item was closed without code changes."
+    },
+    {
+      "id": "US-003",
+      "title": "Verify Progress tab functionality (optional confidence check)",
+      "acceptance_criteria": [
+        "Build completes successfully: go build ./cmd/aprd",
+        "Application launches without errors",
+        "Progress tab is accessible via key 7",
+        "Press 'u' in Progress tab triggers refresh action",
+        "Status message 'Refreshing tracker...' is displayed",
+        "No unhandled key warnings for Progress tab actions"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "Optional verification step to confirm the handler is working as documented. Not required for closing this item since no code changes are being made."
+    }
+  ]
+}
