@@ -191,7 +191,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                         1
                         for f in features
                         for t in f.get("tasks", [])
-                        if t.get("status") == "completed"
+                        if isinstance(t, dict) and t.get("status") == "completed"
                     )
                     tasks_left = total_tasks - completed_tasks
                     print(f"TASKS_LEFT={tasks_left}", flush=True)
@@ -293,7 +293,8 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                             pending = [
                                 c
                                 for c in criteria
-                                if c.get("status", "pending") != "passed"
+                                if isinstance(c, dict)
+                                and c.get("status", "pending") != "passed"
                             ]
                             if pending:
                                 warnings.append(
