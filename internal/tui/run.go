@@ -352,6 +352,10 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	setBool(m.inRalphShowProgressLog.Value(), "Show progress log", func(v bool) { dst.Ralph.ShowProgressLog = v })
 	setBool(m.inRalphShowGuardrails.Value(), "Show guardrails", func(v bool) { dst.Ralph.ShowGuardrails = v })
 
+	// Security settings parsing
+	dst.SafeScriptDirs = parsePathList(m.inSafeScriptDirs.Value())
+	dst.AllowedPythonDirs = parsePathList(m.inAllowedPythonDirs.Value())
+
 	dst.Flags.AllowUnsafe = m.flagAllowUnsafe
 	dst.Flags.DryRun = m.flagDryRun
 	dst.Flags.SyncGit = m.flagSyncGit

@@ -28,6 +28,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 	renderExecutorsGroup(b, m)
 	renderTimingsGroup(b, m)
 	renderRalphGroup(b, m)
+	renderSecurityGroup(b, m)
 	renderSettingsHelp(b, m)
 }
 
@@ -106,6 +107,17 @@ func renderRalphGroup(b *strings.Builder, m model) {
 		"ralphguttertimeout", "ralphgutternoprogress",
 	})
 	b.WriteString(ralphBox.Render() + "\n")
+}
+
+// renderSecurityGroup renders the security settings group.
+func renderSecurityGroup(b *strings.Builder, m model) {
+	securityContent := lipgloss.JoinVertical(lipgloss.Left,
+		m.inSafeScriptDirs.View(),
+		m.inAllowedPythonDirs.View(),
+	)
+	securityBox := NewBorderedBox("Security", securityContent)
+	securityBox.Focused = isInSettingsGroup(m.focusedInput, []string{"safescriptdirs", "allowedpythondirs"})
+	b.WriteString(securityBox.Render() + "\n")
 }
 
 // renderSettingsHelp renders the contextual help for settings.

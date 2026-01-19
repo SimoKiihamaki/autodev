@@ -112,6 +112,14 @@ var inputFieldAccessors = map[string]struct {
 		get: func(m *model) *textinput.Model { return &m.inRalphGutterNoProgress },
 		set: func(m *model, v string) { m.inRalphGutterNoProgress.SetValue(v) },
 	},
+	"safescriptdirs": {
+		get: func(m *model) *textinput.Model { return &m.inSafeScriptDirs },
+		set: func(m *model, v string) { m.inSafeScriptDirs.SetValue(v) },
+	},
+	"allowedpythondirs": {
+		get: func(m *model) *textinput.Model { return &m.inAllowedPythonDirs },
+		set: func(m *model, v string) { m.inAllowedPythonDirs.SetValue(v) },
+	},
 }
 
 // handleFocusedInputUpdate handles direct input updates when focused on a non-toggle field.

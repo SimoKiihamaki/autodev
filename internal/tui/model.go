@@ -158,6 +158,10 @@ type model struct {
 	inRalphGutterTimeout    textinput.Model
 	inRalphGutterNoProgress textinput.Model
 
+	// Security settings inputs
+	inSafeScriptDirs    textinput.Model
+	inAllowedPythonDirs textinput.Model
+
 	settingsInputs map[string]*textinput.Model
 
 	execLocalChoice  executorChoice
@@ -255,6 +259,9 @@ var settingsInputNames = []string{
 	"ralphshowguardrails",
 	"ralphguttertimeout",
 	"ralphgutternoprogress",
+	// Security settings
+	"safescriptdirs",
+	"allowedpythondirs",
 }
 
 func New() model {
@@ -432,6 +439,10 @@ func (m *model) initSettingsInputs() {
 	m.inRalphGutterTimeout = mkInput("Gutter timeout sec", formatIntPtr(cfg.Ralph.GutterOutputTimeoutSec), 6)
 	m.inRalphGutterNoProgress = mkInput("Gutter no progress iters", formatIntPtr(cfg.Ralph.GutterNoProgressIters), 6)
 
+	// Security settings inputs
+	m.inSafeScriptDirs = mkInput("Allowed script dirs (path-separated)", joinPaths(cfg.SafeScriptDirs), 80)
+	m.inAllowedPythonDirs = mkInput("Allowed Python dirs (path-separated)", joinPaths(cfg.AllowedPythonDirs), 80)
+
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring
 		"repo":   &m.inRepo,
@@ -463,6 +474,10 @@ func (m *model) initSettingsInputs() {
 		"ralphshowguardrails":   &m.inRalphShowGuardrails,
 		"ralphguttertimeout":    &m.inRalphGutterTimeout,
 		"ralphgutternoprogress": &m.inRalphGutterNoProgress,
+
+		// Security settings
+		"safescriptdirs":    &m.inSafeScriptDirs,
+		"allowedpythondirs": &m.inAllowedPythonDirs,
 	}
 }
 
