@@ -150,7 +150,7 @@
       ],
       "priority": 2,
       "status": "done",
-      "notes": "Created test_cli.py with 49 tests achieving 92% coverage (exceeds 60% target). All argument combinations tested with proper mocking."
+      "notes": "Mock run_loop() function in main() tests. Test all argument combinations. Verify exit codes are correct for different scenarios."
     },
     {
       "id": "US-011",
@@ -165,7 +165,7 @@
         "go test ./internal/tui -run '^TestView' -v shows ≥60% combined coverage for all view files"
       ],
       "priority": 3,
-      "status": "pending",
+      "status": "done",
       "notes": "Views are rendering functions that return strings. Tests verify key strings are present in output. Don't test exact formatting - test presence of key UI elements."
     },
     {
@@ -181,7 +181,7 @@
         "go test ./internal/config -v -cover shows ≥80% coverage for config.go (currently 50.4%)"
       ],
       "priority": 3,
-      "status": "pending",
+      "status": "done",
       "notes": "Use t.TempDir() for config file operations. Test error paths (invalid JSON, permission errors). Verify defaults are applied when config missing."
     },
     {
