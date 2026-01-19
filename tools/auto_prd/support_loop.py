@@ -82,15 +82,21 @@ def _extract_prd_checkboxes(prd_content: str) -> list[str]:
 
 def _collect_tracker_text(tracker: dict[str, Any]) -> list[str]:
     texts = []
-    for feature in tracker.get("features", []):
+    raw_features = tracker.get("features", [])
+    if not isinstance(raw_features, list):
+        raw_features = []
+    for feature in raw_features:
         if not isinstance(feature, dict):
             continue
         for key in ("name", "description"):
             val = feature.get(key)
             if isinstance(val, str) and val.strip():
                 texts.append(val)
-        # Coerce tasks to list to handle malformed "tasks": null entries
-        for task in feature.get("tasks") or []:
+        # Coerce tasks to list to handle malformed "tasks": null/int/str entries
+        raw_tasks = feature.get("tasks", [])
+        if not isinstance(raw_tasks, list):
+            raw_tasks = []
+        for task in raw_tasks:
             if not isinstance(task, dict):
                 continue
             desc = task.get("description")
@@ -189,10 +195,20 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                     state_issues = validate_tracker_state(tracker)
                     warnings.extend(state_issues)
 
-                    # Coerce tasks to list in case of malformed "tasks": null entries
+                    # Coerce tasks to list in case of malformed "tasks": null/int/str entries
+                    raw_features = tracker.get("features", [])
+                    if not isinstance(raw_features, list):
+                        raw_features = []
                     features = [
-                        {**f, "tasks": f.get("tasks") or []}
-                        for f in tracker.get("features", [])
+                        {
+                            **f,
+                            "tasks": (
+                                f.get("tasks")
+                                if isinstance(f.get("tasks"), list)
+                                else []
+                            ),
+                        }
+                        for f in raw_features
                         if isinstance(f, dict)
                     ]
                     total_features = len(features)
@@ -249,7 +265,9 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                     feature_by_id = {f.get("id"): f for f in features}
                     for feature in features:
                         feature_id = feature.get("id", "?")
-                        deps = feature.get("dependencies", []) or []
+                        deps = feature.get("dependencies", [])
+                        if not isinstance(deps, list):
+                            deps = []
                         if deps:
                             unresolved = []
                             missing = []
@@ -276,7 +294,9 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                                     f"Feature {feature_id} is {feature.get('status')} but dependencies incomplete: {', '.join(unresolved)}."
                                 )
 
-                        criteria = feature.get("acceptance_criteria", []) or []
+                        criteria = feature.get("acceptance_criteria", [])
+                        if not isinstance(criteria, list):
+                            criteria = []
                         if not criteria:
                             warnings.append(
                                 f"Feature {feature_id} has no acceptance criteria."

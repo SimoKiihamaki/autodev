@@ -195,6 +195,75 @@ class TestCollectTrackerText:
         result = _collect_tracker_text(tracker)
         assert result == []
 
+    def test_handles_non_list_features_field(self) -> None:
+        """Table-driven test for non-list 'features' field values.
+
+        Covers corrupted tracker data where 'features' is not a list.
+        """
+        test_cases = [
+            # (features_value, expected_result_count, description)
+            (None, 0, "null features"),
+            (42, 0, "int features"),
+            ("corrupted", 0, "string features"),
+            ({}, 0, "dict features"),
+            ([], 0, "empty list features"),
+            (
+                [
+                    {
+                        "id": "F001",
+                        "name": "Valid Feature",
+                        "description": "Valid description",
+                        "tasks": [],
+                    }
+                ],
+                2,
+                "valid list with one feature",
+            ),
+        ]
+
+        for features_val, expected_count, desc in test_cases:
+            tracker = {"features": features_val}
+            result = _collect_tracker_text(tracker)
+            assert (
+                len(result) == expected_count
+            ), f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+
+    def test_handles_non_list_tasks_field(self) -> None:
+        """Table-driven test for non-list 'tasks' field values within features.
+
+        Covers corrupted tracker data where a feature's 'tasks' is not a list.
+        """
+        test_cases = [
+            # (tasks_value, expected_result_count, description)
+            # Feature name + description = 2 items when tasks is malformed/empty
+            (None, 2, "null tasks"),
+            (99, 2, "int tasks"),
+            ("broken", 2, "string tasks"),
+            ({}, 2, "dict tasks"),
+            ([], 2, "empty list tasks"),
+            (
+                [{"id": "T001", "description": "Valid task"}],
+                3,
+                "valid list with one task (name + desc + task)",
+            ),
+        ]
+
+        for tasks_val, expected_count, desc in test_cases:
+            tracker = {
+                "features": [
+                    {
+                        "id": "F001",
+                        "name": "Feature Name",
+                        "description": "Feature description",
+                        "tasks": tasks_val,
+                    }
+                ]
+            }
+            result = _collect_tracker_text(tracker)
+            assert (
+                len(result) == expected_count
+            ), f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+
 
 class TestSupportStatePersistence:
     """Tests for support state persistence."""
