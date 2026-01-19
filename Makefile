@@ -70,7 +70,6 @@ fmt: fmt-go fmt-py
 fmt-go:
 	@echo "📝 Formatting Go code..."
 	goimports -w .
-	gofmt -w .
 
 fmt-py:
 	@echo "📝 Formatting Python code..."
