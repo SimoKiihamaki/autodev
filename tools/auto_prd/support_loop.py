@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -102,7 +103,7 @@ def _recent_commits(repo_root: Path, last_sha: str, limit: int) -> list[str]:
             )
             lines = [line for line in out.splitlines() if line.strip()]
             return lines
-        except Exception:
+        except (OSError, subprocess.CalledProcessError):
             logger.debug("Support mode: falling back to recent commit scan")
     out, _, _ = run_cmd(
         ["git", "log", "--oneline", f"-{limit}"],
@@ -357,8 +358,8 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                     warnings.append(
                         "Whitespace/style issues detected (git diff --check)."
                     )
-            except Exception:
-                logger.debug("Support mode: git diff --check failed")
+            except (OSError, subprocess.CalledProcessError) as exc:
+                logger.warning("Support mode: git diff --check failed: %s", exc)
 
             vp = VerificationPersistence(repo_root)
             latest = vp.get_latest_run()
