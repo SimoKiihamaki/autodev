@@ -129,15 +129,14 @@ func (m *model) handleSettingsTabActions(actions []Action, msg tea.KeyMsg) (bool
 			} else if isExecutorToggle(m.focusedInput) {
 				m.cycleExecutorChoice(m.focusedInput, 1)
 			} else if isBooleanInput(m.focusedInput) {
-				m.toggleBooleanInput()
+				return m.toggleBooleanInput()
 			} else {
 				m.navigateSettings("down")
 			}
 			handled = true
 		case ActCycleBackward:
 			if isBooleanInput(m.focusedInput) {
-				m.toggleBooleanInput()
-				handled = true
+				return m.toggleBooleanInput()
 			} else if isExecutorToggle(m.focusedInput) {
 				m.cycleExecutorChoice(m.focusedInput, -1)
 				handled = true

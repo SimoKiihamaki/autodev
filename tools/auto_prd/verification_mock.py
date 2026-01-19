@@ -13,6 +13,7 @@ from typing import Any
 
 from .verification_persistence import (
     VerificationStatus,
+    VerifierResult,
     VerifierType,
 )
 

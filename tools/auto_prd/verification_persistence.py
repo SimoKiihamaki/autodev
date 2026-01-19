@@ -273,6 +273,7 @@ class VerificationPersistence:
                 acceptance_criteria=v_dict.get("acceptance_criteria", []),
                 metrics=v_dict.get("metrics"),
                 quality_gates=v_dict.get("quality_gates", []),
+                findings=v_dict.get("findings", []),
                 artifacts=v_dict.get("artifacts", []),
             )
             verifiers.append(verifier)

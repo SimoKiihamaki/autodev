@@ -177,7 +177,11 @@ def repair_tracker_state(
             changes.append(f"Marked feature {feature.get('id')} as completed")
 
         # If no tasks completed but feature marked completed
-        if completed_count == 0 and feature_status in ("completed", "verified"):
+        if (
+            tasks
+            and completed_count == 0
+            and feature_status in ("completed", "verified")
+        ):
             feature["status"] = "pending"
             changes.append(f"Reset feature {feature.get('id')} to pending")
 
