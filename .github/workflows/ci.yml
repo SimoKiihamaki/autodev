@@ -32,7 +32,6 @@ jobs:
     - name: Install Python tools
       run: |
         pip install uv
-        cd tools/auto_prd && uv sync
 
     - name: Run CI
       run: make ci
