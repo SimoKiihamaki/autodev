@@ -43,8 +43,12 @@ def load_support_state(repo_root: Path) -> SupportState:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return SupportState()
+    try:
+        iteration = int(data.get("iteration", 1) or 1)
+    except (TypeError, ValueError):
+        iteration = 1
     return SupportState(
-        iteration=int(data.get("iteration", 1) or 1),
+        iteration=iteration,
         last_reviewed_sha=str(data.get("last_reviewed_sha", "") or ""),
         last_reviewed_prd_hash=str(data.get("last_reviewed_prd_hash", "") or ""),
         last_reviewed_at=str(data.get("last_reviewed_at", "") or ""),
