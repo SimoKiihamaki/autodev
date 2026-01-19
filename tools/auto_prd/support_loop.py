@@ -40,8 +40,8 @@ def load_support_state(repo_root: Path) -> SupportState:
     if not path.exists():
         return SupportState()
     try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return SupportState()
     try:
         iteration = int(data.get("iteration", 1) or 1)
@@ -83,6 +83,8 @@ def _extract_prd_checkboxes(prd_content: str) -> list[str]:
 def _collect_tracker_text(tracker: dict[str, Any]) -> list[str]:
     texts = []
     for feature in tracker.get("features", []):
+        if not isinstance(feature, dict):
+            continue
         for key in ("name", "description"):
             val = feature.get(key)
             if isinstance(val, str) and val.strip():
