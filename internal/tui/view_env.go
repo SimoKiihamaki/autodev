@@ -32,11 +32,13 @@ func renderFlagToggles(b *strings.Builder, m model) {
 	dryrunStyle := focusStyle(m.focusedFlag == FlagNameDryRun)
 	syncgitStyle := focusStyle(m.focusedFlag == FlagNameSyncGit)
 	infiniteStyle := focusStyle(m.focusedFlag == FlagNameInfinite)
+	supportStyle := focusStyle(m.focusedFlag == FlagNameSupport)
 
 	b.WriteString(unsafeStyle.Render(fmt.Sprintf("[a] Allow Unsafe: %v (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 and CI=1)", m.flagAllowUnsafe)) + "\n")
 	b.WriteString(dryrunStyle.Render(fmt.Sprintf("[d] Dry Run:     %v", m.flagDryRun)) + "\n")
 	b.WriteString(syncgitStyle.Render(fmt.Sprintf("[g] Sync Git:    %v", m.flagSyncGit)) + "\n")
 	b.WriteString(infiniteStyle.Render(fmt.Sprintf("[i] Infinite Reviews: %v", m.flagInfinite)) + "\n")
+	b.WriteString(supportStyle.Render(fmt.Sprintf("[c] Support Mode: %v (continuous reviewer)", m.flagSupport)) + "\n")
 }
 
 // renderEnvHelp renders the help text for the env tab.

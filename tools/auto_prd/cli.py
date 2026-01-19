@@ -89,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Continue indefinitely while feedback exists (overrides --idle-grace-minutes)",
     )
     parser.add_argument(
+        "--support-mode",
+        action="store_true",
+        help="Run continuous support reviewer loop (no execution). Uses --review-poll-seconds as interval.",
+    )
+    parser.add_argument(
         "--sync-git",
         action="store_true",
         help="Fetch & fast-forward the base branch before creating the working branch",
@@ -113,6 +118,72 @@ def build_parser() -> argparse.ArgumentParser:
         "--phases",
         default=None,
         help="Comma-separated list of phases to run (local,pr,review_fix). Default: all phases.",
+    )
+
+    # Ralph mode arguments
+    ralph = parser.add_argument_group("ralph mode")
+    ralph.add_argument(
+        "--ralph-ready-loop",
+        "--ralph-mode",
+        dest="ralph_mode",
+        action="store_true",
+        help="Enable Ralph Wiggum Loop (outer readiness loop).",
+    )
+    ralph.add_argument(
+        "--context-rotate-every",
+        "--ralph-context-rotate-every",
+        dest="ralph_context_rotate_every",
+        type=non_negative,
+        default=0,
+        help="Rotate context every N iterations (0 disables rotation).",
+    )
+    ralph.add_argument(
+        "--max-consecutive-failures",
+        "--ralph-max-consecutive-failures",
+        dest="ralph_max_consecutive_failures",
+        type=non_negative,
+        default=3,
+        help="Max consecutive failures before aborting (default: 3).",
+    )
+    ralph.add_argument(
+        "--auto-add-signs",
+        "--no-auto-add-signs",
+        dest="ralph_auto_add_signs",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Automatically add guardrail signs on failures.",
+    )
+    ralph.add_argument(
+        "--show-progress-log",
+        "--no-show-progress-log",
+        dest="ralph_show_progress_log",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print Ralph progress log at the end of the run.",
+    )
+    ralph.add_argument(
+        "--show-guardrails",
+        "--no-show-guardrails",
+        dest="ralph_show_guardrails",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print active guardrails on startup.",
+    )
+    ralph.add_argument(
+        "--gutter-output-timeout-sec",
+        "--ralph-gutter-output-timeout-sec",
+        dest="ralph_gutter_output_timeout_sec",
+        type=non_negative,
+        default=180,
+        help="Seconds without output before stall detection (0 disables).",
+    )
+    ralph.add_argument(
+        "--gutter-no-progress-iters",
+        "--ralph-gutter-no-progress-iters",
+        dest="ralph_gutter_no_progress_iters",
+        type=non_negative,
+        default=3,
+        help="Iterations without progress before stall detection (0 disables).",
     )
 
     # Session management arguments
@@ -220,9 +291,44 @@ def main() -> None:
         handle_list_sessions()
         sys.exit(0)
 
+    from .ralph import RalphSettings
+
     # Resolve checkpoint for resume
     checkpoint = resolve_checkpoint(args)
     args.checkpoint = checkpoint  # Attach to args for app.run()
+
+    ralph_settings = RalphSettings(
+        enabled=args.ralph_mode,
+        context_rotate_every=args.ralph_context_rotate_every,
+        max_consecutive_failures=args.ralph_max_consecutive_failures,
+        auto_add_signs=args.ralph_auto_add_signs,
+        show_progress_log=args.ralph_show_progress_log,
+        show_guardrails=args.ralph_show_guardrails,
+        gutter_output_timeout_sec=args.ralph_gutter_output_timeout_sec,
+        gutter_no_progress_iters=args.ralph_gutter_no_progress_iters,
+    ).normalized()
+    args.ralph_settings = ralph_settings
+
+    if ralph_settings.enabled:
+        from copy import copy
+
+        from .readiness_loop import run_ralph_wiggum_loop
+
+        execution_args = copy(args)
+        execution_args.ralph_mode = False
+        execution_args.ralph_settings = ralph_settings
+
+        def _run_once() -> None:
+            run(execution_args)
+
+        try:
+            run_ralph_wiggum_loop(
+                repo_root=Path(args.repo).resolve() if args.repo else Path.cwd(),
+                execution_runner=_run_once,
+            )
+        except AutoPrdError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
 
     try:
         run(args)

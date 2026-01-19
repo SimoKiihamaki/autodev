@@ -189,12 +189,14 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 				cfg.Flags.DryRun = true
 				cfg.Flags.SyncGit = true
 				cfg.Flags.InfiniteReviews = true
+				cfg.Flags.SupportMode = true
 			},
 			expectArgs: [][]string{
 				{"--allow-unsafe-execution"},
 				{"--dry-run"},
 				{"--sync-git"},
 				{"--infinite-reviews"},
+				{"--support-mode"},
 			},
 			expectEnv: map[string]string{
 				config.EnvAllowUnsafeExecution: "1",
@@ -208,6 +210,33 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 			},
 			expectArgs: [][]string{
 				{"--phases", "pr,review_fix"},
+			},
+		},
+		{
+			name: "ralph_flags",
+			mutate: func(cfg *config.Config, input *BuildArgsInput) {
+				cfg.Ralph.Enabled = true
+				contextRotate := 2
+				maxFailures := 4
+				gutterTimeout := 90
+				gutterNoProgress := 2
+				cfg.Ralph.ContextRotateEvery = &contextRotate
+				cfg.Ralph.MaxConsecutiveFailures = &maxFailures
+				cfg.Ralph.GutterOutputTimeoutSec = &gutterTimeout
+				cfg.Ralph.GutterNoProgressIters = &gutterNoProgress
+				cfg.Ralph.AutoAddSigns = false
+				cfg.Ralph.ShowProgressLog = true
+				cfg.Ralph.ShowGuardrails = true
+			},
+			expectArgs: [][]string{
+				{"--ralph-ready-loop"},
+				{"--ralph-context-rotate-every", "2"},
+				{"--ralph-max-consecutive-failures", "4"},
+				{"--no-auto-add-signs"},
+				{"--show-progress-log"},
+				{"--show-guardrails"},
+				{"--gutter-output-timeout-sec", "90"},
+				{"--gutter-no-progress-iters", "2"},
 			},
 		},
 		{
@@ -237,6 +266,21 @@ func TestBuildArgsArgumentMapping(t *testing.T) {
 				}
 				if !containsSequence(plan.Args, "-O") {
 					t.Fatalf("expected optimiser flag to persist, args=%v", plan.Args)
+				}
+			},
+		},
+		{
+			name: "support_mode_skips_phases",
+			mutate: func(cfg *config.Config, input *BuildArgsInput) {
+				cfg.Flags.SupportMode = true
+			},
+			expectArgs: [][]string{
+				{"--support-mode"},
+			},
+			extraCheck: func(t *testing.T, plan Args, cfg config.Config) {
+				t.Helper()
+				if containsSequence(plan.Args, "--phases") {
+					t.Fatalf("support mode should omit --phases, args=%v", plan.Args)
 				}
 			},
 		},

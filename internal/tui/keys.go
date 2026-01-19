@@ -54,6 +54,7 @@ const (
 	ActToggleFlagDryRun   Action = "toggle_flag_dryrun"
 	ActToggleFlagSyncGit  Action = "toggle_flag_syncgit"
 	ActToggleFlagInfinite Action = "toggle_flag_infinite"
+	ActToggleFlagSupport  Action = "toggle_flag_support"
 	ActResetDefaults      Action = "reset_defaults"
 	ActRefresh            Action = "refresh"
 
@@ -385,6 +386,7 @@ func DefaultKeyMap() KeyMap {
 			ActToggleFlagDryRun:   {key("d")},
 			ActToggleFlagSyncGit:  {key("g")},
 			ActToggleFlagInfinite: {key("i")},
+			ActToggleFlagSupport:  {key("c")},
 		},
 		tabIDPrompt: {
 			ActConfirm: {key("enter")},
@@ -450,6 +452,7 @@ func DefaultKeyMap() KeyMap {
 		ActToggleFlagDryRun:   "Toggle Dry Run",
 		ActToggleFlagSyncGit:  "Toggle Sync Git",
 		ActToggleFlagInfinite: "Toggle Infinite Reviews",
+		ActToggleFlagSupport:  "Toggle Support Mode",
 		ActRefresh:            "Refresh",
 		ActResumeFromLocal:    "Resume from Local",
 		ActResumeFromPR:       "Skip to PR",

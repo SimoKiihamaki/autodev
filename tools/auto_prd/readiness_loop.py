@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .command import CalledProcessError, run_cmd
 from .context import StallDetector
@@ -82,6 +82,11 @@ class ReadinessOrchestrator:
         self.scope_reviewer = ScopeReviewer(self.repo_root, self.state_dir)
         self.verification_persistence = VerificationPersistence(self.repo_root)
         self.stall_detector = StallDetector()
+        self._execution_runner = None
+
+    def set_execution_runner(self, runner) -> None:
+        """Override the default execution runner used during the loop."""
+        self._execution_runner = runner
 
     def run(self, tracker: dict[str, Any]) -> dict[str, Any]:
         """
@@ -180,11 +185,14 @@ class ReadinessOrchestrator:
         )
 
         try:
-            run_cmd(
-                ["python3", "-m", "tools.auto_prd.cli"],
-                cwd=self.repo_root,
-                check=True,
-            )
+            if self._execution_runner is not None:
+                self._execution_runner()
+            else:
+                run_cmd(
+                    ["python3", "-m", "tools.auto_prd.cli"],
+                    cwd=self.repo_root,
+                    check=True,
+                )
         except CalledProcessError as e:
             print(f"\n❌ Execution phase failed: {e}")
             if self.stats.iteration >= 3:
@@ -532,7 +540,9 @@ class ReadinessOrchestrator:
 
 
 def run_ralph_wiggum_loop(
-    repo_root: Path, config: ReadinessConfig | None = None
+    repo_root: Path,
+    config: ReadinessConfig | None = None,
+    execution_runner: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """
     Entry point for Ralph Wiggum Loop.
@@ -545,6 +555,8 @@ def run_ralph_wiggum_loop(
         Final execution state with statistics
     """
     orchestrator = ReadinessOrchestrator(repo_root, config)
+    if execution_runner is not None:
+        orchestrator.set_execution_runner(execution_runner)
     tracker = orchestrator._load_tracker()
 
     print("\n" + "=" * 70)

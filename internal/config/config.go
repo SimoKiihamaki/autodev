@@ -39,6 +39,7 @@ type Flags struct {
 	DryRun          bool `yaml:"dry_run"`
 	SyncGit         bool `yaml:"sync_git"`
 	InfiniteReviews bool `yaml:"infinite_reviews"`
+	SupportMode     bool `yaml:"support_mode"`
 }
 
 type Timings struct {
@@ -144,6 +145,7 @@ func Defaults() Config {
 			DryRun:          false,
 			SyncGit:         false,
 			InfiniteReviews: false,
+			SupportMode:     false,
 		},
 		Timings: Timings{
 			WaitMinutes:       intPtr(0),

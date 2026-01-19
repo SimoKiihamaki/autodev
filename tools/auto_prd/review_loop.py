@@ -39,6 +39,7 @@ from .guardrails import (
 from .logging_utils import logger
 from .policy import policy_runner
 from .progress_renderer import IterationSummary, save_iteration_summary
+from .ralph import RalphSettings
 from .utils import (
     extract_called_process_error_details,
     is_valid_int,
@@ -54,6 +55,7 @@ JITTER_MAX_SECONDS = 3.0
 # Maximum consecutive runner failures before terminating the review loop.
 # This prevents infinite retry loops on persistent errors (e.g., auth failures,
 # rate limits, or process crashes). The counter resets on any successful execution.
+# Ralph settings can override this per run.
 MAX_CONSECUTIVE_FAILURES = 3
 
 # Maximum number of iteration summaries to keep for context compaction.
@@ -120,7 +122,7 @@ STDERR_LOG_TRUNCATE_CHARS = 2000
 #
 # We chose to err on the side of allowing retry for KeyError because:
 # - Transient API issues are relatively common in networked environments
-# - The retry limit (MAX_CONSECUTIVE_FAILURES) still bounds worst-case behavior
+# - The retry limit (MAX_CONSECUTIVE_FAILURES, or Ralph override) still bounds worst-case behavior
 # - True programming bugs will hit the retry limit quickly and fail consistently
 #
 # This tuple is defined once at module level and used in both the explicit
@@ -205,6 +207,7 @@ def _should_stop_after_failure(
     error_detail: str,
     stderr_text: str = "",
     error_type: str = "",
+    max_failures: int = MAX_CONSECUTIVE_FAILURES,
 ) -> bool:
     """Log failure details and decide whether the retry loop should stop.
 
@@ -228,7 +231,7 @@ def _should_stop_after_failure(
     Usage contract:
         1. Caller increments consecutive_failures BEFORE calling this function
         2. Caller passes the incremented value to failure_count
-        3. This function checks if failure_count >= MAX_CONSECUTIVE_FAILURES
+        3. This function checks if failure_count >= max_failures
 
     Example usage pattern at call sites::
 
@@ -246,11 +249,12 @@ def _should_stop_after_failure(
             - Pass 2 for the second consecutive failure
             - Pass N for the Nth consecutive failure
 
-            The function returns True when failure_count >= MAX_CONSECUTIVE_FAILURES.
-            With MAX_CONSECUTIVE_FAILURES=3, the loop stops when failure_count reaches 3.
+            The function returns True when failure_count >= max_failures.
+            With max_failures=3, the loop stops when failure_count reaches 3.
         error_detail: Description of the error
         stderr_text: Optional stderr output from the process
         error_type: Optional error type name for user feedback
+        max_failures: Maximum consecutive failures before stopping.
 
     Returns:
         True if loop should stop (max failures reached), False to continue retrying.
@@ -267,14 +271,14 @@ def _should_stop_after_failure(
     logger.warning(
         "Review runner failed (attempt %d/%d): %s",
         failure_count,
-        MAX_CONSECUTIVE_FAILURES,
+        max_failures,
         sanitized_error_detail,
     )
     # Provide user-facing feedback with error type if available
     type_suffix = f" ({error_type})" if error_type else ""
     print(
         f"\nReview runner failed{type_suffix} "
-        f"(attempt {failure_count}/{MAX_CONSECUTIVE_FAILURES})",
+        f"(attempt {failure_count}/{max_failures})",
         flush=True,
     )
     # Reuse already-sanitized error_detail for user display (same truncation limit)
@@ -299,7 +303,7 @@ def _should_stop_after_failure(
             sanitized_user_stderr += "...(truncated)"
         print(f"  Stderr: {sanitized_user_stderr}", flush=True)
 
-    if failure_count >= MAX_CONSECUTIVE_FAILURES:
+    if failure_count >= max_failures:
         logger.error(
             "Stopping review loop after %d consecutive failures",
             failure_count,
@@ -325,6 +329,7 @@ def review_fix_loop(
     initial_wait_minutes: int = 0,
     infinite_reviews: bool = False,
     checkpoint: dict[str, Any] | None = None,
+    ralph_settings: RalphSettings | None = None,
 ) -> bool:
     """Run the review/fix loop for a PR.
 
@@ -340,6 +345,7 @@ def review_fix_loop(
         initial_wait_minutes: Initial wait for bot reviews.
         infinite_reviews: Continue indefinitely while feedback exists.
         checkpoint: Optional checkpoint dict for resume support.
+        ralph_settings: Optional Ralph settings for guardrails/stall detection.
 
     Returns:
         bool: Indicates the termination state of the review loop.
@@ -356,7 +362,7 @@ def review_fix_loop(
           - Loop timed out due to idle_grace (no new feedback arrived)
           - Loop stopped by policy (e.g., should_stop_review_after_push returned True)
 
-        **False (Failed)** - The loop hit MAX_CONSECUTIVE_FAILURES consecutive runner
+        **False (Failed)** - The loop hit the configured max consecutive runner
         failures and terminated. This indicates persistent problems with the executor.
 
         **Usage guidance**:
@@ -397,7 +403,7 @@ def review_fix_loop(
     Note:
         Transient/recoverable errors (such as subprocess.CalledProcessError,
         subprocess.TimeoutExpired, and other transient failures) are retried
-        internally up to MAX_CONSECUTIVE_FAILURES times. Each occurrence of these
+        internally up to the configured max failures. Each occurrence of these
         exceptions increments a retry counter. If the maximum number of consecutive
         recoverable failures is reached (including repeated TimeoutExpired exceptions),
         the function returns False instead of raising an exception. Only the
@@ -530,12 +536,24 @@ def review_fix_loop(
             f"Resuming with {len(processed_comment_ids)} previously processed comments."
         )
 
+    ralph = (ralph_settings or RalphSettings()).normalized()
+    max_failures = (
+        ralph.max_consecutive_failures
+        if ralph.enabled
+        else MAX_CONSECUTIVE_FAILURES
+    )
+
     # Load guardrails for Ralph-style mistake prevention
     # Signs from previous iterations are injected into the agent context
-    guardrails = load_guardrails(repo_root)
-    if guardrails:
-        print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
-        logger.info("Loaded %d guardrail signs for repo %s", len(guardrails), repo_root)
+    guardrails = []
+    if ralph.enabled:
+        guardrails = load_guardrails(repo_root)
+        if guardrails and ralph.show_guardrails:
+            print(f"Loaded {len(guardrails)} guardrail signs from previous iterations")
+        if guardrails:
+            logger.info(
+                "Loaded %d guardrail signs for repo %s", len(guardrails), repo_root
+            )
 
     def sleep_with_jitter(base: float) -> None:
         jitter = _JITTER_RNG.uniform(JITTER_MIN_SECONDS, JITTER_MAX_SECONDS)
@@ -550,11 +568,15 @@ def review_fix_loop(
     # streaming. For proper time-based detection, record_output() would need to be
     # wired into the streaming output handler. Currently, only iteration-based
     # detection (no_progress_threshold_iterations) is fully functional.
-    stall_detector = StallDetector(
-        no_output_threshold_seconds=1e9,  # Effectively disabled; not integrated with streaming
-        no_progress_threshold_iterations=5,  # 5 iterations without feedback reduction
-    )
-    stall_detector.reset()
+    stall_detector = None
+    thresholds = ralph.stall_thresholds()
+    if thresholds:
+        no_output_threshold, no_progress_threshold = thresholds
+        stall_detector = StallDetector(
+            no_output_threshold_seconds=no_output_threshold,
+            no_progress_threshold_iterations=no_progress_threshold,
+        )
+        stall_detector.reset()
 
     while True:
         current_head = git_head_sha(repo_root)
@@ -694,7 +716,8 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 consecutive_failures = 0
 
                 # Ralph-style gutter detection: Record output and check for stalls
-                stall_detector.record_output()
+                if stall_detector:
+                    stall_detector.record_output()
                 # Recompute unresolved after the fix pass to get accurate progress count
                 # The stale `unresolved` was collected before fixes ran; recompute to detect
                 # if the current iteration actually reduced feedback items
@@ -711,21 +734,25 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     )
                 ]
                 # Record progress based on the fresh unresolved count after the fix pass
-                stall_detector.record_iteration(tasks_left=len(unresolved_after))
-                is_stalled, stall_reason = stall_detector.check_stall()
-                if is_stalled:
-                    logger.warning("Gutter detected in review loop: %s", stall_reason)
-                    print(f"  ⚠️  Gutter detection: {stall_reason}")
-                    # Add a guardrail sign for this stall pattern
-                    add_sign(
-                        name="gutter_review_no_progress",
-                        trigger="Multiple review iterations without feedback reduction",
-                        instruction=stall_reason,
-                        iteration=cycles,
-                        repo_root=repo_root,
-                        category="gutter",
-                        phase="review_fix",
-                    )
+                if stall_detector:
+                    stall_detector.record_iteration(tasks_left=len(unresolved_after))
+                    is_stalled, stall_reason = stall_detector.check_stall()
+                    if is_stalled:
+                        logger.warning(
+                            "Gutter detected in review loop: %s", stall_reason
+                        )
+                        print(f"  ⚠️  Gutter detection: {stall_reason}")
+                        if ralph.enabled and ralph.auto_add_signs:
+                            # Add a guardrail sign for this stall pattern
+                            add_sign(
+                                name="gutter_review_no_progress",
+                                trigger="Multiple review iterations without feedback reduction",
+                                instruction=stall_reason,
+                                iteration=cycles,
+                                repo_root=repo_root,
+                                category="gutter",
+                                phase="review_fix",
+                            )
 
                 # Determine completion status message (independent of streaming mode)
                 if not (stderr and stderr.strip()):
@@ -755,22 +782,24 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     error_detail = f"Execution timed out after {timeout_secs} seconds"
                 stderr_text = _decode_stderr(getattr(exc, "stderr", None))
                 # Suggest a sign for Ralph-style learning from timeout failures
-                suggested_sign = suggest_sign_from_error(
-                    error_message=error_detail,
-                    iteration=cycles,
-                    repo_root=repo_root,
-                    phase="review_fix",
-                )
-                if suggested_sign:
-                    logger.info(
-                        "Suggested guardrail sign '%s' from timeout error",
-                        suggested_sign.name,
+                if ralph.enabled:
+                    suggested_sign = suggest_sign_from_error(
+                        error_message=error_detail,
+                        iteration=cycles,
+                        _repo_root=repo_root,
+                        phase="review_fix",
                     )
+                    if suggested_sign:
+                        logger.info(
+                            "Suggested guardrail sign '%s' from timeout error",
+                            suggested_sign.name,
+                        )
                 if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,
                     stderr_text,
                     error_type="TimeoutExpired",
+                    max_failures=max_failures,
                 ):
                     return False
                 sleep_with_jitter(float(poll))
@@ -781,22 +810,24 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 error_detail = extract_called_process_error_details(exc)
                 stderr_text = _decode_stderr(exc.stderr)
                 # Suggest a sign for Ralph-style learning from process errors
-                suggested_sign = suggest_sign_from_error(
-                    error_message=error_detail,
-                    iteration=cycles,
-                    repo_root=repo_root,
-                    phase="review_fix",
-                )
-                if suggested_sign:
-                    logger.info(
-                        "Suggested guardrail sign '%s' from process error",
-                        suggested_sign.name,
+                if ralph.enabled:
+                    suggested_sign = suggest_sign_from_error(
+                        error_message=error_detail,
+                        iteration=cycles,
+                        _repo_root=repo_root,
+                        phase="review_fix",
                     )
+                    if suggested_sign:
+                        logger.info(
+                            "Suggested guardrail sign '%s' from process error",
+                            suggested_sign.name,
+                        )
                 if _should_stop_after_failure(
                     consecutive_failures,
                     error_detail,
                     stderr_text,
                     error_type="CalledProcessError",
+                    max_failures=max_failures,
                 ):
                     return False
                 sleep_with_jitter(float(poll))
@@ -896,6 +927,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     f"SystemExit(code={exit_code})",
                     stderr_text="",
                     error_type="SystemExit",
+                    max_failures=max_failures,
                 ):
                     return False
                 sleep_with_jitter(float(poll))
@@ -922,6 +954,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     consecutive_failures,
                     str(exc),
                     error_type=error_type,
+                    max_failures=max_failures,
                 ):
                     return False
                 sleep_with_jitter(float(poll))

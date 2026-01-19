@@ -72,13 +72,13 @@ func TestNavigationWrapping(t *testing.T) {
 			action: func(_ *testing.T, m *model) {
 				m.navigateFlags("up")
 			},
-			wantFocus: "infinite",
+			wantFocus: "support",
 			focusKind: "flag",
 		},
 		{
 			name: "flags wrap down",
 			setup: func(m *model) {
-				m.focusFlag("infinite")
+				m.focusFlag("support")
 			},
 			action: func(_ *testing.T, m *model) {
 				m.navigateFlags("down")

@@ -299,6 +299,8 @@ func (m *model) toggleFocusedFlag() {
 		m.flagSyncGit = !m.flagSyncGit
 	case "infinite":
 		m.flagInfinite = !m.flagInfinite
+	case "support":
+		m.flagSupport = !m.flagSupport
 	}
 	m.updateDirtyState()
 }
