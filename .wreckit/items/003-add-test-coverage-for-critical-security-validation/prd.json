@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "id": "003-add-test-coverage-for-critical-security-validation",
+  "branch_name": "wreckit/003-add-test-coverage-for-critical-security-validation",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create test file structure with imports and setup",
+      "acceptance_criteria": [
+        "File created at tools/auto_prd/tests/test_command_safety.py",
+        "All validation functions imported using safe_import pattern",
+        "All security constants imported using safe_import pattern",
+        "Four test class stubs created (ValidateCommandArgsTests, ValidateCwdTests, ValidateStdinTests, ValidateExtraEnvTests)",
+        "File imports successfully with 'python -m tools.auto_prd.tests.test_command_safety'"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Follows existing test patterns from test_cli_safety.py. Uses safe_import for all imports to support both script and module execution modes."
+    },
+    {
+      "id": "US-002",
+      "title": "Implement ValidateCommandArgsTests with 17 comprehensive tests",
+      "acceptance_criteria": [
+        "17 tests pass for validate_command_args() function",
+        "Tests cover empty sequence, non-sequence, and non-string argument rejection",
+        "Tests individually reject each shell metacharacter: |, ;, >, <",
+        "Tests allow backtick characters (single and multiple)",
+        "Tests enforce command allowlist for all commands in COMMAND_ALLOWLIST",
+        "Tests reject non-allowlisted commands with SystemExit",
+        "Tests validate absolute paths within/outside SAFE_CWD_ROOTS",
+        "Uses real temp directory with setUp/tearDown for filesystem tests",
+        "All error assertions check for specific error messages"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical security validation function - tests shell injection prevention, command allowlist enforcement, and path validation. Creates temp directory in setUp, registers it as safe, cleans up in tearDown."
+    },
+    {
+      "id": "US-003",
+      "title": "Implement ValidateCwdTests with 8 path traversal tests",
+      "acceptance_criteria": [
+        "8 tests pass for validate_cwd() function",
+        "Tests accept None as valid input",
+        "Tests accept paths within SAFE_CWD_ROOTS (including nested subdirectories)",
+        "Tests reject paths outside SAFE_CWD_ROOTS with SystemExit",
+        "Tests reject path traversal attempts using .. (dot-dot escaping)",
+        "Tests handle symlinks within safe roots (with platform-aware skip)",
+        "Uses real temp directories for authentic filesystem behavior",
+        "Error messages mention 'outside registered safe roots'"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical path traversal prevention. Uses real temp directories instead of mocks because is_within() uses Path.resolve(strict=True) which has real filesystem behavior."
+    },
+    {
+      "id": "US-004",
+      "title": "Implement ValidateStdinTests with 20 control character tests",
+      "acceptance_criteria": [
+        "20 tests pass for validate_stdin() function",
+        "Tests accept None and empty string",
+        "Tests accept stdin at exactly STDIN_MAX_BYTES (200,000 bytes)",
+        "Tests reject stdin at STDIN_MAX_BYTES + 1 byte",
+        "Tests accept tab character (byte 9)",
+        "Tests accept newline character (byte 10)",
+        "Tests accept carriage return character (byte 13)",
+        "Tests reject null byte (byte 0)",
+        "Tests reject control characters bytes 1-8 individually",
+        "Tests reject control characters bytes 11-12",
+        "Tests reject control characters bytes 14-31",
+        "Tests reject mixed control characters",
+        "All error messages mention 'unsafe control characters' or 'too large'"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical control character validation. Tests each disallowed control character range individually for clarity and easier debugging. Large input test at boundary ensures performance is acceptable."
+    },
+    {
+      "id": "US-005",
+      "title": "Implement ValidateExtraEnvTests with 12 environment variable tests",
+      "acceptance_criteria": [
+        "12 tests pass for validate_extra_env() function",
+        "Tests accept None and empty dict",
+        "Tests accept valid string key-value pairs",
+        "Tests accept multiple valid environment variables",
+        "Tests accept special characters (except newline) in values",
+        "Tests reject integer keys with SystemExit",
+        "Tests reject integer values with SystemExit",
+        "Tests reject None keys with SystemExit",
+        "Tests reject None values with SystemExit",
+        "Tests reject newlines in keys with SystemExit",
+        "Tests reject newlines in values with SystemExit",
+        "Tests reject newlines in both key and value with SystemExit",
+        "Error messages specify 'must be strings' or 'must not contain newlines'"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical environment variable validation. Tests both type validation and newline rejection to prevent header injection in subprocess environments."
+    },
+    {
+      "id": "US-006",
+      "title": "Run full test suite and verify coverage metrics",
+      "acceptance_criteria": [
+        "All 57 new tests pass (17 + 8 + 20 + 12)",
+        "Coverage for validate_command_args() >95%",
+        "Coverage for validate_cwd() >95%",
+        "Coverage for validate_stdin() >95%",
+        "Coverage for validate_extra_env() >95%",
+        "Existing tests in test_cli_safety.py still pass (no regressions)",
+        "Test file runs standalone with 'python tools/auto_prd/tests/test_command_safety.py'",
+        "Coverage report generated with --cov flag shows minimal missing lines"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Final verification phase. Run pytest with coverage reporting to ensure comprehensive test coverage. Verify no regressions in existing test suite. Document any intentionally untested code paths."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "015-fix-missing-pipe-cleanup-in-runner",
+  "title": "Fix missing pipe cleanup in runner",
+  "section": "backend",
+  "state": "implementing",
+  "overview": "File descriptors may not be closed if errors occur during pipe setup.\n\n**Motivation:** Prevents file descriptor leaks that could exhaust system resources over time.\n\n**Technical constraints:**\n- Add defer stdout.Close() and defer stderr.Close() after pipe creation\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.571Z",
+  "updated_at": "2026-01-19T21:08:26.518Z",
+  "problem_statement": "File descriptors may not be closed if errors occur during pipe setup.",
+  "motivation": "Prevents file descriptor leaks that could exhaust system resources over time.",
+  "technical_constraints": [
+    "Add defer stdout.Close() and defer stderr.Close() after pipe creation"
+  ],
+  "priority_hint": "high"
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "id": "013-standardize-error-handling-in-command-execution",
+  "branch_name": "wreckit/013-standardize-error-handling-in-command-execution",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create CommandResult dataclass with helper methods",
+      "acceptance_criteria": [
+        "CommandResult dataclass is added to tools/auto_prd/command.py",
+        "CommandResult has three fields: stdout: str, stderr: str, exit_code: int",
+        "CommandResult.is_success() returns True when exit_code == 0, False otherwise",
+        "CommandResult.get_error_message() returns stderr.strip() if available, otherwise stdout.strip(), otherwise 'exit code N'",
+        "CommandResult.__iter__() enables tuple unpacking: stdout, stderr, exit_code = result",
+        "Dataclass can be instantiated: CommandResult('out', 'err', 0) works without errors",
+        "Module imports successfully: from tools.auto_prd.command import CommandResult"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the foundation story. Add the dataclass after line 28 in command.py (after imports). Follow existing patterns from TaskResult (worker.py:43-50) and InitResult (initializer.py:32-46)."
+    },
+    {
+      "id": "US-002",
+      "title": "Update run_cmd to return CommandResult",
+      "acceptance_criteria": [
+        "run_cmd() function signature return type changes from -> tuple[str, str, int] to -> CommandResult",
+        "run_cmd() docstring return type is updated to describe CommandResult",
+        "Line 499: Success return returns CommandResult(stdout_text, stderr_text, proc.returncode)",
+        "Line 549: Failure return returns CommandResult(stdout_text, stderr_text, proc.returncode)",
+        "Module imports successfully after changes: from tools.auto_prd.command import run_cmd",
+        "Command with check=False returns CommandResult: result = run_cmd(['echo', 'hello'], check=False)",
+        "Tuple unpacking still works: out, err, code = run_cmd(['echo', 'test'], check=False)",
+        "Named attributes work: result = run_cmd(['echo', 'test'], check=False); print(result.stdout)",
+        "Failure case returns correct exit_code: result = run_cmd(['false'], check=False); assert result.exit_code == 1"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the core change that affects all call sites. The __iter__() method from US-001 ensures backward compatibility. Update lines 360, 397, 499, and 549 in command.py."
+    },
+    {
+      "id": "US-003",
+      "title": "Update run_sh to return CommandResult",
+      "acceptance_criteria": [
+        "run_sh() function signature return type changes from -> tuple[str, str, int] to -> CommandResult",
+        "run_sh() docstring return type mentions CommandResult",
+        "run_sh() correctly returns CommandResult from underlying run_cmd() call",
+        "Module imports successfully after changes: from tools.auto_prd.command import run_sh",
+        "run_sh returns CommandResult: result = run_sh('echo hello', check=False)",
+        "Tuple unpacking still works with run_sh: out, err, code = run_sh('echo test', check=False)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "run_sh is a thin wrapper around run_cmd, so this change should be straightforward. Update lines 598-606 in command.py."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify backward compatibility with comprehensive tests",
+      "acceptance_criteria": [
+        "Import test passes: python -c 'from tools.auto_prd.command import run_cmd, run_sh, CommandResult'",
+        "CommandResult instantiation test passes: result = CommandResult('out', 'err', 0); assert result.stdout == 'out'",
+        "Named attribute access test passes: result = run_cmd(['echo', 'hello'], check=False); assert result.stdout.strip() == 'hello'",
+        "Tuple unpacking test passes: stdout, stderr, exit_code = run_cmd(['echo', 'test'], check=False)",
+        "is_success() test passes: result = run_cmd(['false'], check=False); assert not result.is_success()",
+        "get_error_message() test passes: result = run_cmd(['sh', '-c', 'echo error >&2; exit 1'], check=False); assert 'error' in result.get_error_message()",
+        "run_sh returns CommandResult test passes: result = run_sh('echo hello from zsh', check=False); assert result.is_success()",
+        "Integration test with git operations passes: out, _, _ = run_cmd(['git', 'status', '--porcelain'], cwd=Path.cwd())",
+        "All verification commands complete without exceptions"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Create /tmp/test_command_result.py with the test cases from Phase 4 in plan.md. Run all verification commands to ensure no regressions."
+    },
+    {
+      "id": "US-005",
+      "title": "Optionally migrate high-value call sites to use named attributes",
+      "acceptance_criteria": [
+        "Priority call sites identified: verification.py, rollback.py, git_ops.py, agents.py",
+        "Selected call sites migrated from tuple unpacking to named attributes",
+        "Migrated code uses result.is_success() instead of exit_code == 0",
+        "Migrated code uses result.stdout and result.stderr instead of unpacked variables",
+        "Migrated code still passes all tests",
+        "No behavioral changes in migrated code (only readability improvements)"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "This is OPTIONAL. The implementation is complete after US-004. Only do this if time permits and the value is clear. Start with verification.py:482 as an example migration. Focus on code that becomes significantly more readable with named attributes."
+    }
+  ]
+}

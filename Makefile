@@ -78,7 +78,7 @@ fmt-py:
 # Type checking
 typecheck:
 	@echo "🔎 Running type checks..."
-	cd $(TOOLS_DIR) && $(PYTHON) -m mypy auto_prd/ --ignore-missing-imports
+	cd $(TOOLS_DIR) && $(PYTHON) -m mypy auto_prd/
 
 # Type checking (lenient, for CI rollout)
 typecheck-lenient:

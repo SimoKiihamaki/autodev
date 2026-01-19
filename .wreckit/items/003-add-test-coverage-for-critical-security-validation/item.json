@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "003-add-test-coverage-for-critical-security-validation",
+  "title": "Add test coverage for critical security validation functions",
+  "section": "testing",
+  "state": "implementing",
+  "overview": "Security-critical code paths for shell injection prevention, path traversal prevention, and subprocess spawning are completely untested.\n\n**Motivation:** Untested security code increases vulnerability risk. Comprehensive tests are needed to validate shell metacharacter rejection, path traversal attempts, and control character handling.\n\n**Success criteria:**\n- Test shell metacharacter rejection\n- Test path traversal attempts\n- Test control character handling\n- Test safe command allowlist\n\n**Technical constraints:**\n- Create tools/auto_prd/tests/test_command_safety.py\n- Test all four validation functions thoroughly\n\n**Signals:** priority: critical",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.565Z",
+  "updated_at": "2026-01-19T19:13:55.508Z",
+  "problem_statement": "Security-critical code paths for shell injection prevention, path traversal prevention, and subprocess spawning are completely untested.",
+  "motivation": "Untested security code increases vulnerability risk. Comprehensive tests are needed to validate shell metacharacter rejection, path traversal attempts, and control character handling.",
+  "success_criteria": [
+    "Test shell metacharacter rejection",
+    "Test path traversal attempts",
+    "Test control character handling",
+    "Test safe command allowlist"
+  ],
+  "technical_constraints": [
+    "Create tools/auto_prd/tests/test_command_safety.py",
+    "Test all four validation functions thoroughly"
+  ],
+  "priority_hint": "critical"
+}

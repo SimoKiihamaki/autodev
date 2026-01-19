@@ -204,9 +204,9 @@ def revert_commit(
     cmd.append(sha)
 
     try:
-        out, err, exit_code = run_cmd(cmd, cwd=repo_root, check=False)
-        if exit_code != 0:
-            error_msg = err or out or "Unknown error"
+        result = run_cmd(cmd, cwd=repo_root, check=False)
+        if not result.is_success():
+            error_msg = result.get_error_message()
             return False, f"Failed to revert {sha[:7]}: {error_msg}"
         return True, ""
     except (

@@ -479,17 +479,17 @@ class VerificationProtocol:
         # Try each command until one works
         for cmd in commands:
             try:
-                out, err, exit_code = run_cmd(
+                result = run_cmd(
                     cmd,
                     cwd=self.repo_root,
                     check=False,
                     timeout=self.timeout_seconds,
                 )
-                output = out + ("\n" + err if err else "")
+                output = result.stdout + ("\n" + result.stderr if result.stderr else "")
                 return QualityGateResult(
                     gate=gate_name,
                     requirement=requirement,
-                    passed=(exit_code == 0),
+                    passed=result.is_success(),
                     output=output[:1000],  # Truncate
                 )
             except (subprocess.CalledProcessError, FileNotFoundError):

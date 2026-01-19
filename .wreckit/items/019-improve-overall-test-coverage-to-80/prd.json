@@ -198,7 +198,7 @@
         "All external subprocess calls are mocked"
       ],
       "priority": 3,
-      "status": "pending",
+      "status": "done",
       "notes": "Focus on control flow and decision logic. Mock all external calls (git, gh, subprocess). Test error handling paths."
     },
     {
@@ -214,7 +214,7 @@
         "go test ./internal/runner -v -cover shows ≥80% coverage for runner.go (currently 69.3%)"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "Focus on security validation edge cases. Test all error messages are correct. Test boundary cases (empty arrays, nil values)."
     },
     {
@@ -229,7 +229,7 @@
         "go test ./internal/tui -run '^TestKeys' -v shows ≥70% coverage for all keyboard handlers"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "Add basic tests for all keyboard handlers. Don't test every possible key combination - test representative cases and edge cases."
     },
     {
@@ -244,7 +244,7 @@
         "uv run pytest tests/test_utils.py -v --cov=auto_prd.utils shows ≥90% coverage (currently ~70%)"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "Focus on edge cases that could cause crashes. Test empty strings, nil values, invalid inputs. Ensure graceful error handling."
     },
     {

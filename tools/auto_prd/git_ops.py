@@ -96,23 +96,23 @@ def ensure_gh_alias() -> None:
 
 
 def workspace_has_changes(repo_root: Path) -> bool:
-    out, _, _ = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
-    return bool(out.strip())
+    result = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
+    return bool(result.stdout.strip())
 
 
 def git_status_snapshot(repo_root: Path) -> tuple[str, ...]:
-    out, _, _ = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
-    return tuple(sorted(out.splitlines()))
+    result = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
+    return tuple(sorted(result.stdout.splitlines()))
 
 
 def git_current_branch(repo_root: Path) -> str:
-    out, _, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
-    return out.strip()
+    result = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
+    return result.stdout.strip()
 
 
 def git_head_sha(repo_root: Path) -> str:
-    out, _, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root)
-    return out.strip()
+    result = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root)
+    return result.stdout.strip()
 
 
 def git_branch_exists(repo_root: Path, branch: str) -> bool:

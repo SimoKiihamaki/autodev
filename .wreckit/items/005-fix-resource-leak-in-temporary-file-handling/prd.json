@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "005-fix-resource-leak-in-temporary-file-handling",
+  "branch_name": "wreckit/005-fix-resource-leak-in-temporary-file-handling",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Refactor read_stdin_to_temp_file() to use context manager pattern",
+      "acceptance_criteria": [
+        "Function uses 'with tempfile.NamedTemporaryFile()' context manager",
+        "delete=False is preserved (file must persist for generate_tracker())",
+        "File handle is automatically closed when context exits",
+        "Function signature and return type remain unchanged",
+        "File path is still returned correctly for later use",
+        "Comments document why delete=False is necessary"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the core fix. Wrap the NamedTemporaryFile in a context manager while keeping delete=False. The existing finally block in main() will continue to handle file deletion. Location: tools/generate_tracker.py:135-144"
+    },
+    {
+      "id": "US-002",
+      "title": "Add unit tests for read_stdin_to_temp_file() function",
+      "acceptance_criteria": [
+        "Test successful temp file creation with valid stdin content",
+        "Test that empty input raises ValueError",
+        "Test that whitespace-only input raises ValueError",
+        "Test that file handle is properly closed after function returns",
+        "Test that temp file persists after function returns (delete=False)",
+        "Test multiline content handling",
+        "Test unicode character handling",
+        "All tests use pytest and pass successfully"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Currently no tests exist for this function. Create tools/tests/test_generate_tracker.py with comprehensive test coverage including success cases, error cases, and resource management verification."
+    },
+    {
+      "id": "US-003",
+      "title": "Add integration tests for generate_tracker.py error handling",
+      "acceptance_criteria": [
+        "Test normal flow with stdin input and dry-run mode",
+        "Test error handling with invalid executor argument",
+        "Test error handling with empty input",
+        "Test successful flow with valid PRD content",
+        "Test that temp files are cleaned up when exceptions occur",
+        "Tests use subprocess to test actual script behavior",
+        "All tests pass and verify no temp file leaks"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Create tools/tests/test_generate_tracker_integration.py to verify the full script flow. Tests should verify temp file cleanup in both success and error paths by checking temp directory for leftover files."
+    }
+  ]
+}

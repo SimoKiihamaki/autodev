@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "021-add-comprehensive-api-documentation",
+  "title": "Add comprehensive API documentation",
+  "section": "docs",
+  "state": "idea",
+  "overview": "API components exist but lack documentation, making integration difficult.\n\n**Motivation:** Enables users to understand and integrate with the API effectively.\n\n**Signals:** priority: low",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-01-19T18:40:58.573Z",
+  "updated_at": "2026-01-19T18:40:58.573Z",
+  "problem_statement": "API components exist but lack documentation, making integration difficult.",
+  "motivation": "Enables users to understand and integrate with the API effectively.",
+  "priority_hint": "low"
+}

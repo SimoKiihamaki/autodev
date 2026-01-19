@@ -14,7 +14,7 @@
         "Only documentation changes - no code files modified"
       ],
       "priority": 1,
-      "status": "pending",
+      "status": "done",
       "notes": "This is a documentation correction only. No code changes required. The handler exists and is functional."
     },
     {
@@ -29,7 +29,7 @@
         "Item status updated to 'resolved' with appropriate metadata"
       ],
       "priority": 2,
-      "status": "pending",
+      "status": "done",
       "notes": "Resolution documentation prevents future confusion about why this item was closed without code changes."
     },
     {
@@ -44,7 +44,7 @@
         "No unhandled key warnings for Progress tab actions"
       ],
       "priority": 3,
-      "status": "pending",
+      "status": "done",
       "notes": "Optional verification step to confirm the handler is working as documented. Not required for closing this item since no code changes are being made."
     }
   ]

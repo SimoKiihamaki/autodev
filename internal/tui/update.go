@@ -26,9 +26,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(typed)
 
-	case tea.MouseMsg:
-		return m, nil
-
 	case prdScanMsg:
 		m.prdList.SetItems(typed.items)
 		m.ensureSelectedPRD(typed.items)

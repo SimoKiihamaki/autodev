@@ -23,7 +23,7 @@ Shows live logs from the underlying Python process.
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.23+
 - Python 3.10+ (required for `zip(strict=True)` and modern type hints)
 - CLIs: `codex` (for codex-first|codex-only), `claude` (for claude-only|codex-first), `coderabbit`, `git`, `gh`
 
@@ -62,6 +62,17 @@ In **Settings**, set the executor for each phase:
 
 If left empty, the global **Executor policy** applies.
 This is implemented via env vars: `AUTO_PRD_EXECUTOR_IMPLEMENT|FIX|PR|REVIEW_FIX`.
+
+### Executor Models
+
+In **Settings**, configure the model used for each executor type:
+
+- **Codex model**: Model used when Codex is the executor (e.g., `gpt-5-codex`, `gpt-4-codex`)
+  - Only applies when `Executor policy` is set to `codex-first` or `codex-only`
+  - Can be overridden per-phase using phase executors (e.g., `Exec (review_fix): claude`)
+  - If using `claude-only` policy, this field is ignored
+
+**Note**: Model configuration is executor-specific. If you're using Claude as the executor, the Codex model setting will not apply.
 
 ## Troubleshooting Live Feed
 

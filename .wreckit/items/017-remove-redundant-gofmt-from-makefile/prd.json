@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "017-remove-redundant-gofmt-from-makefile",
+  "branch_name": "wreckit/017-remove-redundant-gofmt-from-makefile",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Remove redundant gofmt command from Makefile fmt-go target",
+      "acceptance_criteria": [
+        "Line 73 (gofmt -w .) is removed from /Users/simo/Projects/autodev/Makefile",
+        "fmt-go target still contains the echo message on line 71",
+        "fmt-go target still contains goimports -w . on line 72",
+        "Makefile syntax is valid (no parse errors when running make)",
+        "make fmt-go executes successfully without errors",
+        "make fmt executes successfully (calls both fmt-go and fmt-py)",
+        "All existing Go tests pass after change: go test ./...",
+        "Go build succeeds: make build"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is a simple single-line removal. The goimports tool already handles formatting internally (using gofmt), so the separate gofmt call provides no additional value. Verified through testing that goimports produces identical formatting output to gofmt."
+    }
+  ]
+}

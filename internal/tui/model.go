@@ -418,7 +418,7 @@ func (m *model) initSettingsInputs() {
 	m.inRepo = mkInput("Repo path", cfg.RepoPath, 60)
 	m.inBase = mkInput("Base branch", cfg.BaseBranch, 20)
 	m.inBranch = mkInput("Feature branch (optional)", cfg.Branch, 30)
-	m.inCodexModel = mkInput("Codex model", cfg.CodexModel, 24)
+	m.inCodexModel = mkInput("Codex model (when Codex executor)", cfg.CodexModel, 24)
 	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
@@ -479,6 +479,13 @@ func (m *model) initSettingsInputs() {
 		"safescriptdirs":    &m.inSafeScriptDirs,
 		"allowedpythondirs": &m.inAllowedPythonDirs,
 	}
+}
+
+// isCodexModelDisabled returns true if CodexModel field is effectively disabled
+// based on executor policy settings.
+func (m *model) isCodexModelDisabled() bool {
+	policy := m.inPolicy.Value()
+	return policy == "claude-only"
 }
 
 func (m *model) initExecutorChoices() {

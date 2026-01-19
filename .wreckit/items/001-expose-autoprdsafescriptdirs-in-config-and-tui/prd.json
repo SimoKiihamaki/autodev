@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "id": "001-expose-autoprdsafescriptdirs-in-config-and-tui",
+  "branch_name": "wreckit/001-expose-autoprdsafescriptdirs-in-config-and-tui",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add SafeScriptDirs field to Config struct",
+      "acceptance_criteria": [
+        "SafeScriptDirs []string field exists in Config struct at internal/config/config.go:127",
+        "Field has YAML tag 'safe_script_dirs'",
+        "Defaults() function returns empty slice for SafeScriptDirs",
+        "LoadWithWarnings() initializes nil SafeScriptDirs to empty slice",
+        "Clone() method creates independent copy of SafeScriptDirs",
+        "Equal() method compares SafeScriptDirs slices",
+        "GetSafeScriptDirs() getter returns defensive copy",
+        "Config file serialization produces 'safe_script_dirs:' YAML key",
+        "Unit tests pass: go test ./internal/config"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Follows existing pattern of AllowedPythonDirs field. No schema migration needed since this is a new optional field."
+    },
+    {
+      "id": "US-002",
+      "title": "Update runner to read SafeScriptDirs from config",
+      "acceptance_criteria": [
+        "resolvedSafeScriptDirs() accepts *config.Config parameter",
+        "Function merges config SafeScriptDirs with environment variable AUTO_PRD_SAFE_SCRIPT_DIRS",
+        "Config paths take precedence over environment variable paths for duplicates",
+        "validatePythonScriptPath() calls resolvedSafeScriptDirs(cfg) with config",
+        "Nil config is handled without panic",
+        "Environment variable only mode works (config nil or empty)",
+        "Config only mode works (env var unset)",
+        "Both config and env var mode works (paths merged)",
+        "No duplicate paths in final resolved list",
+        "Unit tests pass: go test ./internal/runner"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical security feature - must maintain backward compatibility with existing environment variable usage. Merge order: built-in dirs → env var → config (config wins)."
+    },
+    {
+      "id": "US-003",
+      "title": "Add TUI helper functions for path list parsing",
+      "acceptance_criteria": [
+        "joinPaths() function converts []string to path-separated string using os.PathListSeparator",
+        "parsePathList() function splits path-separated string to []string using os.PathListSeparator",
+        "parsePathList() trims whitespace from each path",
+        "parsePathList() filters empty strings from result",
+        "Empty slice returns empty string from joinPaths()",
+        "Empty string returns empty slice from parsePathList()",
+        "Round-trip works: parsePathList(joinPaths(paths)) == paths",
+        "Helper functions work correctly on both Unix (:) and Windows (;)",
+        "Unit tests pass: go test ./internal/tui"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "These helpers are reusable for other string slice fields (e.g., future AllowedPythonDirs TUI exposure). Use os.PathListSeparator for cross-platform compatibility."
+    },
+    {
+      "id": "US-004",
+      "title": "Add SafeScriptDirs input field to TUI model",
+      "acceptance_criteria": [
+        "inSafeScriptDirs textinput.Model field exists in model struct",
+        "Field is initialized in initSettingsInputs() with placeholder showing current config value",
+        "Field is registered in settingsInputs map with key 'safescriptdirs'",
+        "Field is registered in inputFieldAccessors map with get/set functions",
+        "Grid position defined in settingsGrid map at row 13",
+        "focusInput() has case for 'safescriptdirs' key",
+        "blurAllInputs() calls inSafeScriptDirs.Blur()",
+        "Input field width is 80 characters",
+        "Input displays 'Allowed script dirs (path-separated)' as placeholder",
+        "TUI compiles: go build ./internal/tui"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Follow existing pattern of Ralph settings inputs. Place in row 13 after Ralph settings. Use mkInput() helper for consistency."
+    },
+    {
+      "id": "US-005",
+      "title": "Render SafeScriptDirs input in TUI Settings view",
+      "acceptance_criteria": [
+        "renderSecurityGroup() function renders Security group with inSafeScriptDirs",
+        "Security group is called from renderSettingsView() after Ralph group",
+        "Group border shows 'Security' title",
+        "Group border highlights when focused",
+        "Group focus detection includes 'safescriptdirs' key",
+        "Input field is visible in Settings tab",
+        "Input field styling matches other Settings inputs",
+        "Tab navigation reaches the input field",
+        "Input field can be focused and accepts text input",
+        "Visual layout is consistent with existing groups"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Alternative: Add to existing Ralph group if creating new Security group is undesirable. New group recommended for clarity and future extensibility (e.g., AllowedPythonDirs exposure)."
+    },
+    {
+      "id": "US-006",
+      "title": "Parse SafeScriptDirs input in TUI save handler",
+      "acceptance_criteria": [
+        "populateConfigFromInputs() parses inSafeScriptDirs.Value() using parsePathList()",
+        "Parsed []string is assigned to dst.SafeScriptDirs",
+        "Empty input results in empty slice ([]string{})",
+        "Single path is parsed correctly",
+        "Multiple paths separated by os.PathListSeparator are parsed correctly",
+        "Extra whitespace is trimmed from each path",
+        "Extra separators are filtered out (no empty strings in result)",
+        "Paths with spaces are preserved correctly",
+        "Config save writes valid YAML with safe_script_dirs key",
+        "Saved config can be loaded and produces same SafeScriptDirs value"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "No error collection needed for path list parsing since empty list is valid. Unlike numeric fields, path lists don't have invalid input (any string is a valid path)."
+    },
+    {
+      "id": "US-007",
+      "title": "Update error messages to reference TUI Settings",
+      "acceptance_criteria": [
+        "Error messages for script validation mention 'TUI Settings → Security'",
+        "Error messages do not reference raw config file paths as primary option",
+        "Error messages are clear and actionable",
+        "Users understand they can configure allowed dirs via TUI",
+        "No regression in error message clarity",
+        "Any existing 'config.yaml' references in script errors are updated or supplemented with TUI reference"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Lower priority since current script validation may not have user-facing error messages. This is a polish item to improve discoverability. Check if validatePythonScriptPath() returns user-facing errors before implementing."
+    }
+  ]
+}

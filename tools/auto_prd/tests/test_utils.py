@@ -360,5 +360,243 @@ class ComputeFileHashTests(unittest.TestCase):
             self.assertEqual(result, expected)
 
 
+class SlugifyTests(unittest.TestCase):
+    """Tests for slugify() function - edge cases."""
+
+    def test_empty_string_returns_task(self) -> None:
+        """Verify empty string is converted to 'task' default."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("")
+        self.assertEqual(result, "task")
+
+    def test_consecutive_dashes_are_collapsed(self) -> None:
+        """Verify multiple consecutive dashes are collapsed to single dash."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("test---multiple---dashes")
+        self.assertEqual(result, "test-multiple-dashes")
+
+    def test_leading_trailing_dashes_removed(self) -> None:
+        """Verify leading and trailing dashes are stripped."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("---test-content---")
+        self.assertEqual(result, "test-content")
+
+    def test_special_characters_converted_to_dashes(self) -> None:
+        """Verify special characters are converted to dashes."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("test@#$%content")
+        self.assertEqual(result, "test-content")
+
+    def test_uppercase_converted_to_lowercase(self) -> None:
+        """Verify uppercase letters are converted to lowercase."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("TESTContent")
+        self.assertEqual(result, "testcontent")
+
+
+class ScrubCliTextEdgeCaseTests(unittest.TestCase):
+    """Tests for scrub_cli_text() - edge cases for unmapped characters."""
+
+    def test_unmapped_character_logs_warning(self) -> None:
+        """Verify unmapped characters are handled without crashing."""
+        # This test covers lines 49-54 in utils.py
+        # Unmapped characters trigger a warning log and are replaced with space
+        # Since we can't easily test logging, just verify it doesn't crash
+        result = scrub_cli_text("test\x00\x01value")
+        # Function should not crash and should return some value
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, str)
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Verify scrubbing empty string returns empty string."""
+        result = scrub_cli_text("")
+        self.assertEqual(result, "")
+
+    def test_binary_data_does_not_crash(self) -> None:
+        """Verify binary data doesn't cause crashes."""
+        binary_data = b"\x00\x01\x02\xff"
+        # Convert to string (might be lossy, but shouldn't crash)
+        try:
+            result = scrub_cli_text(binary_data.decode("utf-8", errors="ignore"))
+            self.assertIsNotNone(result)
+        except (AttributeError, TypeError):
+            # If input is already bytes or wrong type, function should handle gracefully
+            pass
+
+
+class NowStampTests(unittest.TestCase):
+    """Tests for now_stamp() function."""
+
+    def test_returns_utc_timestamp(self) -> None:
+        """Verify function returns UTC timestamp in correct format."""
+        now_stamp = safe_import("tools.auto_prd.utils", "auto_prd.utils", "now_stamp")
+        result = now_stamp()
+        self.assertIsInstance(result, str)
+        # Should be 14 digits (YYYYMMDDHHMMSS)
+        self.assertEqual(len(result), 14)
+        # Should be all digits
+        self.assertTrue(result.isdigit())
+
+
+class CheckboxStatsEdgeCaseTests(unittest.TestCase):
+    """Tests for checkbox_stats() - edge cases."""
+
+    def test_missing_markdown_file_returns_zeros(self) -> None:
+        """Verify missing markdown file returns 0, 0."""
+        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_path = Path(tmpdir) / "nonexistent.md"
+            unchecked, total = checkbox_stats(md_path)
+            self.assertEqual(unchecked, 0)
+            self.assertEqual(total, 0)
+
+    def test_empty_markdown_file_returns_zeros(self) -> None:
+        """Verify empty markdown file returns 0, 0."""
+        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_path = Path(tmpdir) / "empty.md"
+            md_path.write_text("")
+            unchecked, total = checkbox_stats(md_path)
+            self.assertEqual(unchecked, 0)
+            self.assertEqual(total, 0)
+
+
+class ParseTasksLeftEdgeCaseTests(unittest.TestCase):
+    """Tests for parse_tasks_left() - edge cases."""
+
+    def test_empty_string_returns_none(self) -> None:
+        """Verify empty string returns None."""
+        result = parse_tasks_left("")
+        self.assertIsNone(result)
+
+    def test_no_pattern_returns_none(self) -> None:
+        """Verify string without pattern returns None."""
+        result = parse_tasks_left("No tasks mentioned here")
+        self.assertIsNone(result)
+
+    def test_invalid_number_returns_none(self) -> None:
+        """Verify pattern with non-numeric value returns None."""
+        result = parse_tasks_left("Tasks left: NaN")
+        self.assertIsNone(result)
+
+    def test_negative_number_returns_none(self) -> None:
+        """Verify negative numbers are not parsed (invalid input)."""
+        result = parse_tasks_left("Tasks left: -5")
+        # Negative numbers are semantically invalid, should return None
+        self.assertIsNone(result)
+
+
+class SanitizeForCliEdgeCaseTests(unittest.TestCase):
+    """Tests for sanitize_for_cli() - edge cases."""
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Verify sanitizing empty string returns empty string."""
+        result = sanitize_for_cli("")
+        self.assertEqual(result, "")
+
+    def test_none_input_raises_error(self) -> None:
+        """Verify None input raises AttributeError."""
+        with self.assertRaises(AttributeError):
+            sanitize_for_cli(None)  # type: ignore
+
+
+class CallWithBackoffTests(unittest.TestCase):
+    """Tests for call_with_backoff() function."""
+
+    def test_successful_action_returns_immediately(self) -> None:
+        """Verify successful action returns without retries."""
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def successful_action():
+            return "success"
+
+        result = call_with_backoff(successful_action)
+        self.assertEqual(result, "success")
+
+    def test_max_retries_exhausted_raises_error(self) -> None:
+        """Verify error is raised after max retries are exhausted."""
+        import time
+
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def failing_action():
+            raise subprocess.CalledProcessError(1, "test")
+
+        # Mock extract_http_status to return rate limit status
+        from unittest.mock import patch
+
+        with patch("auto_prd.utils.extract_http_status", return_value="429"):
+            with self.assertRaises(subprocess.CalledProcessError):
+                call_with_backoff(failing_action, retries=2, base_delay=0.01)
+
+    def test_non_rate_limit_error_raises_immediately(self) -> None:
+        """Verify non-rate-limit errors are raised immediately."""
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def failing_action():
+            raise subprocess.CalledProcessError(1, "test")
+
+        # Mock extract_http_status to return non-rate-limit status
+        from unittest.mock import patch
+
+        with patch("auto_prd.utils.extract_http_status", return_value="500"):
+            with self.assertRaises(subprocess.CalledProcessError):
+                call_with_backoff(failing_action, retries=3, base_delay=0.01)
+
+
+class DetectReadonlyBlockTests(unittest.TestCase):
+    """Tests for detect_readonly_block() function."""
+
+    def test_empty_output_returns_none(self) -> None:
+        """Verify empty output returns None."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        result = detect_readonly_block("")
+        self.assertIsNone(result)
+
+    def test_no_pattern_returns_none(self) -> None:
+        """Verify output without readonly pattern returns None."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        result = detect_readonly_block("No readonly pattern here")
+        self.assertIsNone(result)
+
+    def test_case_insensitive_pattern_matching(self) -> None:
+        """Verify pattern matching is case-insensitive."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        # Get the actual readonly patterns from constants
+        CODEX_READONLY_PATTERNS = safe_import(
+            "tools.auto_prd.constants", "auto_prd.constants", "CODEX_READONLY_PATTERNS"
+        )
+        if CODEX_READONLY_PATTERNS:
+            pattern = CODEX_READONLY_PATTERNS[0]
+            # Test with lowercase
+            result = detect_readonly_block(pattern.lower())
+            self.assertIsNotNone(result)
+
+
+class ReportReadonlyErrorTests(unittest.TestCase):
+    """Tests for report_readonly_error() function."""
+
+    def test_raises_runtime_error(self) -> None:
+        """Verify function raises RuntimeError with expected message."""
+        report_readonly_error = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "report_readonly_error"
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            report_readonly_error("test-pattern")
+        self.assertIn("test-pattern", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -300,7 +301,7 @@ func TestStreamWithSlowConsumer(t *testing.T) {
 	// Start streaming in a goroutine - it should encounter backpressure
 	go func() {
 		defer wg.Done()
-		stream(reader, false, logs)
+		stream(context.Background(), reader, false, logs)
 	}()
 
 	// Wait a moment for the stream to process and encounter the full channel
@@ -360,7 +361,7 @@ func TestStreamWithNilChannel(t *testing.T) {
 	input := strings.NewReader("Line 1\nLine 2\nLine 3\n")
 
 	// This should not panic or block
-	stream(input, false, nil)
+	stream(context.Background(), input, false, nil)
 
 	// Since we can't directly verify that content was discarded,
 	// the fact that this returns without blocking is the test
@@ -378,7 +379,7 @@ func TestStreamWithErrorInReader(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		stream(reader, false, logs)
+		stream(context.Background(), reader, false, logs)
 	}()
 
 	// Should receive an error line
@@ -398,6 +399,82 @@ func TestStreamWithErrorInReader(t *testing.T) {
 	close(logs)
 }
 
+func TestOptionsRunCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Create a temporary directory structure
+	repo := t.TempDir()
+	prd := filepath.Join(repo, "prd.json")
+	if err := os.WriteFile(prd, []byte(`{"title":"test","sections":[]}`), 0o644); err != nil {
+		t.Fatalf("write prd: %v", err)
+	}
+
+	// Create a stub Python script that sleeps for a long time
+	script := filepath.Join(repo, "stub.py")
+	stub := fmt.Sprintf(`#!/usr/bin/env python3
+import time
+import sys
+time.sleep(30)  # Sleep long enough to be cancelled
+sys.exit(0)
+`)
+	if err := os.WriteFile(script, []byte(stub), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	cfg := config.Defaults()
+	cfg.RepoPath = repo
+	cfg.PythonScript = script
+	cfg.BaseBranch = "main"
+	cfg.Branch = "branch"
+	cfg.CodexModel = "gpt-5-codex"
+	cfg.ExecutorPolicy = "codex-only"
+	cfg.LogLevel = "info"
+
+	logs := make(chan Line, 64)
+	opts := Options{
+		Config:      cfg,
+		PRDPath:     prd,
+		Logs:        logs,
+		LogFilePath: filepath.Join(repo, "run.log"),
+	}
+
+	// Create a cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- opts.Run(ctx)
+	}()
+
+	// Wait a bit for the process to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancel the context
+	cancel()
+
+	// Should receive cancellation error (not hang)
+	err := <-errCh
+	if err == nil {
+		t.Error("expected error on cancellation, got nil")
+	} else if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+
+	// Drain logs to ensure goroutines finished
+	drainTimeout := time.After(5 * time.Second)
+	drained := false
+	for !drained {
+		select {
+		case _, ok := <-logs:
+			if !ok {
+				drained = true
+			}
+		case <-drainTimeout:
+			t.Fatal("timeout draining logs channel - possible goroutine leak")
+		}
+	}
+}
+
 func TestTrySendWithNilChannel(t *testing.T) {
 	t.Parallel()
 
@@ -415,4 +492,348 @@ type errorReader struct {
 
 func (r *errorReader) Read(p []byte) (n int, err error) {
 	return 0, r.error
+}
+
+func TestIsRegexPattern(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		pattern string
+		want   bool
+	}{
+		{
+			name:   "simple string has no regex",
+			pattern: "hello",
+			want:   false,
+		},
+		{
+			name:   "string with brackets",
+			pattern: "test[123]",
+			want:   true,
+		},
+		{
+			name:   "string with plus",
+			pattern: "test+",
+			want:   true,
+		},
+		{
+			name:   "string with asterisk",
+			pattern: "test*",
+			want:   true,
+		},
+		{
+			name:   "string with parentheses",
+			pattern: "test(foo)",
+			want:   true,
+		},
+		{
+			name:   "string with caret",
+			pattern: "^test",
+			want:   true,
+		},
+		{
+			name:   "string with dollar",
+			pattern: "test$",
+			want:   true,
+		},
+		{
+			name:   "string with question mark",
+			pattern: "test?",
+			want:   true,
+		},
+		{
+			name:   "string with curly braces",
+			pattern: "test{1,3}",
+			want:   true,
+		},
+		{
+			name:   "string with backslash",
+			pattern: "test\\n",
+			want:   true,
+		},
+		{
+			name:   "string with pipe",
+			pattern: "test|foo",
+			want:   true,
+		},
+		{
+			name:   "string with dot (not regex)",
+			pattern: "test.py",
+			want:   false,
+		},
+		{
+			name:   "string with dash (not regex)",
+			pattern: "test-file",
+			want:   false,
+		},
+		{
+			name:   "string with underscore (not regex)",
+			pattern: "test_file",
+			want:   false,
+		},
+		{
+			name:   "empty string",
+			pattern: "",
+			want:   false,
+		},
+		{
+			name:   "complex regex",
+			pattern: "^[a-z]+\\d{2,4}$",
+			want:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isRegexPattern(tc.pattern)
+			if got != tc.want {
+				t.Errorf("isRegexPattern(%q) = %v, want %v", tc.pattern, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidatePythonFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		flags   []string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "disallow -c flag",
+			flags:   []string{"-c", "print('hello')"},
+			wantErr: true,
+			errMsg:  "disallowed Python flag",
+		},
+		{
+			name:    "disallow --command flag",
+			flags:   []string{"--command", "print('hello')"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "disallow -m flag",
+			flags:   []string{"-m", "module"},
+			wantErr: true,
+			errMsg:  "disallowed Python flag",
+		},
+		{
+			name:    "disallow --module flag",
+			flags:   []string{"--module", "module"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "disallow long flag",
+			flags:   []string{"--verbose"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "disallow long flag with value",
+			flags:   []string{"--output", "file.txt"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "disallow -c in grouped flags",
+			flags:   []string{"-ucm"},
+			wantErr: true,
+			errMsg:  "disallowed Python flag in group",
+		},
+		{
+			name:    "disallow -m in grouped flags",
+			flags:   []string{"-ImE"},
+			wantErr: true,
+			errMsg:  "disallowed Python flag in group",
+		},
+		{
+			name:    "disallow unexpected short flag in group",
+			flags:   []string{"-uxz"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "allow -u flag",
+			flags:   []string{"-u"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -E flag",
+			flags:   []string{"-E"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -I flag",
+			flags:   []string{"-I"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -s flag",
+			flags:   []string{"-s"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -B flag",
+			flags:   []string{"-B"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -O flag",
+			flags:   []string{"-O"},
+			wantErr: false,
+		},
+		{
+			name:    "disallow -OO flag (treated as grouped)",
+			flags:   []string{"-OO"},
+			wantErr: true,
+			errMsg:  "unexpected short flag in group",
+		},
+		{
+			name:    "allow grouped safe flags",
+			flags:   []string{"-uE", "-IEs", "-uB"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -X dev",
+			flags:   []string{"-X", "dev"},
+			wantErr: false,
+		},
+		{
+			name:    "disallow -X without argument",
+			flags:   []string{"-X"},
+			wantErr: true,
+			errMsg:  "flag -X requires an option argument",
+		},
+		{
+			name:    "disallow -X with invalid argument",
+			flags:   []string{"-X", "unsafe"},
+			wantErr: true,
+			errMsg:  "disallowed argument to -X",
+		},
+		{
+			name:    "disallow -X with other valid argument",
+			flags:   []string{"-X", "utf8"},
+			wantErr: true,
+			errMsg:  "disallowed argument to -X",
+		},
+		{
+			name:    "allow -W flag without argument",
+			flags:   []string{"-W"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -W flag with argument",
+			flags:   []string{"-W", "ignore"},
+			wantErr: false,
+		},
+		{
+			name:    "allow -W followed by another flag",
+			flags:   []string{"-W", "-u"},
+			wantErr: false,
+		},
+		{
+			name:    "allow multiple safe flags",
+			flags:   []string{"-u", "-E", "-I", "-s", "-B"},
+			wantErr: false,
+		},
+		{
+			name:    "allow combination of -X dev and other flags",
+			flags:   []string{"-u", "-X", "dev", "-E"},
+			wantErr: false,
+		},
+		{
+			name:    "disallow unexpected flag",
+			flags:   []string{"-z"},
+			wantErr: true,
+			errMsg:  "unexpected flag",
+		},
+		{
+			name:    "disallow single dash without flag",
+			flags:   []string{"-"},
+			wantErr: true,
+			errMsg:  "unexpected flag",
+		},
+		{
+			name:    "allow empty flag list",
+			flags:   []string{},
+			wantErr: false,
+		},
+		{
+			name:    "allow optimization flag with -X dev (but not -OO)",
+			flags:   []string{"-O", "-X", "dev"},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidatePythonFlagsForTest(tc.flags)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("ValidatePythonFlagsForTest(%v) expected error containing %q, got nil", tc.flags, tc.errMsg)
+				} else if !strings.Contains(err.Error(), tc.errMsg) {
+					t.Errorf("ValidatePythonFlagsForTest(%v) error = %q, want to contain %q", tc.flags, err.Error(), tc.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ValidatePythonFlagsForTest(%v) unexpected error: %v", tc.flags, err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidatePythonFlagsEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil slice", func(t *testing.T) {
+		t.Parallel()
+		err := ValidatePythonFlagsForTest(nil)
+		if err != nil {
+			t.Errorf("ValidatePythonFlagsForTest(nil) unexpected error: %v", err)
+		}
+	})
+
+	t.Run("flag with value starting with dash", func(t *testing.T) {
+		t.Parallel()
+		// -W with a value that looks like a flag
+		err := ValidatePythonFlagsForTest([]string{"-W", "-u"})
+		if err != nil {
+			t.Errorf("ValidatePythonFlagsForTest([-W -u]) unexpected error: %v", err)
+		}
+	})
+
+	t.Run("grouped flag with only safe chars", func(t *testing.T) {
+		t.Parallel()
+		err := ValidatePythonFlagsForTest([]string{"-uIsB"})
+		if err != nil {
+			t.Errorf("ValidatePythonFlagsForTest([-uIsB]) unexpected error: %v", err)
+		}
+	})
+
+	t.Run("multiple -X flags", func(t *testing.T) {
+		t.Parallel()
+		// First -X dev is valid, second -X is an unexpected flag (not preceded by -X)
+		err := ValidatePythonFlagsForTest([]string{"-X", "dev", "-X"})
+		// -X without argument should fail
+		if err == nil {
+			t.Error("ValidatePythonFlagsForTest([-X dev -X]) expected error, got nil")
+		}
+	})
+
+	t.Run("complex valid combination", func(t *testing.T) {
+		t.Parallel()
+		// A complex but valid combination
+		err := ValidatePythonFlagsForTest([]string{"-u", "-E", "-I", "-X", "dev", "-O", "-W", "ignore", "-B"})
+		if err != nil {
+			t.Errorf("ValidatePythonFlagsForTest(complex) unexpected error: %v", err)
+		}
+	})
 }

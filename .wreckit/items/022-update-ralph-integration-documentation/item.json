@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "022-update-ralph-integration-documentation",
+  "title": "Update Ralph Integration documentation",
+  "section": "docs",
+  "state": "idea",
+  "overview": "Incomplete documentation makes Ralph mode features difficult to understand and use.\n\n**Motivation:** Ensures users can effectively utilize Ralph mode capabilities.\n\n**Signals:** priority: low",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-01-19T18:40:58.574Z",
+  "updated_at": "2026-01-19T18:40:58.574Z",
+  "problem_statement": "Incomplete documentation makes Ralph mode features difficult to understand and use.",
+  "motivation": "Ensures users can effectively utilize Ralph mode capabilities.",
+  "priority_hint": "low"
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "id": "008-fix-race-condition-in-process-cancellation",
+  "branch_name": "wreckit/008-fix-race-condition-in-process-cancellation",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Update stream() function to accept context parameter",
+      "acceptance_criteria": [
+        "stream() function signature includes ctx context.Context as first parameter",
+        "stream() function checks ctx.Done() before processing each line in the scanning loop",
+        "Context check uses select statement with default case to avoid blocking",
+        "Nil logs channel handling remains unchanged",
+        "Buffer pool usage remains unchanged",
+        "Backpressure and dropping logic remains unchanged",
+        "All existing tests that call stream() are updated to pass context"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the foundation for the fix - without context awareness in stream(), the errgroup cancellation cannot propagate to the streaming goroutines. The select pattern must be: select { case <-ctx.Done(): return; default: // continue processing }"
+    },
+    {
+      "id": "US-002",
+      "title": "Replace errgroup.Group with errgroup.WithContext",
+      "acceptance_criteria": [
+        "Line 1094 changes from 'g := new(errgroup.Group)' to 'g, ctx := errgroup.WithContext(ctx)'",
+        "Comment at line 1092-1093 is updated to reflect that errgroup context is now used for cancellation",
+        "The returned ctx from errgroup.WithContext shadows the parameter ctx (intentional)",
+        "Stream goroutines are updated to pass the new ctx to stream() calls",
+        "Code compiles without errors",
+        "All existing tests pass"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The shadowing of ctx is intentional and correct Go practice - all goroutines should use the errgroup's context which cancels when any goroutine returns an error. This is the core fix for the race condition."
+    },
+    {
+      "id": "US-003",
+      "title": "Move process wait goroutine into errgroup",
+      "acceptance_criteria": [
+        "waitCh pattern is removed (lines 1104-1105)",
+        "cmd.Wait() is added as a third goroutine in the errgroup via g.Go()",
+        "New errCh pattern is created to wait for g.Wait() completion",
+        "Select block updated to listen on errCh instead of waitCh",
+        "g.Wait() is called only once in a separate goroutine, not inline",
+        "Cancellation path (ctx.Done() case) handles process interrupt/kill and waits for errCh",
+        "Normal completion path (errCh case) handles process completion",
+        "Both paths call sendLine and closeLogs appropriately",
+        "Error messages preserve original wording",
+        "2-second timeout for force kill is preserved"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "This unifies all three goroutines (stdout, stderr, wait) under the errgroup for consistent cancellation handling. The errCh pattern is necessary because we can't call g.Wait() inline in the select block - it would block. Instead, we wait for g.Wait() in a goroutine and select on the result channel."
+    },
+    {
+      "id": "US-004",
+      "title": "Update unit tests to use cancellable contexts",
+      "acceptance_criteria": [
+        "TestStreamWithSlowConsumer updated to pass context to stream()",
+        "TestStreamWithNilChannel updated to pass context.Background() to stream()",
+        "TestStreamWithErrorInReader updated to pass context to stream()",
+        "New test TestOptionsRunCancellation added that verifies Options.Run cancels cleanly",
+        "Cancellation test creates a cancellable context, starts a subprocess, then cancels",
+        "Cancellation test verifies context.Canceled error is returned",
+        "Cancellation test verifies no goroutine leaks",
+        "All tests pass with 'make test-go'",
+        "Race detector passes with 'make test-go-race'"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Tests are critical to verify the race condition is fixed. The new cancellation test specifically targets the race condition scenario - cancelling while streams are active. The race detector is essential to confirm there are no remaining race conditions."
+    },
+    {
+      "id": "US-005",
+      "title": "Manual testing and verification",
+      "acceptance_criteria": [
+        "Build succeeds with 'make build'",
+        "No lint errors with 'make lint-go'",
+        "TUI cancellation tested: Start a run, press 'q' to cancel, verify clean exit",
+        "API server shutdown tested: Start server, send SIGINT, verify clean shutdown",
+        "Normal completion tested: Run a simple PRD to completion without errors",
+        "Long-running cancellation tested: Start a long-running process, cancel mid-stream, verify no hang",
+        "Code review completed by another developer",
+        "Documentation updated if necessary"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Manual testing is essential because the race condition is timing-dependent and may not always manifest in automated tests. TUI cancellation is the primary user-facing scenario where this bug would occur. The 2-second graceful shutdown should be observable during manual testing."
+    }
+  ]
+}

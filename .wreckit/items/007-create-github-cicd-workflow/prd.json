@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "id": "007-create-github-cicd-workflow",
+  "branch_name": "wreckit/007-create-github-cicd-workflow",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create GitHub Actions workflow directory and CI configuration file",
+      "acceptance_criteria": [
+        "File .github/workflows/ci.yml exists in the repository",
+        "Workflow file is valid YAML with no syntax errors",
+        "Workflow name is 'CI' as specified in the configuration",
+        "Workflow triggers on push to master branch",
+        "Workflow triggers on pull_request to master branch",
+        "Workflow uses ubuntu-latest as the runner",
+        "Workflow uses actions/setup-go@v5 with Go version 1.23",
+        "Workflow uses actions/setup-python@v5 with Python version 3.11"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the foundational user story - without the workflow file, no automation can occur. The workflow structure follows GitHub Actions best practices with sequential steps in a single job."
+    },
+    {
+      "id": "US-002",
+      "title": "Configure Go toolchain and install Go dependencies",
+      "acceptance_criteria": [
+        "Go 1.23 is installed and available in the PATH",
+        "golangci-lint is installed via 'go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest'",
+        "goimports is installed via 'go install golang.org/x/tools/cmd/goimports@latest'",
+        "Both tools are accessible and can be executed by subsequent steps",
+        "Go installation matches the version specified in go.mod:3 (1.23.0 requirement)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Go tools must be installed before running make ci, as the Makefile depends on golangci-lint and goimports. These tools are not pre-installed on GitHub Actions runners."
+    },
+    {
+      "id": "US-003",
+      "title": "Configure Python environment and install Python dependencies",
+      "acceptance_criteria": [
+        "Python 3.11 is installed and available in the PATH",
+        "uv package manager is installed via pip",
+        "uv sync is run from the tools/ directory successfully",
+        "Python dependencies from tools/auto_prd/pyproject.toml are installed",
+        "Virtual environment is created and activated for tool usage"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Python tests and linting require the virtual environment with dependencies. The uv sync command creates the .venv directory and installs all project dependencies including ruff, mypy, and pytest."
+    },
+    {
+      "id": "US-004",
+      "title": "Execute complete CI pipeline via make ci command",
+      "acceptance_criteria": [
+        "make ci command runs successfully from repository root",
+        "All linting checks pass (make lint-go and make lint-py)",
+        "All Go tests pass (make test-go)",
+        "Race detector tests pass (make test-go-race)",
+        "Type checking runs in lenient mode (make typecheck-lenient)",
+        "Workflow shows final success status with all green checkmarks",
+        "Total CI execution completes in under 10 minutes"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "The make ci target orchestrates all checks. This is the final step that validates the entire codebase. The typecheck-lenient target uses '|| true' to avoid blocking during rollout, as documented in Makefile:87."
+    },
+    {
+      "id": "US-005",
+      "title": "Verify CI workflow triggers and executes on actual GitHub repository",
+      "acceptance_criteria": [
+        "Push to wreckit/007-create-github-cicd-workflow branch triggers the workflow",
+        "Workflow appears in GitHub Actions tab with all steps visible",
+        "All workflow steps complete successfully",
+        "Pull request created to master branch shows CI checks in PR validation",
+        "CI checks show as passed in the pull request interface",
+        "Workflow logs are accessible and show make ci output"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "This is the integration testing story - validating that the workflow not only exists but actually works in the real GitHub environment. This requires pushing the actual workflow file to GitHub and observing the results."
+    }
+  ]
+}
