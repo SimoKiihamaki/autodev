@@ -398,13 +398,12 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
             if not issues and not warnings:
                 print("✓ Support review clean (no issues detected).", flush=True)
 
-            state.iteration = iteration + 1
+            iteration += 1
+            state.iteration = iteration
             state.last_reviewed_sha = current_sha
             state.last_reviewed_prd_hash = current_prd_hash
             state.last_reviewed_at = datetime.now(timezone.utc).isoformat()
             save_support_state(repo_root, state)
-
-            iteration += 1
             time.sleep(poll_seconds)
         except KeyboardInterrupt:
             print("\nSupport mode stopped.", flush=True)

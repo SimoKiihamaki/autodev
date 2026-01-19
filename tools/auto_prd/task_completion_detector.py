@@ -9,8 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .git_ops import git_head_sha, git_status_snapshot
-from .tracker_generator import load_tracker
 
 # Minimum confidence threshold for considering a task as completed
 MIN_COMPLETION_CONFIDENCE = 0.5
