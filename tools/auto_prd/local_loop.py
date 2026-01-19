@@ -79,9 +79,6 @@ IMPL_RETRY_BACKOFF_BASE = 10
 # 139: Segmentation fault (SIGSEGV)
 NON_RETRYABLE_EXIT_CODES = frozenset({126, 127, 137, 139})
 
-# Task completion detection state
-TRACKER_VALIDATION_INTERVAL = 5  # Validate tracker every N iterations
-
 
 def sanitize_session_id(stem: str) -> str:
     r"""Sanitize a PRD stem to be safe for use as a session_id.

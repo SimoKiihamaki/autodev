@@ -82,7 +82,8 @@ def _collect_tracker_text(tracker: dict[str, Any]) -> list[str]:
             val = feature.get(key)
             if isinstance(val, str) and val.strip():
                 texts.append(val)
-        for task in feature.get("tasks", []):
+        # Coerce tasks to list to handle malformed "tasks": null entries
+        for task in feature.get("tasks") or []:
             desc = task.get("description")
             if isinstance(desc, str) and desc.strip():
                 texts.append(desc)
@@ -166,162 +167,179 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                 valid, errors = validate_tracker(tracker)
                 if not valid:
                     issues.extend(errors)
+                    # Short-circuit: don't process tracker structure if validation failed
+                    # The tracker may have malformed data (e.g., "tasks": null) that would
+                    # cause TypeError when aggregating task counts
+                else:
+                    state_issues = validate_tracker_state(tracker)
+                    warnings.extend(state_issues)
 
-                state_issues = validate_tracker_state(tracker)
-                warnings.extend(state_issues)
+                    # Coerce tasks to list in case of malformed "tasks": null entries
+                    features = [
+                        {**f, "tasks": f.get("tasks") or []}
+                        for f in tracker.get("features", [])
+                        if isinstance(f, dict)
+                    ]
+                    total_features = len(features)
+                    total_tasks = sum(len(f.get("tasks", [])) for f in features)
+                    completed_tasks = sum(
+                        1
+                        for f in features
+                        for t in f.get("tasks", [])
+                        if t.get("status") == "completed"
+                    )
+                    tasks_left = total_tasks - completed_tasks
+                    print(f"TASKS_LEFT={tasks_left}", flush=True)
 
-                features = tracker.get("features", [])
-                total_features = len(features)
-                total_tasks = sum(len(f.get("tasks", [])) for f in features)
-                completed_tasks = sum(
-                    1
-                    for f in features
-                    for t in f.get("tasks", [])
-                    if t.get("status") == "completed"
-                )
-                tasks_left = total_tasks - completed_tasks
-                print(f"TASKS_LEFT={tasks_left}", flush=True)
-
-                info.append(
-                    f"Tracker: {total_features} features, {total_tasks} tasks "
-                    f"({completed_tasks} completed)"
-                )
-
-                summary = tracker.get("validation_summary", {})
-                if summary:
-                    expected_features = summary.get("total_features")
-                    expected_tasks = summary.get("total_tasks")
-                    if (
-                        isinstance(expected_features, int)
-                        and expected_features != total_features
-                    ):
-                        warnings.append(
-                            f"validation_summary.total_features={expected_features} but tracker has {total_features} feature(s)."
-                        )
-                    if (
-                        isinstance(expected_tasks, int)
-                        and expected_tasks != total_tasks
-                    ):
-                        warnings.append(
-                            f"validation_summary.total_tasks={expected_tasks} but tracker has {total_tasks} task(s)."
-                        )
-
-                stored_hash = tracker.get("metadata", {}).get("prd_hash", "")
-                if stored_hash and current_prd_hash and stored_hash != current_prd_hash:
-                    warnings.append(
-                        "PRD content hash differs from tracker metadata; scope may have drifted."
+                    info.append(
+                        f"Tracker: {total_features} features, {total_tasks} tasks "
+                        f"({completed_tasks} completed)"
                     )
 
-                stored_source = tracker.get("metadata", {}).get("prd_source", "")
-                if stored_source and prd_path and stored_source != str(prd_path):
-                    warnings.append(
-                        f"Tracker prd_source='{stored_source}' does not match selected PRD '{prd_path}'."
-                    )
+                    summary = tracker.get("validation_summary", {})
+                    if summary:
+                        expected_features = summary.get("total_features")
+                        expected_tasks = summary.get("total_tasks")
+                        if (
+                            isinstance(expected_features, int)
+                            and expected_features != total_features
+                        ):
+                            warnings.append(
+                                f"validation_summary.total_features={expected_features} but tracker has {total_features} feature(s)."
+                            )
+                        if (
+                            isinstance(expected_tasks, int)
+                            and expected_tasks != total_tasks
+                        ):
+                            warnings.append(
+                                f"validation_summary.total_tasks={expected_tasks} but tracker has {total_tasks} task(s)."
+                            )
 
-                feature_by_id = {f.get("id"): f for f in features}
-                for feature in features:
-                    feature_id = feature.get("id", "?")
-                    deps = feature.get("dependencies", []) or []
-                    if deps:
-                        unresolved = []
-                        missing = []
-                        for dep in deps:
-                            dep_feature = feature_by_id.get(dep)
-                            if not dep_feature:
-                                missing.append(dep)
-                                continue
-                            if dep_feature.get("status") not in (
+                    stored_hash = tracker.get("metadata", {}).get("prd_hash", "")
+                    if (
+                        stored_hash
+                        and current_prd_hash
+                        and stored_hash != current_prd_hash
+                    ):
+                        warnings.append(
+                            "PRD content hash differs from tracker metadata; scope may have drifted."
+                        )
+
+                    stored_source = tracker.get("metadata", {}).get("prd_source", "")
+                    if stored_source and prd_path and stored_source != str(prd_path):
+                        warnings.append(
+                            f"Tracker prd_source='{stored_source}' does not match selected PRD '{prd_path}'."
+                        )
+
+                    feature_by_id = {f.get("id"): f for f in features}
+                    for feature in features:
+                        feature_id = feature.get("id", "?")
+                        deps = feature.get("dependencies", []) or []
+                        if deps:
+                            unresolved = []
+                            missing = []
+                            for dep in deps:
+                                dep_feature = feature_by_id.get(dep)
+                                if not dep_feature:
+                                    missing.append(dep)
+                                    continue
+                                if dep_feature.get("status") not in (
+                                    "completed",
+                                    "verified",
+                                ):
+                                    unresolved.append(dep)
+                            if missing:
+                                warnings.append(
+                                    f"Feature {feature_id} depends on missing feature(s): {', '.join(missing)}."
+                                )
+                            if unresolved and feature.get("status") in (
+                                "in_progress",
                                 "completed",
                                 "verified",
                             ):
-                                unresolved.append(dep)
-                        if missing:
-                            warnings.append(
-                                f"Feature {feature_id} depends on missing feature(s): {', '.join(missing)}."
-                            )
-                        if unresolved and feature.get("status") in (
-                            "in_progress",
-                            "completed",
-                            "verified",
-                        ):
-                            warnings.append(
-                                f"Feature {feature_id} is {feature.get('status')} but dependencies incomplete: {', '.join(unresolved)}."
-                            )
+                                warnings.append(
+                                    f"Feature {feature_id} is {feature.get('status')} but dependencies incomplete: {', '.join(unresolved)}."
+                                )
 
-                    criteria = feature.get("acceptance_criteria", []) or []
-                    if not criteria:
-                        warnings.append(
-                            f"Feature {feature_id} has no acceptance criteria."
-                        )
-                    else:
-                        seen = set()
-                        dupes = 0
-                        for criterion in criteria:
-                            text = criterion.get("criterion", "")
-                            key = _normalize_text(text)
-                            if key:
-                                if key in seen:
-                                    dupes += 1
-                                else:
-                                    seen.add(key)
-                        if dupes:
+                        criteria = feature.get("acceptance_criteria", []) or []
+                        if not criteria:
                             warnings.append(
-                                f"Feature {feature_id} has {dupes} duplicate acceptance criteria entries."
+                                f"Feature {feature_id} has no acceptance criteria."
                             )
+                        else:
+                            seen = set()
+                            dupes = 0
+                            for criterion in criteria:
+                                text = criterion.get("criterion", "")
+                                key = _normalize_text(text)
+                                if key:
+                                    if key in seen:
+                                        dupes += 1
+                                    else:
+                                        seen.add(key)
+                            if dupes:
+                                warnings.append(
+                                    f"Feature {feature_id} has {dupes} duplicate acceptance criteria entries."
+                                )
 
-                    if feature.get("status") in ("completed", "verified"):
-                        pending = [
-                            c
-                            for c in criteria
-                            if c.get("status", "pending") != "passed"
-                        ]
-                        if pending:
-                            warnings.append(
-                                f"Feature {feature_id} marked {feature.get('status')} but {len(pending)} acceptance criteria are not passed."
-                            )
+                        if feature.get("status") in ("completed", "verified"):
+                            pending = [
+                                c
+                                for c in criteria
+                                if c.get("status", "pending") != "passed"
+                            ]
+                            if pending:
+                                warnings.append(
+                                    f"Feature {feature_id} marked {feature.get('status')} but {len(pending)} acceptance criteria are not passed."
+                                )
 
-                    for task in feature.get("tasks", []):
-                        task_id = task.get("id", "?")
-                        status = task.get("status", "")
-                        blockers = task.get("blockers") or []
-                        if status == "blocked" and not blockers:
-                            warnings.append(
-                                f"Task {task_id} is blocked but has no blockers listed."
-                            )
-                        if status != "blocked" and blockers:
-                            warnings.append(
-                                f"Task {task_id} has blockers but status is {status}."
-                            )
-                        if status == "completed" and not task.get("completed_at"):
-                            warnings.append(
-                                f"Task {task_id} completed without completed_at timestamp."
-                            )
+                        for task in feature.get("tasks", []):
+                            task_id = task.get("id", "?")
+                            status = task.get("status", "")
+                            blockers = task.get("blockers") or []
+                            if status == "blocked" and not blockers:
+                                warnings.append(
+                                    f"Task {task_id} is blocked but has no blockers listed."
+                                )
+                            if status != "blocked" and blockers:
+                                warnings.append(
+                                    f"Task {task_id} has blockers but status is {status}."
+                                )
+                            if status == "completed" and not task.get("completed_at"):
+                                warnings.append(
+                                    f"Task {task_id} completed without completed_at timestamp."
+                                )
 
                 if prd_path.exists():
                     prd_content = prd_path.read_text(encoding="utf-8", errors="ignore")
                     checkboxes = _extract_prd_checkboxes(prd_content)
                     if checkboxes:
-                        tracker_texts = [
-                            _normalize_text(t) for t in _collect_tracker_text(tracker)
-                        ]
-                        missing = []
-                        for item in checkboxes:
-                            normalized = _normalize_text(item)
-                            if not normalized:
-                                continue
-                            covered = any(
-                                normalized in t or t in normalized
-                                for t in tracker_texts
-                            )
-                            if not covered:
-                                missing.append(item)
-                        if missing:
-                            suggestion_lines, extra = _limit(missing)
-                            suggestions.append(
-                                "PRD checkbox items not represented in tracker tasks: "
-                                + "; ".join(suggestion_lines)
-                                + (f" (and {extra} more)" if extra else "")
-                            )
+                        # Only compare PRD checkboxes with tracker if tracker is valid
+                        # If tracker has malformed structure (e.g., tasks: null),
+                        # _collect_tracker_text would crash with TypeError
+                        if valid:
+                            tracker_texts = [
+                                _normalize_text(t)
+                                for t in _collect_tracker_text(tracker)
+                            ]
+                            missing = []
+                            for item in checkboxes:
+                                normalized = _normalize_text(item)
+                                if not normalized:
+                                    continue
+                                covered = any(
+                                    normalized in t or t in normalized
+                                    for t in tracker_texts
+                                )
+                                if not covered:
+                                    missing.append(item)
+                            if missing:
+                                suggestion_lines, extra = _limit(missing)
+                                suggestions.append(
+                                    "PRD checkbox items not represented in tracker tasks: "
+                                    + "; ".join(suggestion_lines)
+                                    + (f" (and {extra} more)" if extra else "")
+                                )
 
             try:
                 diff_out, _, _ = run_cmd(
