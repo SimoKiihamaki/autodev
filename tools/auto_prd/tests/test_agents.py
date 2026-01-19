@@ -10,40 +10,40 @@ from unittest.mock import MagicMock, patch
 from .test_helpers import safe_import
 
 # Import the agents module and functions we need to test
-agents = safe_import("tools.auto_prd.agents", "..agents")
+agents = safe_import("tools.auto_prd.agents", "auto_prd.agents")
 _timeout_from_env = safe_import(
-    "tools.auto_prd.agents", "..agents", "_timeout_from_env"
+    "tools.auto_prd.agents", "auto_prd.agents", "_timeout_from_env"
 )
 get_codex_exec_timeout = safe_import(
-    "tools.auto_prd.agents", "..agents", "get_codex_exec_timeout"
+    "tools.auto_prd.agents", "auto_prd.agents", "get_codex_exec_timeout"
 )
 get_claude_exec_timeout = safe_import(
-    "tools.auto_prd.agents", "..agents", "get_claude_exec_timeout"
+    "tools.auto_prd.agents", "auto_prd.agents", "get_claude_exec_timeout"
 )
 DEFAULT_CLAUDE_TIMEOUT_SECONDS = safe_import(
-    "tools.auto_prd.agents", "..agents", "DEFAULT_CLAUDE_TIMEOUT_SECONDS"
+    "tools.auto_prd.agents", "auto_prd.agents", "DEFAULT_CLAUDE_TIMEOUT_SECONDS"
 )
 claude_exec_streaming = safe_import(
-    "tools.auto_prd.agents", "..agents", "claude_exec_streaming"
+    "tools.auto_prd.agents", "auto_prd.agents", "claude_exec_streaming"
 )
-_process_buffer = safe_import("tools.auto_prd.agents", "..agents", "_process_buffer")
+_process_buffer = safe_import("tools.auto_prd.agents", "auto_prd.agents", "_process_buffer")
 _drain_fds_best_effort = safe_import(
-    "tools.auto_prd.agents", "..agents", "_drain_fds_best_effort"
+    "tools.auto_prd.agents", "auto_prd.agents", "_drain_fds_best_effort"
 )
 _resolve_unsafe_flag = safe_import(
-    "tools.auto_prd.agents", "..agents", "_resolve_unsafe_flag"
+    "tools.auto_prd.agents", "auto_prd.agents", "_resolve_unsafe_flag"
 )
 _build_claude_args = safe_import(
-    "tools.auto_prd.agents", "..agents", "_build_claude_args"
+    "tools.auto_prd.agents", "auto_prd.agents", "_build_claude_args"
 )
 ClaudeHeadlessResponse = safe_import(
-    "tools.auto_prd.agents", "..agents", "ClaudeHeadlessResponse"
+    "tools.auto_prd.agents", "auto_prd.agents", "ClaudeHeadlessResponse"
 )
 parse_claude_json_response = safe_import(
-    "tools.auto_prd.agents", "..agents", "parse_claude_json_response"
+    "tools.auto_prd.agents", "auto_prd.agents", "parse_claude_json_response"
 )
 register_safe_cwd = safe_import(
-    "tools.auto_prd.command", "..command", "register_safe_cwd"
+    "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
 )
 
 

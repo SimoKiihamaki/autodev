@@ -17,22 +17,22 @@ def get_expected_repo_root() -> Path:
 
 
 CLAUDE_DEBUG_LOG_NAME = safe_import(
-    "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
+    "tools.auto_prd.command", "auto_prd.command", "CLAUDE_DEBUG_LOG_NAME"
 )
 ensure_claude_debug_dir = safe_import(
-    "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
+    "tools.auto_prd.command", "auto_prd.command", "ensure_claude_debug_dir"
 )
-run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
+run_cmd = safe_import("tools.auto_prd.command", "auto_prd.command", "run_cmd")
 validate_command_args = safe_import(
-    "tools.auto_prd.command", "..command", "validate_command_args"
+    "tools.auto_prd.command", "auto_prd.command", "validate_command_args"
 )
-validate_cwd = safe_import("tools.auto_prd.command", "..command", "validate_cwd")
+validate_cwd = safe_import("tools.auto_prd.command", "auto_prd.command", "validate_cwd")
 register_safe_cwd = safe_import(
-    "tools.auto_prd.command", "..command", "register_safe_cwd"
+    "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
 )
-popen_streaming = safe_import("tools.auto_prd.command", "..command", "popen_streaming")
-scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
-open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
+popen_streaming = safe_import("tools.auto_prd.command", "auto_prd.command", "popen_streaming")
+scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
+open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "auto_prd.pr_flow", "open_or_get_pr")
 
 
 class ScrubCliTextTests(TestCase):

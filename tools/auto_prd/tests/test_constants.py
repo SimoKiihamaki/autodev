@@ -6,10 +6,10 @@ from .test_helpers import safe_import
 
 # Import the constants module and functions we need to test
 get_tool_allowlist = safe_import(
-    "tools.auto_prd.constants", "..constants", "get_tool_allowlist"
+    "tools.auto_prd.constants", "auto_prd.constants", "get_tool_allowlist"
 )
 HEADLESS_TOOL_ALLOWLISTS = safe_import(
-    "tools.auto_prd.constants", "..constants", "HEADLESS_TOOL_ALLOWLISTS"
+    "tools.auto_prd.constants", "auto_prd.constants", "HEADLESS_TOOL_ALLOWLISTS"
 )
 
 

@@ -11,7 +11,7 @@ from unittest import TestCase, main, mock
 
 from .test_helpers import safe_import
 
-_is_path_within = safe_import("tools.auto_prd.app", "..app", "_is_path_within")
+_is_path_within = safe_import("tools.auto_prd.app", "auto_prd.app", "_is_path_within")
 
 
 class IsPathWithinTests(TestCase):

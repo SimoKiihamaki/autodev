@@ -6,26 +6,24 @@ from pathlib import Path
 from .test_helpers import safe_import
 
 CLI_ARG_REPLACEMENTS = safe_import(
-    "tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS"
+    "tools.auto_prd.constants", "auto_prd.constants", "CLI_ARG_REPLACEMENTS"
 )
 UNSAFE_ARG_CHARS = safe_import(
-    "tools.auto_prd.constants", "..constants", "UNSAFE_ARG_CHARS"
+    "tools.auto_prd.constants", "auto_prd.constants", "UNSAFE_ARG_CHARS"
 )
-compute_file_hash = safe_import(
-    "tools.auto_prd.utils", "..utils", "compute_file_hash"
-)
+compute_file_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "compute_file_hash")
 extract_called_process_error_details = safe_import(
-    "tools.auto_prd.utils", "..utils", "extract_called_process_error_details"
+    "tools.auto_prd.utils", "auto_prd.utils", "extract_called_process_error_details"
 )
 extract_http_status = safe_import(
-    "tools.auto_prd.utils", "..utils", "extract_http_status"
+    "tools.auto_prd.utils", "auto_prd.utils", "extract_http_status"
 )
-get_prd_hash = safe_import("tools.auto_prd.utils", "..utils", "get_prd_hash")
-is_valid_int = safe_import("tools.auto_prd.utils", "..utils", "is_valid_int")
-is_valid_numeric = safe_import("tools.auto_prd.utils", "..utils", "is_valid_numeric")
-parse_tasks_left = safe_import("tools.auto_prd.utils", "..utils", "parse_tasks_left")
-sanitize_for_cli = safe_import("tools.auto_prd.utils", "..utils", "sanitize_for_cli")
-scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
+get_prd_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "get_prd_hash")
+is_valid_int = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_int")
+is_valid_numeric = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_numeric")
+parse_tasks_left = safe_import("tools.auto_prd.utils", "auto_prd.utils", "parse_tasks_left")
+sanitize_for_cli = safe_import("tools.auto_prd.utils", "auto_prd.utils", "sanitize_for_cli")
+scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
 
 
 class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
@@ -271,7 +269,10 @@ class GetPrdHashTests(unittest.TestCase):
             result = get_prd_hash(repo_root)
 
             # Empty file still has a hash (SHA256 of empty string)
-            self.assertEqual(result, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            self.assertEqual(
+                result,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            )
 
     def test_hash_changes_when_content_changes(self) -> None:
         """Verify hash value changes when PRD content changes."""
@@ -324,7 +325,9 @@ class ComputeFileHashTests(unittest.TestCase):
             result = compute_file_hash(file_path)
 
             # Known SHA256 hash of "Hello, World!" (UTF-8)
-            expected = "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            expected = (
+                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            )
             self.assertEqual(result, expected)
 
     def test_handles_large_files_efficiently(self) -> None:
@@ -351,7 +354,9 @@ class ComputeFileHashTests(unittest.TestCase):
 
             self.assertEqual(len(result), 64)
             # Known SHA256 of these bytes
-            expected = "db89824d39a30f48b5c79775d5f01f4859e1b80f6d7acde373cd29d6facb3fe6"
+            expected = (
+                "db89824d39a30f48b5c79775d5f01f4859e1b80f6d7acde373cd29d6facb3fe6"
+            )
             self.assertEqual(result, expected)
 
 

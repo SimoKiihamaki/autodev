@@ -100,9 +100,9 @@ class TestExtractPrdCheckboxes:
 
         for prd_input, expected in test_cases:
             result = _extract_prd_checkboxes(prd_input)
-            assert (
-                result == expected
-            ), f"Failed for input: {prd_input!r}. Expected {expected}, got {result}"
+            assert result == expected, (
+                f"Failed for input: {prd_input!r}. Expected {expected}, got {result}"
+            )
 
 
 class TestLimit:
@@ -224,9 +224,9 @@ class TestCollectTrackerText:
         for features_val, expected_count, desc in test_cases:
             tracker = {"features": features_val}
             result = _collect_tracker_text(tracker)
-            assert (
-                len(result) == expected_count
-            ), f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+            assert len(result) == expected_count, (
+                f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+            )
 
     def test_handles_non_list_tasks_field(self) -> None:
         """Table-driven test for non-list 'tasks' field values within features.
@@ -260,9 +260,9 @@ class TestCollectTrackerText:
                 ]
             }
             result = _collect_tracker_text(tracker)
-            assert (
-                len(result) == expected_count
-            ), f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+            assert len(result) == expected_count, (
+                f"Failed for {desc}: expected {expected_count} items, got {len(result)}"
+            )
 
 
 class TestSupportStatePersistence:

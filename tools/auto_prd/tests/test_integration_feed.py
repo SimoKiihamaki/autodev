@@ -18,10 +18,10 @@ from tools.auto_prd.tests.test_helpers import (
     safe_import,
 )
 
-run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
-safe_popen = safe_import("tools.auto_prd.command", "..command", "safe_popen")
+run_cmd = safe_import("tools.auto_prd.command", "auto_prd.command", "run_cmd")
+safe_popen = safe_import("tools.auto_prd.command", "auto_prd.command", "safe_popen")
 register_safe_cwd = safe_import(
-    "tools.auto_prd.command", "..command", "register_safe_cwd"
+    "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
 )
 
 
