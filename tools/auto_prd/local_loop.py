@@ -40,16 +40,6 @@ from .policy import policy_runner
 from .progress_renderer import IterationSummary, save_iteration_summary
 from .ralph import RalphSettings
 from .tracker_generator import load_tracker
-from .task_completion_detector import (
-    detect_completed_task_from_changes,
-    validate_tasks_left_progression,
-)
-from .tracker_validator import (
-    calculate_completion_confidence,
-    repair_tracker_state,
-    validate_completion_consistency,
-    validate_tracker_state,
-)
 from .utils import (
     checkbox_stats,
     detect_readonly_block,
@@ -400,7 +390,7 @@ At the end, print: TASKS_LEFT=<N>
                 suggested_sign = suggest_sign_from_error(
                     error_message=error_message,
                     iteration=i,
-                    repo_root=repo_root,
+                    _repo_root=repo_root,
                     phase="local",
                 )
                 if suggested_sign:
@@ -554,7 +544,7 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                         suggested_sign = suggest_sign_from_error(
                             error_message=error_message,
                             iteration=i,
-                            repo_root=repo_root,
+                            _repo_root=repo_root,
                             phase="local_fix",
                         )
                         if suggested_sign:

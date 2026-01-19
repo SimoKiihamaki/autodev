@@ -309,9 +309,18 @@ def main() -> None:
     ).normalized()
     args.ralph_settings = ralph_settings
 
+    # Support mode is incompatible with Ralph mode (the readiness loop would block
+    # inside the infinite support polling loop)
+    if ralph_settings.enabled and args.support_mode:
+        raise SystemExit(
+            "Error: --support-mode cannot be combined with --ralph-mode. "
+            "The Ralph readiness loop would block inside the infinite support polling loop."
+        )
+
     if ralph_settings.enabled:
         from copy import copy
 
+        from .git_ops import git_root
         from .readiness_loop import run_ralph_wiggum_loop
 
         execution_args = copy(args)
@@ -322,8 +331,9 @@ def main() -> None:
             run(execution_args)
 
         try:
+            repo_root = Path(args.repo).resolve() if args.repo else git_root()
             run_ralph_wiggum_loop(
-                repo_root=Path(args.repo).resolve() if args.repo else Path.cwd(),
+                repo_root=repo_root,
                 execution_runner=_run_once,
             )
         except AutoPrdError as exc:

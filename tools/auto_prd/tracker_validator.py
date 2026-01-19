@@ -6,11 +6,10 @@ remains consistent with actual implementation progress.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .tracker_generator import load_tracker, save_tracker
+from .tracker_generator import save_tracker
 
 
 class TrackerValidationError(Exception):
@@ -102,13 +101,6 @@ def validate_completion_consistency(
     )
     total_tasks = sum(len(f.get("tasks", [])) for f in tracker.get("features", []))
 
-    completed_features = sum(
-        1
-        for f in tracker.get("features", [])
-        if f.get("status") in ("completed", "verified")
-    )
-    total_features = len(tracker.get("features", []))
-
     # Case 1: Agent claims 0 tasks left but tracker shows no progress
     if agent_tasks_left == 0 and completed_tasks == 0:
         return (
@@ -173,9 +165,14 @@ def repair_tracker_state(
         completed_count = sum(1 for t in tasks if t.get("status") == "completed")
 
         # If all tasks completed but feature not marked completed
-        if completed_count == len(tasks) and feature_status in (
-            "pending",
-            "in_progress",
+        if (
+            tasks
+            and completed_count == len(tasks)
+            and feature_status
+            in (
+                "pending",
+                "in_progress",
+            )
         ):
             feature["status"] = "completed"
             changes.append(f"Marked feature {feature.get('id')} as completed")
