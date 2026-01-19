@@ -319,7 +319,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                         # Only compare PRD checkboxes with tracker if tracker is valid
                         # If tracker has malformed structure (e.g., tasks: null),
                         # _collect_tracker_text would crash with TypeError
-                        if valid:
+                        if tracker and valid:
                             tracker_texts = [
                                 _normalize_text(t)
                                 for t in _collect_tracker_text(tracker)
