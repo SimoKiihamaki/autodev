@@ -51,6 +51,12 @@ def validate_tracker_state(tracker: dict[str, Any]) -> list[str]:
         feature_status = feature.get("status")
         tasks = _as_list(feature.get("tasks", []))
 
+        # Flag completed/verified features with zero tasks
+        if not tasks and feature_status in ("completed", "verified"):
+            issues.append(
+                f"Feature {feature.get('id')} marked {feature_status} but has no tasks"
+            )
+
         if feature_status == "completed":
             completed_count = sum(
                 1
