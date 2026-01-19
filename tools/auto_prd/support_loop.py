@@ -407,7 +407,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                     warnings.append(
                         f"Latest verification run failed (run_id={latest.run_id})."
                     )
-                if not vp.is_run_fresh(latest):
+                if not vp.is_run_fresh(latest, current_prd_hash):
                     warnings.append(
                         "Latest verification run is stale for current HEAD/PRD."
                     )

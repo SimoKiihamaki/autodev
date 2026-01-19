@@ -228,18 +228,23 @@ class VerificationPersistence:
             and verification_ref.get("prd_hash") == current_prd_hash
         )
 
-    def is_run_fresh(self, run: VerificationRun) -> bool:
+    def is_run_fresh(
+        self, run: VerificationRun, current_prd_hash: str | None = None
+    ) -> bool:
         """
         Check if a verification run is still fresh for current state.
 
         Args:
             run: VerificationRun to check
+            current_prd_hash: Optional PRD hash for support mode where PRD path may differ.
+                If not provided, falls back to default PRD.md hash.
 
         Returns:
             True if run is fresh, False otherwise
         """
         current_git_sha = get_git_sha(self.repo_root)
-        current_prd_hash = get_prd_hash(self.repo_root)
+        if current_prd_hash is None:
+            current_prd_hash = get_prd_hash(self.repo_root)
 
         return self.is_verification_fresh(
             run.to_dict(), current_git_sha, current_prd_hash
