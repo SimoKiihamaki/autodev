@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "012-implement-or-remove-codexmodel-config-field",
+  "branch_name": "wreckit/012-implement-or-remove-codexmodel-config-field",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Document CodexModel usage in README",
+      "acceptance_criteria": [
+        "README.md has new 'Executor Models' section after 'Per-phase executors'",
+        "Section explains that CodexModel only applies when Codex is the executor",
+        "Section describes relationship to executor_policy (codex-first, codex-only, claude-only)",
+        "Section explains when field is ignored (claude-only policy)",
+        "Documentation is accurate and easy to understand",
+        "No breaking changes to existing README content"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Add clear documentation to help users understand when and why CodexModel applies. This addresses the core confusion without code changes."
+    },
+    {
+      "id": "US-002",
+      "title": "Improve TUI field label with context",
+      "acceptance_criteria": [
+        "TUI input label changed from 'Codex model' to 'Codex model (when Codex executor)'",
+        "Label fits within TUI layout without overflow",
+        "Field remains editable and functional",
+        "Build succeeds without errors",
+        "No breaking changes to config schema"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Update internal/tui/model.go:421 to provide inline context about when the field applies. This is a simple, low-risk change."
+    },
+    {
+      "id": "US-003",
+      "title": "Add visual indication for inactive CodexModel field",
+      "acceptance_criteria": [
+        "CodexModel field appears dimmed when executor_policy is 'claude-only'",
+        "Field appears normal when executor_policy is 'codex-first' or 'codex-only'",
+        "Field remains visible and readable in all states",
+        "Visual change helps users understand when field applies",
+        "Build succeeds without errors",
+        "No impact on field functionality"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Add isCodexModelDisabled() helper in model.go and apply dimmed styling in view_settings.go. Optional enhancement - can be deferred if visual clutter is a concern."
+    },
+    {
+      "id": "US-004",
+      "title": "Add warning for inactive CodexModel setting",
+      "acceptance_criteria": [
+        "Warning appears when CodexModel is set to non-default value but executor_policy is 'claude-only'",
+        "Warning is clear and non-intrusive",
+        "Warning disappears when executor_policy changes to allow Codex",
+        "No false positives (warning only shows when appropriate)",
+        "Build succeeds without errors"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Add getCodexModelWarning() helper and integrate with status message display. Optional enhancement - carefully consider if this adds value or creates UI clutter."
+    }
+  ]
+}

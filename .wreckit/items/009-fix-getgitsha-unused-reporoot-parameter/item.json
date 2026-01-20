@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "009-fix-getgitsha-unused-reporoot-parameter",
+  "title": "Fix get_git_sha() unused repo_root parameter",
+  "section": "backend",
+  "state": "implementing",
+  "overview": "Function parameter is misleading as it's never used - function always runs in current directory.\n\n**Motivation:** Fixes incorrect function behavior and makes the API honest.\n\n**Technical constraints:**\n- Either implement using repo_root with git command's cwd parameter, or remove the parameter\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.568Z",
+  "updated_at": "2026-01-19T20:19:30.509Z",
+  "problem_statement": "Function parameter is misleading as it's never used - function always runs in current directory.",
+  "motivation": "Fixes incorrect function behavior and makes the API honest.",
+  "technical_constraints": [
+    "Either implement using repo_root with git command's cwd parameter, or remove the parameter"
+  ],
+  "priority_hint": "high"
+}

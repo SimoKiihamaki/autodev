@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "016-make-maxbatchsize-validation-fail-in-strict-mode",
+  "title": "Make MaxBatchSize validation fail in strict mode",
+  "section": "backend",
+  "state": "implementing",
+  "overview": "Invalid configuration values are allowed with only a warning, potentially causing undefined behavior.\n\n**Motivation:** Provides better configuration validation and catches errors early in strict environments.\n\n**Technical constraints:**\n- Check for APRD_STRICT environment variable\n- Return error instead of warning when strict mode is enabled\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.571Z",
+  "updated_at": "2026-01-19T21:19:39.497Z",
+  "problem_statement": "Invalid configuration values are allowed with only a warning, potentially causing undefined behavior.",
+  "motivation": "Provides better configuration validation and catches errors early in strict environments.",
+  "technical_constraints": [
+    "Check for APRD_STRICT environment variable",
+    "Return error instead of warning when strict mode is enabled"
+  ],
+  "priority_hint": "high"
+}

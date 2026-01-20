@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -72,4 +73,31 @@ func wrapIndex(current, delta, n int) (int, bool) {
 		idx += n
 	}
 	return idx, true
+}
+
+// joinPaths converts a string slice to a path-separated string using OS-specific separator.
+// Empty or nil slices return empty string.
+func joinPaths(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return strings.Join(paths, string(os.PathListSeparator))
+}
+
+// parsePathList splits a path-separated string into a string slice using OS-specific separator.
+// Empty strings and extra whitespace are trimmed. Returns empty slice for empty input.
+func parsePathList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	sep := string(os.PathListSeparator)
+	parts := strings.Split(raw, sep)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

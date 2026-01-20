@@ -94,7 +94,6 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.Cleanup()
 		return true, tea.Quit
 	case ActQuit:
 		if m.running {
@@ -104,7 +103,6 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.Cleanup()
 		return true, tea.Quit
 	case ActHelp:
 		m.showHelp = !m.showHelp
@@ -179,7 +177,6 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 		return true, m.saveConfig()
 	case 1: // Discard
 		m.cancelQuitConfirm()
-		m.Cleanup()
 		return true, tea.Quit
 	default: // Cancel
 		m.cancelQuitConfirm()
@@ -189,12 +186,15 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 }
 
 // tabIndexFromAction maps a goto tab action to its index.
+// This function is only called from a switch statement that handles exactly the eight
+// ActGotoTab* actions (ActGotoTab1-8) contained in tabActions, so the loop will always find a match.
 func tabIndexFromAction(act Action) (int, bool) {
 	for i, tabAction := range tabActions {
 		if tabAction == act {
 			return i, true
 		}
 	}
+	// unreachable - switch statement guarantees act is in tabActions
 	return 0, false
 }
 

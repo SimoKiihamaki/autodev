@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "id": "016-make-maxbatchsize-validation-fail-in-strict-mode",
+  "branch_name": "wreckit/016-make-maxbatchsize-validation-fail-in-strict-mode",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add AUTO_PRD_STRICT environment variable constant",
+      "acceptance_criteria": [
+        "Constant EnvStrict is added to internal/config/config.go with value \"AUTO_PRD_STRICT\"",
+        "Constant follows existing naming pattern with AUTO_PRD_ prefix",
+        "Constant is exported (capitalized) for use across the package",
+        "Code compiles without errors",
+        "Location is after existing environment variable constants (lines 16-26)"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Simple constant addition, no breaking changes. Must use AUTO_PRD_STRICT to match existing pattern, not APRD_STRICT as specified in task description."
+    },
+    {
+      "id": "US-002",
+      "title": "Add Error field to LoadResult struct",
+      "acceptance_criteria": [
+        "LoadResult struct has new Error field of type error",
+        "Field is added after Warnings field (line 285)",
+        "Struct comment remains accurate",
+        "All existing tests pass",
+        "No compilation errors in dependant packages"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Adding a field to a struct is backward compatible. The Error field will be used to return validation errors when strict mode is enabled."
+    },
+    {
+      "id": "US-003",
+      "title": "Implement strict mode validation in LoadWithWarnings()",
+      "acceptance_criteria": [
+        "Check for AUTO_PRD_STRICT environment variable equal to \"1\"",
+        "When strict mode enabled and MaxBatchSize is nil or <= 0: return LoadResult with Error field populated (not warning)",
+        "Error message includes field name, invalid value, and strict mode indication",
+        "When strict mode enabled and MaxBatchSize is valid: return LoadResult with no error",
+        "When strict mode disabled: maintain current behavior (warning + default value)",
+        "No changes to default MaxBatchSize value (25)",
+        "All existing tests pass"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Core validation logic. Must check env var with os.Getenv(EnvStrict) == \"1\". Early return from LoadWithWarnings() when error occurs. Lines 443-451 are the modification target."
+    },
+    {
+      "id": "US-004",
+      "title": "Update Load() to handle LoadResult errors",
+      "acceptance_criteria": [
+        "Load() checks if LoadResult.Error is set",
+        "When error is set: calls log.Fatalf() with error message",
+        "log.Fatalf() terminates the program with exit code 1",
+        "When error is nil: behaves as before (logs warnings and returns config)",
+        "Function comment updated to reflect new behavior in strict mode",
+        "No changes to function signature (maintains backward compatibility)"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Using log.Fatalf() instead of changing return signature maintains backward compatibility. This is appropriate for fatal config errors. Lines 292-298 are the modification target."
+    },
+    {
+      "id": "US-005",
+      "title": "Add unit tests for strict mode validation",
+      "acceptance_criteria": [
+        "Test for strict mode with nil MaxBatchSize returns error",
+        "Test for strict mode with zero MaxBatchSize returns error",
+        "Test for strict mode with negative MaxBatchSize returns error",
+        "Test for strict mode with valid MaxBatchSize succeeds (no error)",
+        "Test for non-strict mode with invalid MaxBatchSize returns warning (not error)",
+        "Test for non-strict mode with valid MaxBatchSize succeeds (no warning, no error)",
+        "All tests use environment variable setup/teardown to avoid side effects",
+        "All new tests pass",
+        "All existing tests continue to pass",
+        "Test coverage includes new validation code"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Tests should be added to internal/config/config_test.go. Consider refactoring validation logic into a testable helper function like validateMaxBatchSize() to enable thorough unit testing without requiring file I/O."
+    },
+    {
+      "id": "US-006",
+      "title": "Manual integration testing of strict mode behavior",
+      "acceptance_criteria": [
+        "Verify AUTO_PRD_STRICT=1 with invalid MaxBatchSize exits before TUI starts",
+        "Verify error message clearly mentions AUTO_PRD_STRICT enabled",
+        "Verify exit code is 1 for strict mode errors",
+        "Verify AUTO_PRD_STRICT=1 with valid MaxBatchSize starts TUI normally",
+        "Verify no AUTO_PRD_STRICT with invalid MaxBatchSize logs warning and starts TUI with default value",
+        "Verify no AUTO_PRD_STRICT with valid MaxBatchSize starts TUI without warnings",
+        "Verify no regressions in normal TUI operation",
+        "Test with MaxBatchSize = 0, -1, nil, 1, 25, 100 for edge cases"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Manual testing is required because log.Fatalf() terminates the process, which is difficult to test in unit tests. Use different config.yaml files and environment variable settings."
+    }
+  ]
+}

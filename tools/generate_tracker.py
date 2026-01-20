@@ -131,17 +131,21 @@ def read_stdin_to_temp_file() -> tuple[Path, str]:
     # Generate a hash for the source identifier
     content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
 
-    # Create temp file that persists until explicitly deleted
-    temp_file = tempfile.NamedTemporaryFile(
+    # Use context manager to ensure file handle is properly closed.
+    # delete=False is needed because the file must persist after this
+    # function returns for use by generate_tracker(). The caller (main)
+    # is responsible for deleting the file in its finally block.
+    with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".md",
         prefix=f"stdin_{content_hash}_",
         delete=False,
-    )
-    temp_file.write(content)
-    temp_file.close()
+    ) as temp_file:
+        temp_file.write(content)
+        # File handle is automatically closed when context exits
+        temp_path = Path(temp_file.name)
 
-    return Path(temp_file.name), content_hash
+    return temp_path, content_hash
 
 
 def main() -> int:

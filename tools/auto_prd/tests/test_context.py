@@ -9,35 +9,35 @@ from unittest.mock import MagicMock, patch
 from .test_helpers import safe_import
 
 # Import the context module and classes we need to test
-context_module = safe_import("tools.auto_prd.context", "..context")
-SessionMemory = safe_import("tools.auto_prd.context", "..context", "SessionMemory")
+context_module = safe_import("tools.auto_prd.context", "auto_prd.context")
+SessionMemory = safe_import("tools.auto_prd.context", "auto_prd.context", "SessionMemory")
 LoadSessionResult = safe_import(
-    "tools.auto_prd.context", "..context", "LoadSessionResult"
+    "tools.auto_prd.context", "auto_prd.context", "LoadSessionResult"
 )
 LoadFailureReason = safe_import(
-    "tools.auto_prd.context", "..context", "LoadFailureReason"
+    "tools.auto_prd.context", "auto_prd.context", "LoadFailureReason"
 )
-StallDetector = safe_import("tools.auto_prd.context", "..context", "StallDetector")
+StallDetector = safe_import("tools.auto_prd.context", "auto_prd.context", "StallDetector")
 build_phase_context = safe_import(
-    "tools.auto_prd.context", "..context", "build_phase_context"
+    "tools.auto_prd.context", "auto_prd.context", "build_phase_context"
 )
-compact_context = safe_import("tools.auto_prd.context", "..context", "compact_context")
+compact_context = safe_import("tools.auto_prd.context", "auto_prd.context", "compact_context")
 save_session_memory = safe_import(
-    "tools.auto_prd.context", "..context", "save_session_memory"
+    "tools.auto_prd.context", "auto_prd.context", "save_session_memory"
 )
 load_session_memory = safe_import(
-    "tools.auto_prd.context", "..context", "load_session_memory"
+    "tools.auto_prd.context", "auto_prd.context", "load_session_memory"
 )
 extract_progress_from_response = safe_import(
-    "tools.auto_prd.context", "..context", "extract_progress_from_response"
+    "tools.auto_prd.context", "auto_prd.context", "extract_progress_from_response"
 )
 _generate_session_filename = safe_import(
-    "tools.auto_prd.context", "..context", "_generate_session_filename"
+    "tools.auto_prd.context", "auto_prd.context", "_generate_session_filename"
 )
 
 # Import ClaudeHeadlessResponse from agents for update_from_response tests
 ClaudeHeadlessResponse = safe_import(
-    "tools.auto_prd.agents", "..agents", "ClaudeHeadlessResponse"
+    "tools.auto_prd.agents", "auto_prd.agents", "ClaudeHeadlessResponse"
 )
 
 

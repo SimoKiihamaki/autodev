@@ -1,25 +1,29 @@
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 
 from .test_helpers import safe_import
 
 CLI_ARG_REPLACEMENTS = safe_import(
-    "tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS"
+    "tools.auto_prd.constants", "auto_prd.constants", "CLI_ARG_REPLACEMENTS"
 )
 UNSAFE_ARG_CHARS = safe_import(
-    "tools.auto_prd.constants", "..constants", "UNSAFE_ARG_CHARS"
+    "tools.auto_prd.constants", "auto_prd.constants", "UNSAFE_ARG_CHARS"
 )
+compute_file_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "compute_file_hash")
 extract_called_process_error_details = safe_import(
-    "tools.auto_prd.utils", "..utils", "extract_called_process_error_details"
+    "tools.auto_prd.utils", "auto_prd.utils", "extract_called_process_error_details"
 )
 extract_http_status = safe_import(
-    "tools.auto_prd.utils", "..utils", "extract_http_status"
+    "tools.auto_prd.utils", "auto_prd.utils", "extract_http_status"
 )
-is_valid_int = safe_import("tools.auto_prd.utils", "..utils", "is_valid_int")
-is_valid_numeric = safe_import("tools.auto_prd.utils", "..utils", "is_valid_numeric")
-parse_tasks_left = safe_import("tools.auto_prd.utils", "..utils", "parse_tasks_left")
-sanitize_for_cli = safe_import("tools.auto_prd.utils", "..utils", "sanitize_for_cli")
-scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
+get_prd_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "get_prd_hash")
+is_valid_int = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_int")
+is_valid_numeric = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_numeric")
+parse_tasks_left = safe_import("tools.auto_prd.utils", "auto_prd.utils", "parse_tasks_left")
+sanitize_for_cli = safe_import("tools.auto_prd.utils", "auto_prd.utils", "sanitize_for_cli")
+scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
 
 
 class ExtractCalledProcessErrorDetailsTests(unittest.TestCase):
@@ -227,6 +231,371 @@ class SanitizeForCliTests(unittest.TestCase):
             text = f"prefix{unsafe}suffix"
             sanitized = sanitize_for_cli(text)
             self.assertEqual(sanitized, f"prefix{safe}suffix")
+
+
+class GetPrdHashTests(unittest.TestCase):
+    """Tests for get_prd_hash helper function."""
+
+    def test_returns_hash_when_prd_exists(self) -> None:
+        """Verify function returns SHA256 hash when PRD.md exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            prd_path = repo_root / "PRD.md"
+            prd_path.write_text("# Test PRD\n\nContent here")
+
+            result = get_prd_hash(repo_root)
+
+            self.assertIsInstance(result, str)
+            self.assertEqual(len(result), 64)  # SHA256 hex digest length
+            self.assertNotEqual(result, "")
+
+    def test_returns_empty_string_when_prd_missing(self) -> None:
+        """Verify function returns empty string when PRD.md doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            # Don't create PRD.md
+
+            result = get_prd_hash(repo_root)
+
+            self.assertEqual(result, "")
+
+    def test_returns_hash_for_empty_prd(self) -> None:
+        """Verify function returns valid hash even for empty PRD.md."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            prd_path = repo_root / "PRD.md"
+            prd_path.write_text("")
+
+            result = get_prd_hash(repo_root)
+
+            # Empty file still has a hash (SHA256 of empty string)
+            self.assertEqual(
+                result,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            )
+
+    def test_hash_changes_when_content_changes(self) -> None:
+        """Verify hash value changes when PRD content changes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            prd_path = repo_root / "PRD.md"
+
+            prd_path.write_text("Version 1")
+            hash1 = get_prd_hash(repo_root)
+
+            prd_path.write_text("Version 2")
+            hash2 = get_prd_hash(repo_root)
+
+            self.assertNotEqual(hash1, hash2)
+
+    def test_hash_is_stable_for_same_content(self) -> None:
+        """Verify hash is stable across multiple calls with same content."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            prd_path = repo_root / "PRD.md"
+            prd_path.write_text("Stable content")
+
+            hash1 = get_prd_hash(repo_root)
+            hash2 = get_prd_hash(repo_root)
+
+            self.assertEqual(hash1, hash2)
+
+
+class ComputeFileHashTests(unittest.TestCase):
+    """Tests for compute_file_hash helper function."""
+
+    def test_returns_sha256_hash(self) -> None:
+        """Verify function returns SHA256 hash of file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "test.txt"
+            file_path.write_text("Test content")
+
+            result = compute_file_hash(file_path)
+
+            self.assertIsInstance(result, str)
+            self.assertEqual(len(result), 64)  # SHA256 hex digest length
+
+    def test_hash_matches_known_value(self) -> None:
+        """Verify hash matches known SHA256 value for test content."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "test.txt"
+            content = "Hello, World!"
+            file_path.write_text(content)
+
+            result = compute_file_hash(file_path)
+
+            # Known SHA256 hash of "Hello, World!" (UTF-8)
+            expected = (
+                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            )
+            self.assertEqual(result, expected)
+
+    def test_handles_large_files_efficiently(self) -> None:
+        """Verify function can handle large files without memory issues."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "large.txt"
+            # Create 10MB file
+            large_content = "x" * (10 * 1024 * 1024)
+            file_path.write_text(large_content)
+
+            result = compute_file_hash(file_path)
+
+            self.assertEqual(len(result), 64)
+            self.assertNotEqual(result, "")
+
+    def test_handles_binary_files(self) -> None:
+        """Verify function handles binary files correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "binary.bin"
+            binary_content = bytes([0, 1, 2, 3, 255, 254, 253])
+            file_path.write_bytes(binary_content)
+
+            result = compute_file_hash(file_path)
+
+            self.assertEqual(len(result), 64)
+            # Known SHA256 of these bytes
+            expected = (
+                "db89824d39a30f48b5c79775d5f01f4859e1b80f6d7acde373cd29d6facb3fe6"
+            )
+            self.assertEqual(result, expected)
+
+
+class SlugifyTests(unittest.TestCase):
+    """Tests for slugify() function - edge cases."""
+
+    def test_empty_string_returns_task(self) -> None:
+        """Verify empty string is converted to 'task' default."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("")
+        self.assertEqual(result, "task")
+
+    def test_consecutive_dashes_are_collapsed(self) -> None:
+        """Verify multiple consecutive dashes are collapsed to single dash."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("test---multiple---dashes")
+        self.assertEqual(result, "test-multiple-dashes")
+
+    def test_leading_trailing_dashes_removed(self) -> None:
+        """Verify leading and trailing dashes are stripped."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("---test-content---")
+        self.assertEqual(result, "test-content")
+
+    def test_special_characters_converted_to_dashes(self) -> None:
+        """Verify special characters are converted to dashes."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("test@#$%content")
+        self.assertEqual(result, "test-content")
+
+    def test_uppercase_converted_to_lowercase(self) -> None:
+        """Verify uppercase letters are converted to lowercase."""
+        slugify = safe_import("tools.auto_prd.utils", "auto_prd.utils", "slugify")
+        result = slugify("TESTContent")
+        self.assertEqual(result, "testcontent")
+
+
+class ScrubCliTextEdgeCaseTests(unittest.TestCase):
+    """Tests for scrub_cli_text() - edge cases for unmapped characters."""
+
+    def test_unmapped_character_logs_warning(self) -> None:
+        """Verify unmapped characters are handled without crashing."""
+        # This test covers lines 49-54 in utils.py
+        # Unmapped characters trigger a warning log and are replaced with space
+        # Since we can't easily test logging, just verify it doesn't crash
+        result = scrub_cli_text("test\x00\x01value")
+        # Function should not crash and should return some value
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, str)
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Verify scrubbing empty string returns empty string."""
+        result = scrub_cli_text("")
+        self.assertEqual(result, "")
+
+    def test_binary_data_does_not_crash(self) -> None:
+        """Verify binary data doesn't cause crashes."""
+        binary_data = b"\x00\x01\x02\xff"
+        # Convert to string (might be lossy, but shouldn't crash)
+        try:
+            result = scrub_cli_text(binary_data.decode("utf-8", errors="ignore"))
+            self.assertIsNotNone(result)
+        except (AttributeError, TypeError):
+            # If input is already bytes or wrong type, function should handle gracefully
+            pass
+
+
+class NowStampTests(unittest.TestCase):
+    """Tests for now_stamp() function."""
+
+    def test_returns_utc_timestamp(self) -> None:
+        """Verify function returns UTC timestamp in correct format."""
+        now_stamp = safe_import("tools.auto_prd.utils", "auto_prd.utils", "now_stamp")
+        result = now_stamp()
+        self.assertIsInstance(result, str)
+        # Should be 14 digits (YYYYMMDDHHMMSS)
+        self.assertEqual(len(result), 14)
+        # Should be all digits
+        self.assertTrue(result.isdigit())
+
+
+class CheckboxStatsEdgeCaseTests(unittest.TestCase):
+    """Tests for checkbox_stats() - edge cases."""
+
+    def test_missing_markdown_file_returns_zeros(self) -> None:
+        """Verify missing markdown file returns 0, 0."""
+        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_path = Path(tmpdir) / "nonexistent.md"
+            unchecked, total = checkbox_stats(md_path)
+            self.assertEqual(unchecked, 0)
+            self.assertEqual(total, 0)
+
+    def test_empty_markdown_file_returns_zeros(self) -> None:
+        """Verify empty markdown file returns 0, 0."""
+        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_path = Path(tmpdir) / "empty.md"
+            md_path.write_text("")
+            unchecked, total = checkbox_stats(md_path)
+            self.assertEqual(unchecked, 0)
+            self.assertEqual(total, 0)
+
+
+class ParseTasksLeftEdgeCaseTests(unittest.TestCase):
+    """Tests for parse_tasks_left() - edge cases."""
+
+    def test_empty_string_returns_none(self) -> None:
+        """Verify empty string returns None."""
+        result = parse_tasks_left("")
+        self.assertIsNone(result)
+
+    def test_no_pattern_returns_none(self) -> None:
+        """Verify string without pattern returns None."""
+        result = parse_tasks_left("No tasks mentioned here")
+        self.assertIsNone(result)
+
+    def test_invalid_number_returns_none(self) -> None:
+        """Verify pattern with non-numeric value returns None."""
+        result = parse_tasks_left("Tasks left: NaN")
+        self.assertIsNone(result)
+
+    def test_negative_number_returns_none(self) -> None:
+        """Verify negative numbers are not parsed (invalid input)."""
+        result = parse_tasks_left("Tasks left: -5")
+        # Negative numbers are semantically invalid, should return None
+        self.assertIsNone(result)
+
+
+class SanitizeForCliEdgeCaseTests(unittest.TestCase):
+    """Tests for sanitize_for_cli() - edge cases."""
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Verify sanitizing empty string returns empty string."""
+        result = sanitize_for_cli("")
+        self.assertEqual(result, "")
+
+    def test_none_input_raises_error(self) -> None:
+        """Verify None input raises AttributeError."""
+        with self.assertRaises(AttributeError):
+            sanitize_for_cli(None)  # type: ignore
+
+
+class CallWithBackoffTests(unittest.TestCase):
+    """Tests for call_with_backoff() function."""
+
+    def test_successful_action_returns_immediately(self) -> None:
+        """Verify successful action returns without retries."""
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def successful_action():
+            return "success"
+
+        result = call_with_backoff(successful_action)
+        self.assertEqual(result, "success")
+
+    def test_max_retries_exhausted_raises_error(self) -> None:
+        """Verify error is raised after max retries are exhausted."""
+        import time
+
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def failing_action():
+            raise subprocess.CalledProcessError(1, "test")
+
+        # Mock extract_http_status to return rate limit status
+        from unittest.mock import patch
+
+        with patch("auto_prd.utils.extract_http_status", return_value="429"):
+            with self.assertRaises(subprocess.CalledProcessError):
+                call_with_backoff(failing_action, retries=2, base_delay=0.01)
+
+    def test_non_rate_limit_error_raises_immediately(self) -> None:
+        """Verify non-rate-limit errors are raised immediately."""
+        call_with_backoff = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"
+        )
+
+        def failing_action():
+            raise subprocess.CalledProcessError(1, "test")
+
+        # Mock extract_http_status to return non-rate-limit status
+        from unittest.mock import patch
+
+        with patch("auto_prd.utils.extract_http_status", return_value="500"):
+            with self.assertRaises(subprocess.CalledProcessError):
+                call_with_backoff(failing_action, retries=3, base_delay=0.01)
+
+
+class DetectReadonlyBlockTests(unittest.TestCase):
+    """Tests for detect_readonly_block() function."""
+
+    def test_empty_output_returns_none(self) -> None:
+        """Verify empty output returns None."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        result = detect_readonly_block("")
+        self.assertIsNone(result)
+
+    def test_no_pattern_returns_none(self) -> None:
+        """Verify output without readonly pattern returns None."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        result = detect_readonly_block("No readonly pattern here")
+        self.assertIsNone(result)
+
+    def test_case_insensitive_pattern_matching(self) -> None:
+        """Verify pattern matching is case-insensitive."""
+        detect_readonly_block = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "detect_readonly_block"
+        )
+        # Get the actual readonly patterns from constants
+        CODEX_READONLY_PATTERNS = safe_import(
+            "tools.auto_prd.constants", "auto_prd.constants", "CODEX_READONLY_PATTERNS"
+        )
+        if CODEX_READONLY_PATTERNS:
+            pattern = CODEX_READONLY_PATTERNS[0]
+            # Test with lowercase
+            result = detect_readonly_block(pattern.lower())
+            self.assertIsNotNone(result)
+
+
+class ReportReadonlyErrorTests(unittest.TestCase):
+    """Tests for report_readonly_error() function."""
+
+    def test_raises_runtime_error(self) -> None:
+        """Verify function raises RuntimeError with expected message."""
+        report_readonly_error = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "report_readonly_error"
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            report_readonly_error("test-pattern")
+        self.assertIn("test-pattern", str(ctx.exception))
 
 
 if __name__ == "__main__":

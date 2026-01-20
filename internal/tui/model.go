@@ -158,6 +158,10 @@ type model struct {
 	inRalphGutterTimeout    textinput.Model
 	inRalphGutterNoProgress textinput.Model
 
+	// Security settings inputs
+	inSafeScriptDirs    textinput.Model
+	inAllowedPythonDirs textinput.Model
+
 	settingsInputs map[string]*textinput.Model
 
 	execLocalChoice  executorChoice
@@ -255,6 +259,9 @@ var settingsInputNames = []string{
 	"ralphshowguardrails",
 	"ralphguttertimeout",
 	"ralphgutternoprogress",
+	// Security settings
+	"safescriptdirs",
+	"allowedpythondirs",
 }
 
 func New() model {
@@ -411,7 +418,7 @@ func (m *model) initSettingsInputs() {
 	m.inRepo = mkInput("Repo path", cfg.RepoPath, 60)
 	m.inBase = mkInput("Base branch", cfg.BaseBranch, 20)
 	m.inBranch = mkInput("Feature branch (optional)", cfg.Branch, 30)
-	m.inCodexModel = mkInput("Codex model", cfg.CodexModel, 24)
+	m.inCodexModel = mkInput("Codex model (when Codex executor)", cfg.CodexModel, 24)
 	m.inPyCmd = mkInput("Python command", cfg.PythonCommand, 20)
 	m.inPyScript = mkInput("Python script path", cfg.PythonScript, 80)
 	m.inPolicy = mkInput("Executor policy (codex-first|codex-only|claude-only)", cfg.ExecutorPolicy, 28)
@@ -431,6 +438,10 @@ func (m *model) initSettingsInputs() {
 	m.inRalphShowGuardrails = mkInput("Show guardrails (true/false)", formatBool(cfg.Ralph.ShowGuardrails), 6)
 	m.inRalphGutterTimeout = mkInput("Gutter timeout sec", formatIntPtr(cfg.Ralph.GutterOutputTimeoutSec), 6)
 	m.inRalphGutterNoProgress = mkInput("Gutter no progress iters", formatIntPtr(cfg.Ralph.GutterNoProgressIters), 6)
+
+	// Security settings inputs
+	m.inSafeScriptDirs = mkInput("Allowed script dirs (path-separated)", joinPaths(cfg.SafeScriptDirs), 80)
+	m.inAllowedPythonDirs = mkInput("Allowed Python dirs (path-separated)", joinPaths(cfg.AllowedPythonDirs), 80)
 
 	m.settingsInputs = map[string]*textinput.Model{
 		// repo + git wiring
@@ -463,7 +474,18 @@ func (m *model) initSettingsInputs() {
 		"ralphshowguardrails":   &m.inRalphShowGuardrails,
 		"ralphguttertimeout":    &m.inRalphGutterTimeout,
 		"ralphgutternoprogress": &m.inRalphGutterNoProgress,
+
+		// Security settings
+		"safescriptdirs":    &m.inSafeScriptDirs,
+		"allowedpythondirs": &m.inAllowedPythonDirs,
 	}
+}
+
+// isCodexModelDisabled returns true if CodexModel field is effectively disabled
+// based on executor policy settings.
+func (m *model) isCodexModelDisabled() bool {
+	policy := m.inPolicy.Value()
+	return policy == "claude-only"
 }
 
 func (m *model) initExecutorChoices() {
@@ -639,31 +661,4 @@ func getLastErrorText(m *model) string {
 		return strings.TrimSpace(m.errMsg)
 	}
 	return ""
-}
-
-// Cleanup performs graceful shutdown of the model's resources.
-// It should be called before exiting the application to ensure:
-// - Any running process is cancelled
-// - Log channels are properly closed
-// - File handles are released
-//
-// Deprecated: Use CleanupFinalModel() instead for post-Run() cleanup.
-// This method is retained for internal use and backwards compatibility.
-func (m *model) Cleanup() {
-	// Cancel any running process
-	if m.cancel != nil {
-		m.cancel()
-		m.cancel = nil
-	}
-
-	// Close the log channel if still open
-	// Note: only the sender should close channels, and we're not the sender
-	// The logCh is closed by the runner goroutine when it completes
-
-	// Clear large buffers to help GC
-	m.logBuf = nil
-	m.runFeedBuf = nil
-
-	// Close any open log file (though this is now handled by Python)
-	m.closeLogFile("cleanup")
 }

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "001-expose-autoprdsafescriptdirs-in-config-and-tui",
+  "title": "Expose AUTO_PRD_SAFE_SCRIPT_DIRS in config and TUI",
+  "section": "backend",
+  "state": "implementing",
+  "overview": "Users cannot configure allowed Python directories through the UI; they must manually edit environment variables.\n\n**Motivation:** Improves user experience by allowing configuration through the standard TUI Settings interface instead of requiring manual environment variable editing.\n\n**Technical constraints:**\n- Add SafeScriptDirs field to Config struct in config.go\n- Update runner.go to read from config instead of just environment\n- Add TUI input field in Settings tab\n\n**Signals:** priority: critical",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.563Z",
+  "updated_at": "2026-01-19T18:57:20.445Z",
+  "problem_statement": "Users cannot configure allowed Python directories through the UI; they must manually edit environment variables.",
+  "motivation": "Improves user experience by allowing configuration through the standard TUI Settings interface instead of requiring manual environment variable editing.",
+  "technical_constraints": [
+    "Add SafeScriptDirs field to Config struct in config.go",
+    "Update runner.go to read from config instead of just environment",
+    "Add TUI input field in Settings tab"
+  ],
+  "priority_hint": "critical"
+}

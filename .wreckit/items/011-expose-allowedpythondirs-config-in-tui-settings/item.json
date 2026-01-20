@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "011-expose-allowedpythondirs-config-in-tui-settings",
+  "title": "Expose AllowedPythonDirs config in TUI Settings",
+  "section": "frontend",
+  "state": "implementing",
+  "overview": "Users can only configure allowed Python directories by manually editing ~/.config/aprd/config.yaml.\n\n**Motivation:** Provides consistent configuration experience through TUI instead of requiring manual config file editing.\n\n**Technical constraints:**\n- Add TUI input field in Settings tab for managing allowed Python directories\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.569Z",
+  "updated_at": "2026-01-19T20:36:36.959Z",
+  "problem_statement": "Users can only configure allowed Python directories by manually editing ~/.config/aprd/config.yaml.",
+  "motivation": "Provides consistent configuration experience through TUI instead of requiring manual config file editing.",
+  "technical_constraints": [
+    "Add TUI input field in Settings tab for managing allowed Python directories"
+  ],
+  "priority_hint": "high"
+}

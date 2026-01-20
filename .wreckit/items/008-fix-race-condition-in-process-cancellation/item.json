@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "008-fix-race-condition-in-process-cancellation",
+  "title": "Fix race condition in process cancellation",
+  "section": "backend",
+  "state": "implementing",
+  "overview": "No explicit cancellation context for errgroup, potential for race conditions between concurrent goroutines.\n\n**Motivation:** Prevents race conditions that could cause deadlocks or inconsistent state during concurrent operations.\n\n**Technical constraints:**\n- Add explicit context.WithCancel\n- Use errgroup.WithContext to tie context to errgroup\n- Ensure ctx is used for all goroutines\n\n**Signals:** priority: critical",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.568Z",
+  "updated_at": "2026-01-19T20:06:15.203Z",
+  "problem_statement": "No explicit cancellation context for errgroup, potential for race conditions between concurrent goroutines.",
+  "motivation": "Prevents race conditions that could cause deadlocks or inconsistent state during concurrent operations.",
+  "technical_constraints": [
+    "Add explicit context.WithCancel",
+    "Use errgroup.WithContext to tie context to errgroup",
+    "Ensure ctx is used for all goroutines"
+  ],
+  "priority_hint": "critical"
+}

@@ -127,7 +127,7 @@ class TestGetRepoSlug:
             # Mock parse_owner_repo_from_git to return None (fallback to directory name)
             # Must mock where it's imported, not where it's defined
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 slug = _get_repo_slug(repo_root)
 
@@ -142,7 +142,7 @@ class TestGetRepoSlug:
             # Mock parse_owner_repo_from_git to return owner/repo
             # Must mock where it's imported, not where it's defined
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git",
+                "auto_prd.git_ops.parse_owner_repo_from_git",
                 return_value="owner/repo-name",
             ):
                 slug = _get_repo_slug(repo_root)
@@ -161,7 +161,7 @@ class TestLoadGuardrails:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 signs = load_guardrails(repo_root)
 
@@ -175,7 +175,7 @@ class TestLoadGuardrails:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 guardrails_path = get_guardrails_path(repo_root)
                 guardrails_path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,7 +210,7 @@ class TestAddSign:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 sign = add_sign(
                     name="test_sign",
@@ -240,10 +240,14 @@ class TestAddSign:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir) / "add-multiple-test"
             repo_root.mkdir()
+            guardrails_dir = Path(tmpdir) / "guardrails"
+            guardrails_dir.mkdir()
 
-            # Mock git config to avoid reading real repo
+            # Mock git config and guardrails dir to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ), mock.patch(
+                "auto_prd.guardrails._get_guardrails_dir", return_value=guardrails_dir
             ):
                 add_sign(
                     name="first_sign",
@@ -379,7 +383,7 @@ class TestClearGuardrails:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 # Add a sign first
                 add_sign(
@@ -405,7 +409,7 @@ class TestClearGuardrails:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 # Should not raise
                 clear_guardrails(repo_root)
@@ -423,7 +427,7 @@ class TestGetSignCount:
 
             # Mock git config to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
             ):
                 count = get_sign_count(repo_root)
                 assert count == 0
@@ -433,10 +437,14 @@ class TestGetSignCount:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir) / "count-multiple-test"
             repo_root.mkdir()
+            guardrails_dir = Path(tmpdir) / "guardrails"
+            guardrails_dir.mkdir()
 
-            # Mock git config to avoid reading real repo
+            # Mock git config and guardrails dir to avoid reading real repo
             with mock.patch(
-                "auto_prd.guardrails.parse_owner_repo_from_git", return_value=None
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ), mock.patch(
+                "auto_prd.guardrails._get_guardrails_dir", return_value=guardrails_dir
             ):
                 add_sign(
                     name="first_sign",

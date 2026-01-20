@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "010-remove-dead-code-in-tabindexfromaction-function",
+  "branch_name": "wreckit/010-remove-dead-code-in-tabindexfromaction-function",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add documentation explaining tabIndexFromAction guaranteed match",
+      "acceptance_criteria": [
+        "Function comment documents that it's only called from switch statement handling ActGotoTab1-8",
+        "Comment explains that tabActions array contains exactly these 8 actions",
+        "Comment clarifies that loop will always find a match",
+        "Code compiles and builds successfully"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Add comprehensive documentation to the function explaining why the final return is unreachable. This improves code clarity for future maintainers."
+    },
+    {
+      "id": "US-002",
+      "title": "Verify tab navigation works correctly after documentation changes",
+      "acceptance_criteria": [
+        "All 8 tab navigation keys (1-8) switch to correct tabs",
+        "Progress tab (key 8) triggers async tracker load when not already loaded",
+        "Other global shortcuts (q, ?, Ctrl+S) continue to work",
+        "No regressions in existing tab switching behavior"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Manual testing required to verify no regressions. Test each tab key (1-8) and confirm the correct tab is activated."
+    }
+  ]
+}

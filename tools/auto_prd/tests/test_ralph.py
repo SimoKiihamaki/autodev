@@ -1,6 +1,5 @@
 """Tests for Ralph mode configuration module."""
 
-
 from tools.auto_prd.ralph import THRESHOLD_DISABLED, RalphSettings
 
 

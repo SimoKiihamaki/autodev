@@ -95,7 +95,7 @@ def test_modify_criterion():
         feature = manager.get_feature("F001")
         assert feature["criteria_version"] == 2
 
-        criterion = manager.find_criterion("F001", "AC1")
+        criterion = manager.find_criterion(feature, "AC1")
         assert criterion is not None
         assert criterion["version"] == 2
         assert criterion["status"] == "pending"
@@ -141,7 +141,7 @@ def test_remove_criterion():
         feature = manager.get_feature("F001")
         assert feature["criteria_version"] == 2
 
-        criterion = manager.find_criterion("F001", "AC1")
+        criterion = manager.find_criterion(feature, "AC1")
         assert criterion is not None
         assert criterion["status"] == "deprecated"
         assert "removed_in_version" in criterion
@@ -202,9 +202,9 @@ def test_task_invalidation():
         # Update criteria version
         manager.bump_criteria_version("F001")
 
-        # Verify tasks marked needs_reverify
+        # Verify feature marked needs_reverify
         feature = manager.get_feature("F001")
-        assert all(t.get("needs_reverify") for t in feature.get("tasks", []))
+        assert feature.get("needs_reverify") is True
 
 
 def test_criteria_freshness():

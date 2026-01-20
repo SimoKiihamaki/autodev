@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "020-remove-deprecated-cleanup-method",
+  "title": "Remove deprecated Cleanup() method",
+  "section": "frontend",
+  "state": "implementing",
+  "overview": "Deprecated code creates confusion about which cleanup method to use.\n\n**Motivation:** Reduces API confusion and removes dead code.\n\n**Technical constraints:**\n- Remove deprecated Cleanup() method from model.go\n- Ensure all callers use CleanupFinalModel() or other appropriate method\n\n**Signals:** priority: medium",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.573Z",
+  "updated_at": "2026-01-19T23:32:18.804Z",
+  "problem_statement": "Deprecated code creates confusion about which cleanup method to use.",
+  "motivation": "Reduces API confusion and removes dead code.",
+  "technical_constraints": [
+    "Remove deprecated Cleanup() method from model.go",
+    "Ensure all callers use CleanupFinalModel() or other appropriate method"
+  ],
+  "priority_hint": "medium"
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "010-remove-dead-code-in-tabindexfromaction-function",
+  "title": "Remove dead code in tabIndexFromAction function",
+  "section": "frontend",
+  "state": "implementing",
+  "overview": "Dead return statement that is never reached since the loop always matches.\n\n**Motivation:** Removes confusing dead code and improves code clarity.\n\n**Technical constraints:**\n- Remove the dead return statement or add proper handling for no-match case\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.569Z",
+  "updated_at": "2026-01-19T20:25:19.960Z",
+  "problem_statement": "Dead return statement that is never reached since the loop always matches.",
+  "motivation": "Removes confusing dead code and improves code clarity.",
+  "technical_constraints": [
+    "Remove the dead return statement or add proper handling for no-match case"
+  ],
+  "priority_hint": "high"
+}

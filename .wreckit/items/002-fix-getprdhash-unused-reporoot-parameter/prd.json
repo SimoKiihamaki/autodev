@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "002-fix-getprdhash-unused-reporoot-parameter",
+  "branch_name": "wreckit/002-fix-getprdhash-unused-reporoot-parameter",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add comprehensive test coverage for get_prd_hash() and compute_file_hash()",
+      "acceptance_criteria": [
+        "Add new test class GetPrdHashTests with 5 test cases covering: returns hash when PRD.md exists, returns empty string when PRD.md missing, handles empty PRD.md, hash changes when content changes, hash is stable for same content",
+        "Add new test class ComputeFileHashTests with 4 test cases covering: returns SHA256 hash, hash matches known value, handles large files efficiently (10MB), handles binary files correctly",
+        "All new tests pass when run with pytest",
+        "All existing tests continue to pass (no regressions)",
+        "Tests follow existing patterns in test_utils.py including use of safe_import",
+        "No changes made to get_prd_hash() or compute_file_hash() functions",
+        "Tests use tempfile.TemporaryDirectory for filesystem isolation"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The get_prd_hash() function is already correctly implemented and properly uses the repo_root parameter. This task only adds test coverage to verify the correct implementation and prevent future regressions."
+    }
+  ]
+}

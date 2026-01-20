@@ -10,7 +10,7 @@ def safe_import(relative_module_path, fallback_module_path, item_names=None):
 
     Args:
         relative_module_path: Module path when running as script (e.g., 'tools.auto_prd.module')
-        fallback_module_path: Module path when running as module (e.g., '..module')
+        fallback_module_path: Module path when running as module (e.g., 'auto_prd.module')
         item_names: Name or list/tuple of specific items to import (None imports the whole module)
 
     Returns:
@@ -22,18 +22,18 @@ def safe_import(relative_module_path, fallback_module_path, item_names=None):
         # Import the whole module
         logging_utils = safe_import(
             'tools.auto_prd.logging_utils',
-            '..logging_utils'
+            'auto_prd.logging_utils'
         )
 
         # Import specific items (must use tuple unpacking for multiple items)
         run_cmd, safe_popen = safe_import(
             'tools.auto_prd.command',
-            '..command',
+            'auto_prd.command',
             ['run_cmd', 'safe_popen']
         )
 
         # Import a single constant (returns the item directly)
-        CLI_ARG_REPLACEMENTS = safe_import("tools.auto_prd.constants", "..constants", "CLI_ARG_REPLACEMENTS")
+        CLI_ARG_REPLACEMENTS = safe_import("tools.auto_prd.constants", "auto_prd.constants", "CLI_ARG_REPLACEMENTS")
     """
     try:
         if item_names:
@@ -48,7 +48,7 @@ def safe_import(relative_module_path, fallback_module_path, item_names=None):
         else:
             # Import entire module
             return __import__(relative_module_path)
-    except ImportError:
+    except (ImportError, ModuleNotFoundError):
         if item_names:
             if isinstance(item_names, str):
                 # Single item import from fallback - return the item directly

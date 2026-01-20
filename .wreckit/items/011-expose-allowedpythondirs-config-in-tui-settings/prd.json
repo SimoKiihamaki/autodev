@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "id": "011-expose-allowedpythondirs-config-in-tui-settings",
+  "branch_name": "wreckit/011-expose-allowedpythondirs-config-in-tui-settings",
+  "user_stories": [
+    {
+      "id": "US-011-001",
+      "title": "Add AllowedPythonDirs text input field to TUI model",
+      "acceptance_criteria": [
+        "Field inAllowedPythonDirs added to model struct after inSafeScriptDirs",
+        "Field added to settingsInputNames array as \"allowedpythondirs\"",
+        "Field initialized in initSettingsInputs() with joinPaths(cfg.AllowedPythonDirs)",
+        "Field added to settingsInputs map with pointer reference",
+        "Field added to blurAllInputs() function",
+        "Code compiles without type errors"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Follows exact pattern of inSafeScriptDirs field. Uses mkInput helper with placeholder \"Allowed Python dirs (path-separated)\" and width 80."
+    },
+    {
+      "id": "US-011-002",
+      "title": "Wire AllowedPythonDirs field to settings navigation",
+      "acceptance_criteria": [
+        "Field added to settingsGrid map at position {14, 0} (new row below safescriptdirs)",
+        "Focus case added to focusInput() function for \"allowedpythondirs\"",
+        "Arrow keys can navigate to the field",
+        "Tab key cycles through the field",
+        "Field shows visual focus indicator when active"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Grid position row 14 chosen for vertical layout in Security group. Alternative is row 13, column 1 for horizontal layout."
+    },
+    {
+      "id": "US-011-003",
+      "title": "Connect AllowedPythonDirs field to config system",
+      "acceptance_criteria": [
+        "Getter/setter added to inputFieldAccessors map in keys_settings.go",
+        "Config population added to populateConfigFromInputs() using parsePathList()",
+        "Existing allowed_python_dirs values load from config on TUI startup",
+        "Changes to field save to config.yaml when Ctrl+S pressed",
+        "Field values persist across TUI restarts"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Uses existing parsePathList() helper which handles OS-specific path separators (colon on Unix, semicolon on Windows)."
+    },
+    {
+      "id": "US-011-004",
+      "title": "Render AllowedPythonDirs field in Settings view",
+      "acceptance_criteria": [
+        "Field rendered in Security group below SafeScriptDirs field",
+        "Both fields use vertical layout with JoinVertical",
+        "Security box highlights when either field is focused",
+        "isInSettingsGroup includes both \"safescriptdirs\" and \"allowedpythondirs\"",
+        "Layout displays correctly in terminal"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Modifies renderSecurityGroup() function to include both fields in the security box content."
+    }
+  ]
+}

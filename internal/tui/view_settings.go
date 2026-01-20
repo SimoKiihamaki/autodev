@@ -28,6 +28,7 @@ func renderSettingsView(b *strings.Builder, m model) {
 	renderExecutorsGroup(b, m)
 	renderTimingsGroup(b, m)
 	renderRalphGroup(b, m)
+	renderSecurityGroup(b, m)
 	renderSettingsHelp(b, m)
 }
 
@@ -50,8 +51,16 @@ func renderExecutorsGroup(b *strings.Builder, m model) {
 	reviewToggle := renderExecutorToggle(executorReviewLabel, m.execReviewChoice, m.focusedInput == "toggleReview")
 	togglesLine := localToggle + toggleSeparator + prToggle + toggleSeparator + reviewToggle
 
+	// Dim the CodexModel field if it's disabled by policy
+	codexModelView := m.inCodexModel.View()
+	if m.isCodexModelDisabled() {
+		codexModelView = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")). // Dimmed gray
+			Render(codexModelView)
+	}
+
 	execContent := lipgloss.JoinVertical(lipgloss.Left,
-		m.inCodexModel.View(),
+		codexModelView,
 		m.inPyCmd.View(),
 		m.inPyScript.View(),
 		m.inPolicy.View(),
@@ -108,6 +117,17 @@ func renderRalphGroup(b *strings.Builder, m model) {
 	b.WriteString(ralphBox.Render() + "\n")
 }
 
+// renderSecurityGroup renders the security settings group.
+func renderSecurityGroup(b *strings.Builder, m model) {
+	securityContent := lipgloss.JoinVertical(lipgloss.Left,
+		m.inSafeScriptDirs.View(),
+		m.inAllowedPythonDirs.View(),
+	)
+	securityBox := NewBorderedBox("Security", securityContent)
+	securityBox.Focused = isInSettingsGroup(m.focusedInput, []string{"safescriptdirs", "allowedpythondirs"})
+	b.WriteString(securityBox.Render() + "\n")
+}
+
 // renderSettingsHelp renders the contextual help for settings.
 func renderSettingsHelp(b *strings.Builder, m model) {
 	if m.focusedInput != "" {
@@ -118,6 +138,11 @@ func renderSettingsHelp(b *strings.Builder, m model) {
 		}
 	} else {
 		b.WriteString("\n" + overlayHelpSection("Settings", m.keys.HelpEntriesForTab(tabIDSettings)) + "\n")
+	}
+
+	// Show warning if CodexModel is set but disabled by policy
+	if m.focusedInput == "codex" && m.isCodexModelDisabled() && m.inCodexModel.Value() != "gpt-5-codex" {
+		b.WriteString("\n" + statusWarnStyle.Render("⚠ Codex model set but executor policy is claude-only") + "\n")
 	}
 }
 

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "014-implement-or-remove-mouse-event-handler",
+  "branch_name": "wreckit/014-implement-or-remove-mouse-event-handler",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Remove unused mouse event handler from Update function",
+      "acceptance_criteria": [
+        "The mouse event handler case is removed from internal/tui/update.go lines 29-30",
+        "All existing tests pass after removal",
+        "Application builds successfully",
+        "Application runs without errors or warnings",
+        "All keyboard navigation and shortcuts work identically to before",
+        "No behavioral changes in the application"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Simple two-line removal. The case statement `case tea.MouseMsg:` and its return statement should be deleted. This is dead code that does nothing since mouse events are not enabled in the Bubble Tea program."
+    }
+  ]
+}

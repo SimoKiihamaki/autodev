@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "007-create-github-cicd-workflow",
+  "title": "Create GitHub CI/CD workflow",
+  "section": "infra",
+  "state": "implementing",
+  "overview": "Lack of CI/CD means no automated testing or validation when pull requests are submitted.\n\n**Motivation:** Enables automated quality checks on all PRs, improving code quality and catching issues early.\n\n**Success criteria:**\n- Create .github/workflows/ci.yml\n- Run make ci on push and pull_request\n- Test on Ubuntu latest with Go 1.23\n\n**Technical constraints:**\n- Create .github/workflows/ci.yml\n- Configure to run on push and pull_request events\n- Use actions/setup-go@v5 with Go 1.23\n\n**Signals:** priority: critical",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-19T18:40:58.567Z",
+  "updated_at": "2026-01-19T19:52:51.291Z",
+  "problem_statement": "Lack of CI/CD means no automated testing or validation when pull requests are submitted.",
+  "motivation": "Enables automated quality checks on all PRs, improving code quality and catching issues early.",
+  "success_criteria": [
+    "Create .github/workflows/ci.yml",
+    "Run make ci on push and pull_request",
+    "Test on Ubuntu latest with Go 1.23"
+  ],
+  "technical_constraints": [
+    "Create .github/workflows/ci.yml",
+    "Configure to run on push and pull_request events",
+    "Use actions/setup-go@v5 with Go 1.23"
+  ],
+  "priority_hint": "critical"
+}

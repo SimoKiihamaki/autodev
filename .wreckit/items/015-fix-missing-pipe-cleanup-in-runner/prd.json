@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "015-fix-missing-pipe-cleanup-in-runner",
+  "branch_name": "wreckit/015-fix-missing-pipe-cleanup-in-runner",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add deferred cleanup for stdout and stderr pipes in runner.Run()",
+      "acceptance_criteria": [
+        "defer stdout.Close() is added immediately after cmd.StdoutPipe() call (after line 1070)",
+        "defer stderr.Close() is added immediately after cmd.StderrPipe() call (after line 1074)",
+        "All existing tests pass: go test ./internal/runner/...",
+        "No race conditions detected: go test -race ./internal/runner/...",
+        "Build succeeds: go build ./..."
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is a minimal, surgical fix adding exactly 2 lines of code. The defer statements ensure pipes are closed on all execution paths, preventing file descriptor leaks when cmd.Start() fails or other errors occur after pipe creation."
+    }
+  ]
+}

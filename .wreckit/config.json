@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "base_branch": "master",
+  "branch_prefix": "wreckit/",
+  "merge_mode": "pr",
+  "agent": {
+    "mode": "sdk",
+    "command": "claude",
+    "args": [
+      "--print"
+    ],
+    "completion_signal": "<promise>COMPLETE</promise>"
+  },
+  "max_iterations": 100,
+  "timeout_seconds": 3600
+}

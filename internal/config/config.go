@@ -23,6 +23,7 @@ const (
 	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
 	EnvCodexTimeoutSeconds  = "AUTO_PRD_CODEX_TIMEOUT_SECONDS"
 	EnvClaudeTimeoutSeconds = "AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"
+	EnvStrict               = "AUTO_PRD_STRICT"
 )
 
 // Default configuration values
@@ -124,7 +125,8 @@ type Config struct {
 	RunPhases         Phases             `yaml:"run_phases"`
 	Ralph             Ralph              `yaml:"ralph"`
 	AllowedPythonDirs []string           `yaml:"allowed_python_dirs"`
-	PRDs              map[string]PRDMeta `yaml:"prds"` // abs path -> metadata
+	SafeScriptDirs    []string           `yaml:"safe_script_dirs"` // Whitelisted directories for automation scripts
+	PRDs              map[string]PRDMeta `yaml:"prds"`             // abs path -> metadata
 }
 
 // Defaults returns a sensible default config.
@@ -175,6 +177,7 @@ func Defaults() Config {
 			GutterNoProgressIters:  intPtr(3),   // 3 iterations default
 		},
 		AllowedPythonDirs: []string{},
+		SafeScriptDirs:    []string{}, // Whitelisted directories for automation scripts
 		PRDs:              map[string]PRDMeta{},
 	}
 }
@@ -280,17 +283,21 @@ func compareVersions(v1, v2 string) int {
 type LoadResult struct {
 	Config   Config
 	Warnings []string
+	Error    error // Validation error when strict mode is enabled
 }
 
 // Load reads the configuration from disk, falling back to defaults on error.
-// For corrupt configs, it logs a warning and returns defaults. This function
-// always returns a valid Config and never returns an error; warnings are
-// logged internally. Use LoadWithWarnings() if you need access to warnings
-// for UI display or other handling.
+// For corrupt configs, it logs a warning and returns defaults. When strict
+// mode is enabled (AUTO_PRD_STRICT=1), validation errors are fatal and this
+// function will panic after logging the error. Use LoadWithWarnings() if you
+// need to handle validation errors programmatically.
 func Load() Config {
 	result := LoadWithWarnings()
 	for _, warning := range result.Warnings {
 		log.Printf("Warning: %s", warning)
+	}
+	if result.Error != nil {
+		log.Fatalf("Config validation failed: %v", result.Error)
 	}
 	return result.Config
 }
@@ -418,6 +425,9 @@ func LoadWithWarnings() LoadResult {
 	if c.AllowedPythonDirs == nil {
 		c.AllowedPythonDirs = defaults.AllowedPythonDirs
 	}
+	if c.SafeScriptDirs == nil {
+		c.SafeScriptDirs = defaults.SafeScriptDirs
+	}
 	if c.PRDs == nil {
 		c.PRDs = defaults.PRDs
 	}
@@ -441,6 +451,17 @@ func LoadWithWarnings() LoadResult {
 		if c.BatchProcessing.MaxBatchSize != nil {
 			currentValue = *c.BatchProcessing.MaxBatchSize
 		}
+
+		// Check if strict mode is enabled
+		if os.Getenv(EnvStrict) == "1" {
+			// Strict mode: return error instead of warning
+			return LoadResult{
+				Config: Defaults(),
+				Error:  fmt.Errorf("config validation failed (AUTO_PRD_STRICT enabled): max_batch_size must be > 0, got %d", currentValue),
+			}
+		}
+
+		// Non-strict mode: warning + auto-correction (existing behavior)
 		warnings = append(warnings, fmt.Sprintf("max_batch_size must be > 0, got %d; using default value %d", currentValue, DefaultMaxBatchSize))
 		c.BatchProcessing.MaxBatchSize = intPtr(DefaultMaxBatchSize)
 	}
@@ -493,6 +514,9 @@ func (c Config) Clone() Config {
 	copyCfg := c
 	if c.AllowedPythonDirs != nil {
 		copyCfg.AllowedPythonDirs = append([]string(nil), c.AllowedPythonDirs...)
+	}
+	if c.SafeScriptDirs != nil {
+		copyCfg.SafeScriptDirs = append([]string(nil), c.SafeScriptDirs...)
 	}
 	if c.FollowLogs != nil {
 		copyCfg.FollowLogs = utils.BoolPtr(*c.FollowLogs)
@@ -636,6 +660,9 @@ func (c Config) Equal(other Config) bool {
 	if !equalStringSlices(c.AllowedPythonDirs, other.AllowedPythonDirs) {
 		return false
 	}
+	if !equalStringSlices(c.SafeScriptDirs, other.SafeScriptDirs) {
+		return false
+	}
 
 	if !equalPRDMetaMaps(c.PRDs, other.PRDs) {
 		return false
@@ -700,6 +727,15 @@ func (c Config) GetAllowedPythonDirs() []string {
 		return []string{}
 	}
 	return append([]string(nil), c.AllowedPythonDirs...)
+}
+
+// GetSafeScriptDirs returns the list of safe script directories from the config.
+// These directories are whitelisted for automation script execution.
+func (c Config) GetSafeScriptDirs() []string {
+	if c.SafeScriptDirs == nil {
+		return []string{}
+	}
+	return append([]string(nil), c.SafeScriptDirs...)
 }
 
 // intPtr returns a pointer to an int value.

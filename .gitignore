@@ -21,3 +21,6 @@ servers/
 # claude-mem generated session files
 CLAUDE.md
 **/CLAUDE.md
+
+# Wreckit local config (may contain secrets)
+.wreckit/config.local.json

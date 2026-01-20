@@ -6,14 +6,15 @@ Shows live logs from the underlying Python process.
 
 ## Features
 
+- **Ralph Mode** - Autonomous iteration with guardrails, progress tracking, and gutter detection ([docs](docs/ralph-mode.md))
 - Single binary `aprd` to start the TUI.
-- Configure flags & env (executor policy, repo/base/branch, CI toggles, timings).
+- Configure flags & env (executor policy, repo/base/branch, CI toggles, timings, Ralph settings).
 - **Select & tag** a PRD file (quick scan for `*.md`, add/remove tags).
 - **Initial prompt** field (optional); injected as a temp overlay above your PRD for the first pass.
 - **Per-phase executors** (implement, fix, PR, review_fix) via env overrides or policy fallback.
 - **Start from any step** by toggling phases: local, pr, review_fix.
 - Finds the Python automation script relative to the binary when the default path is missing.
-- Persists each run’s logs to `~/.config/aprd/logs/` for post-run debugging.
+- Persists each run's logs to `~/.config/aprd/logs/` for post-run debugging.
 
 ## Live Feed at a Glance
 
@@ -23,7 +24,7 @@ Shows live logs from the underlying Python process.
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.23+
 - Python 3.10+ (required for `zip(strict=True)` and modern type hints)
 - CLIs: `codex` (for codex-first|codex-only), `claude` (for claude-only|codex-first), `coderabbit`, `git`, `gh`
 
@@ -63,6 +64,26 @@ In **Settings**, set the executor for each phase:
 If left empty, the global **Executor policy** applies.
 This is implemented via env vars: `AUTO_PRD_EXECUTOR_IMPLEMENT|FIX|PR|REVIEW_FIX`.
 
+### Executor Models
+
+In **Settings**, configure the model used for each executor type:
+
+- **Codex model**: Model used when Codex is the executor (e.g., `gpt-5-codex`, `gpt-4-codex`)
+  - Only applies when `Executor policy` is set to `codex-first` or `codex-only`
+  - Can be overridden per-phase using phase executors (e.g., `Exec (review_fix): claude`)
+  - If using `claude-only` policy, this field is ignored
+
+**Note**: Model configuration is executor-specific. If you're using Claude as the executor, the Codex model setting will not apply.
+
+### Ralph Mode (Autonomous Iteration)
+
+Enable Ralph mode in **Settings** for autonomous iteration with:
+- **Guardrails** - Learn from mistakes and never repeat them
+- **Progress tracking** - See iteration history and learnings
+- **Gutter detection** - Automatically detect when stuck
+
+See [Ralph Mode documentation](docs/ralph-mode.md) for details.
+
 ## Troubleshooting Live Feed
 
 - **UI quiet but log file growing**: The reader loop likely stopped rescheduling. Reopen the TUI or restart the run to reset `readLogsBatch()`.
@@ -86,3 +107,22 @@ If the feed has not updated for more than 15 minutes, the process may have encou
 - Use a fast executor (`codex` is typically faster than `claude` for implementation).
 - Enable CodeRabbit to catch issues early and shrink review cycles.
 - Monitor system resources when processing large PRDs.
+
+## HTTP API Server
+
+AutoDev includes an optional HTTP API server for external control and monitoring.
+The API is currently experimental with a single health check endpoint.
+
+See [docs/API.md](docs/API.md) for comprehensive API documentation including:
+- Quick start guide
+- Endpoints reference
+- Configuration options
+- Integration examples
+
+**Quick start:**
+```bash
+make build
+./bin/api
+# Server runs on http://localhost:8080
+curl http://localhost:8080/healthz
+```

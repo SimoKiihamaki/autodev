@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "009-fix-getgitsha-unused-reporoot-parameter",
+  "branch_name": "wreckit/009-fix-getgitsha-unused-reporoot-parameter",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Remove broken get_git_sha() function from utils.py",
+      "acceptance_criteria": [
+        "get_git_sha() function is completely removed from tools/auto_prd/utils.py (lines 262-265)",
+        "No references to get_git_sha remain in utils.py",
+        "File compiles successfully without syntax errors after removal"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Function has NameError due to missing import and incorrect unpacking. Cannot fix due to circular import constraint with command.py."
+    },
+    {
+      "id": "US-002",
+      "title": "Update imports in verification_persistence.py",
+      "acceptance_criteria": [
+        "Import statement changed from 'from .utils import get_git_sha, get_prd_hash' to 'from .git_ops import git_head_sha' and 'from .utils import get_prd_hash'",
+        "Module imports successfully without circular import errors",
+        "Python can import VerificationRun class without errors"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Split into two import lines to follow existing patterns in codebase. git_ops imports are separate from utils imports."
+    },
+    {
+      "id": "US-003",
+      "title": "Replace get_git_sha() calls with git_head_sha() in verification_persistence.py",
+      "acceptance_criteria": [
+        "Line 245 updated: 'current_git_sha = git_head_sha(self.repo_root)'",
+        "Line 324 updated: 'git_sha = git_head_sha(repo_root)'",
+        "Both call sites use git_head_sha() instead of get_git_sha()",
+        "No other references to get_git_sha remain in the file"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Direct function call replacement - API is identical (same parameter, same return type). Both calls pass repo_root: Path and return str."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify no regressions in test suite",
+      "acceptance_criteria": [
+        "test_verification.py passes all tests",
+        "test_utils.py passes all tests",
+        "test_review_loop.py git-related tests pass (mock git_head_sha)",
+        "No new test failures introduced by the changes",
+        "No NameError or import errors in test runs"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Existing tests already mock git_head_sha, not get_git_sha. Verification tests will now use working code instead of broken get_git_sha()."
+    }
+  ]
+}

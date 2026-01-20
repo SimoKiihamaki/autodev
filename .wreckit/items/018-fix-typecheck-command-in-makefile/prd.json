@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "018-fix-typecheck-command-in-makefile",
+  "branch_name": "wreckit/018-fix-typecheck-command-in-makefile",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Add py.typed marker to auto_prd package",
+      "acceptance_criteria": [
+        "Empty py.typed file exists at /Users/simo/Projects/autodev/tools/auto_prd/py.typed",
+        "File is readable and contains no content (empty file)",
+        "Mypy recognizes the package as typed when running type checks"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Per PEP 561, typed packages must include a py.typed marker file in the package directory. This enables mypy to properly analyze internal imports and catch type errors within the package itself."
+    },
+    {
+      "id": "US-002",
+      "title": "Remove --ignore-missing-imports flag from typecheck target",
+      "acceptance_criteria": [
+        "Makefile typecheck target (lines 79-81) no longer includes --ignore-missing-imports flag",
+        "Running 'make typecheck' reports 62 type errors (increased from 22)",
+        "The command still uses $(PYTHON) variable for Python interpreter",
+        "The command still cd's to $(TOOLS_DIR) before running mypy"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The --ignore-missing-imports flag hides 40+ legitimate type errors. Removing this flag exposes all type errors, allowing developers to see and fix them. The $(PYTHON) variable is already in use (line 2 defines it as python3), satisfying that constraint."
+    },
+    {
+      "id": "US-003",
+      "title": "Preserve typecheck-lenient target for CI compatibility",
+      "acceptance_criteria": [
+        "typecheck-lenient target remains unchanged (lines 84-86)",
+        "Target still uses --ignore-missing-imports flag",
+        "Target still uses '|| true' to ignore exit code",
+        "Running 'make ci' completes successfully",
+        "CI workflow continues to pass after changes"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The typecheck-lenient target is used by CI via 'make ci' (line 35). Keeping it unchanged ensures CI continues to pass during the transition period while developers work on fixing the newly exposed type errors."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify all tooling targets still work correctly",
+      "acceptance_criteria": [
+        "make lint passes (both Go and Python linting)",
+        "make test passes (Go tests)",
+        "make typecheck reports 62 errors",
+        "make typecheck-lenient exits with status 0",
+        "make ci completes successfully"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "After making changes to the typecheck targets, verify that no other tooling targets have regressed. This ensures the changes don't break existing development workflows or CI."
+    }
+  ]
+}

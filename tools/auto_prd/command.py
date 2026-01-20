@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from .constants import (
@@ -26,6 +27,67 @@ from .constants import (
 )
 from .logging_utils import decode_output, logger, truncate_for_log
 from .utils import scrub_cli_text
+
+
+@dataclass
+class CommandResult:
+    """Result of command execution with structured access to output and exit status.
+
+    This dataclass encapsulates the results of running a subprocess command,
+    providing both named attribute access and tuple unpacking for backward
+    compatibility.
+
+    Examples:
+        # Named attribute access (preferred for new code)
+        result = run_cmd(["git", "status"], check=False)
+        if result.is_success():
+            print(result.stdout)
+
+        # Tuple unpacking (backward compatible)
+        stdout, stderr, exit_code = run_cmd(["git", "status"], check=False)
+        if exit_code == 0:
+            print(stdout)
+    """
+
+    stdout: str
+    stderr: str
+    exit_code: int
+
+    def is_success(self) -> bool:
+        """Check if command succeeded (exit code 0).
+
+        Returns:
+            True if exit_code is 0, False otherwise.
+        """
+        return self.exit_code == 0
+
+    def get_error_message(self) -> str:
+        """Get error message from command failure.
+
+        Returns stderr content if available; otherwise falls back to stdout;
+        otherwise returns a generic exit code message. This matches the
+        behavior of extract_called_process_error_details() for security
+        (stderr only) with stdout fallback.
+
+        Returns:
+            A string containing the error message.
+        """
+        if self.stderr.strip():
+            return self.stderr.strip()
+        if self.stdout.strip():
+            return self.stdout.strip()
+        return f"exit code {self.exit_code}"
+
+    def __iter__(self):
+        """Enable backward-compatible tuple unpacking.
+
+        Allows existing code to continue working:
+            stdout, stderr, exit_code = result
+
+        Yields:
+            Values in order: stdout, stderr, exit_code
+        """
+        return iter((self.stdout, self.stderr, self.exit_code))
 
 
 def _repo_root_not_found_msg(repo_root: Path) -> str:
@@ -374,7 +436,7 @@ def run_cmd(
     backoff_base: float = 1.0,
     backoff_max: float = 60.0,
     backoff_jitter: float = 0.5,
-) -> tuple[str, str, int]:
+) -> CommandResult:
     """Execute a command with optional retry logic for transient failures.
 
     Args:
@@ -394,7 +456,8 @@ def run_cmd(
         backoff_jitter: Random jitter factor (0.0-1.0) to add to delay.
 
     Returns:
-        Tuple of (stdout, stderr, returncode).
+        CommandResult containing stdout, stderr, and exit_code fields.
+        Supports backward-compatible tuple unpacking: stdout, stderr, exit_code = result.
 
     Raises:
         CalledProcessError: If check=True and command fails after all retries.
@@ -496,7 +559,7 @@ def run_cmd(
 
         if proc.returncode == 0:
             logger.info("Command succeeded in %.2fs: %s", duration, cmd_display)
-            return stdout_text, stderr_text, proc.returncode
+            return CommandResult(stdout_text, stderr_text, proc.returncode)
 
         # Command failed - check if we should retry
         level = logging.ERROR if check else logging.WARNING
@@ -546,7 +609,7 @@ def run_cmd(
                 proc.returncode, sanitized_cmd, output=stdout_bytes, stderr=stderr_bytes
             )
 
-        return stdout_text, stderr_text, proc.returncode
+        return CommandResult(stdout_text, stderr_text, proc.returncode)
 
 
 def safe_popen(
@@ -603,7 +666,25 @@ def run_sh(
     capture: bool = True,
     timeout: int | None = None,
     extra_env: dict | None = None,
-) -> tuple[str, str, int]:
+) -> CommandResult:
+    """Execute a shell script string using zsh.
+
+    Args:
+        script: Shell script to execute.
+        cwd: Working directory for the command.
+        check: If True, raise CalledProcessError on non-zero exit.
+        capture: If True, capture stdout/stderr.
+        timeout: Timeout in seconds.
+        extra_env: Additional environment variables.
+
+    Returns:
+        CommandResult containing stdout, stderr, and exit_code fields.
+        Supports backward-compatible tuple unpacking: stdout, stderr, exit_code = result.
+
+    Raises:
+        CalledProcessError: If check=True and command fails.
+        FileNotFoundError: If zsh executable not found.
+    """
     verify_unsafe_execution_ready()
     return run_cmd(
         [require_zsh(), "-lc", script],

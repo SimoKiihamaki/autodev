@@ -128,24 +128,24 @@ _SENSITIVE_STDERR_PATTERNS = [
 ]
 
 
-def _sanitize_stderr_for_exception(stderr: str, max_chars: int) -> str:
-    """Sanitize stderr content before including in exception messages.
+def _sanitize_output_for_exception(output: str, max_chars: int) -> str:
+    """Sanitize output content (stdout/stderr) before including in exception messages.
 
     Removes/redacts potentially sensitive information like API keys, tokens,
-    passwords, and user-specific file paths from stderr to prevent accidental
+    passwords, and user-specific file paths from output to prevent accidental
     exposure in exception messages or logs.
 
     Args:
-        stderr: Raw stderr content to sanitize.
+        output: Raw output content (stdout or stderr) to sanitize.
         max_chars: Maximum characters to include (truncates if exceeded).
 
     Returns:
-        Sanitized and potentially truncated stderr string.
+        Sanitized and potentially truncated output string.
     """
-    if not stderr:
+    if not output:
         return ""
 
-    sanitized = stderr
+    sanitized = output
     for pattern, replacement in _SENSITIVE_STDERR_PATTERNS:
         sanitized = pattern.sub(replacement, sanitized)
 
@@ -605,7 +605,7 @@ def parse_claude_json_response(
         # including in exception messages. Model output can contain tokens,
         # credentials, PR URLs with embedded auth, etc.
         preview_raw = stdout[:200] + "..." if len(stdout) > 200 else stdout
-        preview = _sanitize_stderr_for_exception(preview_raw, 200)
+        preview = _sanitize_output_for_exception(preview_raw, 200)
         if strict:
             msg = (
                 f"Failed to parse Claude JSON response: {e}. Output preview: {preview}"
@@ -1053,7 +1053,7 @@ def claude_exec(
     if not out.strip() and stderr.strip():
         # Sanitize stderr to redact sensitive information (API keys, tokens, paths)
         # before logging, consistent with claude_exec_streaming behavior.
-        sanitized_stderr = _sanitize_stderr_for_exception(stderr, 500)
+        sanitized_stderr = _sanitize_output_for_exception(stderr, 500)
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
             sanitized_stderr,
@@ -1331,7 +1331,7 @@ def claude_exec_streaming(
             SECURITY WARNING: The line passed to this callback is raw, unsanitized
             model output that may contain sensitive data (API keys, tokens, PII,
             secrets). Callers that log or persist callback output MUST implement
-            their own sanitization (e.g., using _sanitize_stderr_for_exception
+            their own sanitization (e.g., using _sanitize_output_for_exception
             or equivalent) to prevent sensitive data exposure in logs/files.
         timeout: Optional timeout in seconds. If None, falls back to the
             AUTO_PRD_CLAUDE_TIMEOUT_SECONDS environment variable. If that is
@@ -1487,7 +1487,7 @@ def claude_exec_streaming(
         if captured_stderr:
             # Sanitize stderr to remove sensitive information (API keys, tokens, paths)
             # and truncate to prevent excessively long exception messages.
-            sanitized_stderr = _sanitize_stderr_for_exception(
+            sanitized_stderr = _sanitize_output_for_exception(
                 captured_stderr, STDERR_ERROR_MESSAGE_MAX_CHARS
             )
             error_msg = f"{error_msg}. Stderr: {sanitized_stderr}"
@@ -1920,7 +1920,7 @@ def claude_exec_streaming(
     if not stdout_text.strip() and stderr_text.strip():
         # Sanitize stderr to redact sensitive information (API keys, tokens, paths)
         # before logging, same as non-streaming claude_exec.
-        sanitized_stderr = _sanitize_stderr_for_exception(stderr_text, 500)
+        sanitized_stderr = _sanitize_output_for_exception(stderr_text, 500)
         logger.warning(
             "Claude returned empty stdout. Stderr content: %s",
             sanitized_stderr,

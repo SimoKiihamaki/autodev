@@ -1,6 +1,5 @@
 """Tests for task completion detection module."""
 
-
 from tools.auto_prd.task_completion_detector import (
     MAX_REASONABLE_TASK_DECREASE,
     MIN_COMPLETION_CONFIDENCE,

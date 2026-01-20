@@ -1,3 +1,48 @@
+// Package api provides an optional HTTP API server for external control and monitoring.
+//
+// The server is built with the chi v5 router and includes a standard middleware stack
+// (RequestID, RealIP, Logger, Recoverer). It currently exposes a single health check
+// endpoint: GET /healthz.
+//
+// # Quick Start
+//
+//	import "github.com/SimoKiihamaki/autodev/internal/api"
+//
+//	cfg := api.Config{Addr: ":8080"}
+//	server := api.NewServer(cfg, api.Dependencies{})
+//	go server.Start()
+//
+// # Configuration
+//
+// The server accepts configuration via the Config struct:
+//   - Addr: Bind address (default: ":8080")
+//   - ReadTimeout: Maximum duration for reading requests (default: 5s)
+//   - WriteTimeout: Maximum duration for writing responses (default: 5s)
+//   - IdleTimeout: Maximum time to wait for next request (default: 60s)
+//
+// Bind address can also be configured via the APRD_API_ADDR environment variable
+// when using the cmd/api binary.
+//
+// # Server Lifecycle
+//
+// The server supports graceful shutdown with a configurable context timeout:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//	defer cancel()
+//	if err := server.Shutdown(ctx); err != nil {
+//	    log.Fatalf("Shutdown failed: %v", err)
+//	}
+//
+// # Adding New Endpoints
+//
+// To add new endpoints, modify the newRouter function in router.go. The Dependencies
+// struct is currently empty and designed for future dependency injection (e.g., runner
+// control, config access, log streaming).
+//
+// # Stability
+//
+// The API is currently experimental and may change as the system evolves.
+// For the latest API documentation, see docs/API.md.
 package api
 
 import (

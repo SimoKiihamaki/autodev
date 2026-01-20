@@ -70,7 +70,6 @@ fmt: fmt-go fmt-py
 fmt-go:
 	@echo "📝 Formatting Go code..."
 	goimports -w .
-	gofmt -w .
 
 fmt-py:
 	@echo "📝 Formatting Python code..."
@@ -79,7 +78,7 @@ fmt-py:
 # Type checking
 typecheck:
 	@echo "🔎 Running type checks..."
-	cd $(TOOLS_DIR) && $(PYTHON) -m mypy auto_prd/ --ignore-missing-imports
+	cd $(TOOLS_DIR) && $(PYTHON) -m mypy auto_prd/
 
 # Type checking (lenient, for CI rollout)
 typecheck-lenient:

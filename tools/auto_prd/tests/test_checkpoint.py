@@ -17,16 +17,16 @@ from unittest import TestCase, main, mock
 from .test_helpers import safe_import
 
 save_checkpoint = safe_import(
-    "tools.auto_prd.checkpoint", "..checkpoint", "save_checkpoint"
+    "tools.auto_prd.checkpoint", "auto_prd.checkpoint", "save_checkpoint"
 )
 get_sessions_dir = safe_import(
-    "tools.auto_prd.checkpoint", "..checkpoint", "get_sessions_dir"
+    "tools.auto_prd.checkpoint", "auto_prd.checkpoint", "get_sessions_dir"
 )
 create_checkpoint = safe_import(
-    "tools.auto_prd.checkpoint", "..checkpoint", "create_checkpoint"
+    "tools.auto_prd.checkpoint", "auto_prd.checkpoint", "create_checkpoint"
 )
 load_checkpoint = safe_import(
-    "tools.auto_prd.checkpoint", "..checkpoint", "load_checkpoint"
+    "tools.auto_prd.checkpoint", "auto_prd.checkpoint", "load_checkpoint"
 )
 
 

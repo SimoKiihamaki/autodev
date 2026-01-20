@@ -26,9 +26,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(typed)
 
-	case tea.MouseMsg:
-		return m, nil
-
 	case prdScanMsg:
 		m.prdList.SetItems(typed.items)
 		m.ensureSelectedPRD(typed.items)
@@ -51,7 +48,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Only clear the flag when save succeeds
 				m.quitAfterSave = false
 				m.cancelQuitConfirm()
-				m.Cleanup()
 				return m, tea.Quit
 			}
 			// On error, preserve quitAfterSave so user can retry saving without re-confirming quit

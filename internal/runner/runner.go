@@ -175,13 +175,13 @@ func makeTempPRD(prdPath, prompt string) (string, func(), error) {
 // The optional extraSafeDirs parameter allows callers to provide additional directories that should
 // be considered safe without requiring environment variable modifications. This enables validation
 // to occur without side effects to the process environment.
-func validatePythonScriptPath(scriptPath, repoPath string, extraSafeDirs ...string) error {
+func validatePythonScriptPath(cfg *config.Config, scriptPath, repoPath string, extraSafeDirs ...string) error {
 	// scriptPath is assumed to be symlink-resolved as per function contract
 	if !filepath.IsAbs(scriptPath) {
 		return fmt.Errorf("internal error: validatePythonScriptPath received non-absolute path: %q", scriptPath)
 	}
 
-	safeDirs := resolvedSafeScriptDirs()
+	safeDirs := resolvedSafeScriptDirs(cfg)
 
 	// Append any extra safe directories provided by the caller.
 	// This allows validation without modifying the process environment.
@@ -226,12 +226,13 @@ func validatePythonScriptPath(scriptPath, repoPath string, extraSafeDirs ...stri
 	}
 
 	// Reject absolute paths in other locations when repoPath is not configured
-	return fmt.Errorf("PythonScript path requires repoPath configuration or must be within an approved installation directory: %q", scriptPath)
+	return fmt.Errorf("PythonScript path requires repoPath configuration or must be within an approved directory; "+
+		"configure allowed directories via TUI Settings → Security or AUTO_PRD_SAFE_SCRIPT_DIRS environment variable: %q", scriptPath)
 }
 
 const safeScriptDirsEnv = "AUTO_PRD_SAFE_SCRIPT_DIRS"
 
-func resolvedSafeScriptDirs() []string {
+func resolvedSafeScriptDirs(cfg *config.Config) []string {
 	addIfDir := func(path string, set map[string]struct{}) {
 		if path == "" {
 			return
@@ -282,6 +283,13 @@ func resolvedSafeScriptDirs() []string {
 				continue
 			}
 			addIfDir(part, dirs)
+		}
+	}
+
+	// Merge with config SafeScriptDirs (config takes precedence over env var)
+	if cfg != nil {
+		for _, dir := range cfg.GetSafeScriptDirs() {
+			addIfDir(dir, dirs)
 		}
 	}
 
@@ -430,7 +438,7 @@ func buildScriptArgs(cfg config.Config, prdPath, logFilePath, logLevel string) (
 	}
 
 	// Validate the resolved script path for security, passing script directory as extra safe dir
-	if err := validatePythonScriptPath(resolvedScript, resolvedRepoPath, scriptDir); err != nil {
+	if err := validatePythonScriptPath(&cfg, resolvedScript, resolvedRepoPath, scriptDir); err != nil {
 		return nil, "", err
 	}
 
@@ -1061,14 +1069,20 @@ func (o Options) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("opening stdout pipe: %w", err)
 	}
+	defer stdout.Close()
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("opening stderr pipe: %w", err)
 	}
+	defer stderr.Close()
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting runner process: %w", err)
 	}
+
+	// Capture the process reference immediately after Start() to avoid data races.
+	// cmd.Process is guaranteed to be non-nil after successful Start().
+	proc := cmd.Process
 
 	// Use sync.Once to ensure the log channel is only closed once, preventing
 	// panics from double-close if multiple goroutines attempt cleanup.
@@ -1081,42 +1095,71 @@ func (o Options) Run(ctx context.Context) error {
 		})
 	}
 
-	// Use errgroup for better error propagation and cleaner goroutine management.
-	// The errgroup context is not used here because we manage cancellation separately.
-	g := new(errgroup.Group)
+	// Save parent context for cancellation listening before shadowing
+	parentCtx := ctx
+
+	// Use errgroup with context for unified cancellation handling.
+	// The errgroup context is tied to the parent context and is cancelled when
+	// any goroutine returns an error, ensuring all goroutines exit cleanly.
+	g, gctx := errgroup.WithContext(ctx)
+
 	g.Go(func() error {
-		stream(stdout, false, o.Logs)
+		stream(gctx, stdout, false, o.Logs)
 		return nil
 	})
 	g.Go(func() error {
-		stream(stderr, true, o.Logs)
+		stream(gctx, stderr, true, o.Logs)
 		return nil
 	})
 
+	// cmd.Wait() is kept separate from errgroup. Note: There is a data race between
+	// cmd.Wait() (which writes to cmd.ProcessState) and reading cmd.ProcessState.
+	// We mitigate this by capturing cmd.Process early (see `proc` variable above).
+	// The remaining race on ProcessState is benign - see comment in proc_unix.go.
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
+	// interruptProcessFunc captures the process to avoid data races with cmd.Wait()
+	interruptProcessFunc := func() error {
+		if proc == nil {
+			return nil
+		}
+		return interruptProcessCmd(proc)
+	}
+
+	// forceKillProcessFunc captures the process to avoid data races with cmd.Wait()
+	forceKillProcessFunc := func() error {
+		if proc == nil {
+			return nil
+		}
+		return forceKillProcessCmd(proc)
+	}
+
 	select {
-	case <-ctx.Done():
+	case <-parentCtx.Done():
 		// Graceful stop: send Interrupt, then wait; kill on timeout to ensure pipes close and streams finish.
-		if sigErr := interruptProcess(cmd); sigErr != nil {
+		if sigErr := interruptProcessFunc(); sigErr != nil {
 			sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to send interrupt: " + sigErr.Error(), Err: true})
 		}
+		// Wait for both process and streams to finish
 		select {
 		case <-waitCh:
-			// Process exited; streams will drain/finish.
+			// Process exited
 		case <-time.After(2 * time.Second):
-			if killErr := forceKillProcess(cmd); killErr != nil {
+			if killErr := forceKillProcessFunc(); killErr != nil {
 				sendLine(o.Logs, Line{Time: time.Now(), Text: "failed to kill process: " + killErr.Error(), Err: true})
 			}
 			<-waitCh
 		}
-		_ = g.Wait() // Wait for stream goroutines to complete
+		// The errgroup context cancellation will cause stream goroutines to exit
+		_ = g.Wait()
 		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
 		closeLogs()
-		return fmt.Errorf("run canceled: %w", ctx.Err())
+		return fmt.Errorf("run canceled: %w", parentCtx.Err())
 	case err := <-waitCh:
-		_ = g.Wait() // Wait for stream goroutines to complete
+		// Process finished normally
+		// Wait for streams to finish (they will exit when pipes are closed)
+		_ = g.Wait()
 		sendLine(o.Logs, Line{Time: time.Now(), Text: "process finished", Err: false})
 		closeLogs()
 		if err != nil {
@@ -1129,7 +1172,7 @@ func (o Options) Run(ctx context.Context) error {
 // stream attempts to forward subprocess output to the log channel without blocking for normal log lines.
 // When the channel backlog fills (UI too slow), it emits a warning (which may block) and drops live-feed lines.
 // The Python process (invoked with --log-file) is responsible for writing the complete log file synchronously; the Go runner and TUI do not persist log lines to disk.
-func stream(r io.Reader, isErr bool, logs chan Line) {
+func stream(ctx context.Context, r io.Reader, isErr bool, logs chan Line) {
 	if logs == nil {
 		// No consumer is interested in stream output (e.g. during tests); discard to
 		// keep the subprocess draining without emitting spurious log noise.
@@ -1148,6 +1191,14 @@ func stream(r io.Reader, isErr bool, logs chan Line) {
 
 	var dropping bool
 	for sc.Scan() {
+		// Check for context cancellation before processing each line
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Continue processing
+		}
+
 		line := Line{Time: time.Now(), Text: sc.Text(), Err: isErr}
 		if trySend(logs, line) {
 			dropping = false

@@ -17,22 +17,22 @@ def get_expected_repo_root() -> Path:
 
 
 CLAUDE_DEBUG_LOG_NAME = safe_import(
-    "tools.auto_prd.command", "..command", "CLAUDE_DEBUG_LOG_NAME"
+    "tools.auto_prd.command", "auto_prd.command", "CLAUDE_DEBUG_LOG_NAME"
 )
 ensure_claude_debug_dir = safe_import(
-    "tools.auto_prd.command", "..command", "ensure_claude_debug_dir"
+    "tools.auto_prd.command", "auto_prd.command", "ensure_claude_debug_dir"
 )
-run_cmd = safe_import("tools.auto_prd.command", "..command", "run_cmd")
+run_cmd = safe_import("tools.auto_prd.command", "auto_prd.command", "run_cmd")
 validate_command_args = safe_import(
-    "tools.auto_prd.command", "..command", "validate_command_args"
+    "tools.auto_prd.command", "auto_prd.command", "validate_command_args"
 )
-validate_cwd = safe_import("tools.auto_prd.command", "..command", "validate_cwd")
+validate_cwd = safe_import("tools.auto_prd.command", "auto_prd.command", "validate_cwd")
 register_safe_cwd = safe_import(
-    "tools.auto_prd.command", "..command", "register_safe_cwd"
+    "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
 )
-popen_streaming = safe_import("tools.auto_prd.command", "..command", "popen_streaming")
-scrub_cli_text = safe_import("tools.auto_prd.utils", "..utils", "scrub_cli_text")
-open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "..pr_flow", "open_or_get_pr")
+popen_streaming = safe_import("tools.auto_prd.command", "auto_prd.command", "popen_streaming")
+scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
+open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "auto_prd.pr_flow", "open_or_get_pr")
 
 
 class ScrubCliTextTests(TestCase):
@@ -122,9 +122,9 @@ class RunCmdTests(TestCase):
     def setUp(self):
         register_safe_cwd(Path(__file__).parent)
 
-    @mock.patch("tools.auto_prd.command.subprocess.run")
-    @mock.patch("tools.auto_prd.command.env_with_zsh", return_value={})
-    @mock.patch("tools.auto_prd.command.shutil.which", return_value="/usr/bin/gh")
+    @mock.patch("auto_prd.command.subprocess.run")
+    @mock.patch("auto_prd.command.env_with_zsh", return_value={})
+    @mock.patch("auto_prd.command.shutil.which", return_value="/usr/bin/gh")
     def test_auto_sanitizes_arguments(
         self, _mock_which, _mock_env_with_zsh, mock_run
     ) -> None:
@@ -219,9 +219,9 @@ class PopenStreamingTests(TestCase):
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_sanitizes_command_arguments(self, mock_env, mock_popen, mock_which):
         """Test that command arguments are sanitized via scrub_cli_text."""
         mock_which.return_value = "/usr/bin/echo"
@@ -244,7 +244,7 @@ class PopenStreamingTests(TestCase):
         self.assertEqual(actual_args, ["echo", "contains 'backticks'"])
         self.assertNotIn("`", actual_args[1])
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.shutil.which")
     def test_raises_file_not_found_for_missing_command(self, mock_which):
         """Test that FileNotFoundError is raised when command not found."""
         mock_which.return_value = None
@@ -280,9 +280,9 @@ class PopenStreamingTests(TestCase):
 
             shutil.rmtree(unsafe_dir, ignore_errors=True)
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_sets_pythonunbuffered_environment(self, mock_env, mock_popen, mock_which):
         """Test that PYTHONUNBUFFERED=1 is set in environment."""
         mock_which.return_value = "/usr/bin/echo"
@@ -296,9 +296,9 @@ class PopenStreamingTests(TestCase):
         call_kwargs = mock_popen.call_args[1]
         self.assertEqual(call_kwargs["env"]["PYTHONUNBUFFERED"], "1")
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_returns_popen_and_sanitized_args(self, mock_env, mock_popen, mock_which):
         """Test that popen_streaming returns (Popen, sanitized_args) tuple."""
         mock_which.return_value = "/usr/bin/echo"
@@ -311,9 +311,9 @@ class PopenStreamingTests(TestCase):
         self.assertIs(proc, mock_proc)
         self.assertEqual(sanitized_args, ["echo", "test"])
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_configures_popen_with_pipes(self, mock_env, mock_popen, mock_which):
         """Test that Popen is configured with stdin/stdout/stderr pipes."""
         mock_which.return_value = "/usr/bin/echo"
@@ -330,9 +330,9 @@ class PopenStreamingTests(TestCase):
         self.assertTrue(call_kwargs["text"])
         self.assertEqual(call_kwargs["bufsize"], 1)
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_sanitize_false_preserves_special_characters(
         self, mock_env, mock_popen, mock_which
     ):
@@ -350,9 +350,9 @@ class PopenStreamingTests(TestCase):
         # With sanitize=False, backticks should be preserved
         self.assertEqual(sanitized_args, ["echo", "contains `backticks`"])
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_sanitize_true_converts_backticks_to_single_quotes(
         self, mock_env, mock_popen, mock_which
     ):
@@ -371,9 +371,9 @@ class PopenStreamingTests(TestCase):
         self.assertEqual(sanitized_args, ["echo", "contains 'backticks'"])
         self.assertNotIn("`", sanitized_args[1])
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_passes_cwd_to_popen(self, mock_env, mock_popen, mock_which):
         """Test that cwd is passed to Popen."""
         mock_which.return_value = "/usr/bin/echo"
@@ -386,9 +386,9 @@ class PopenStreamingTests(TestCase):
         call_kwargs = mock_popen.call_args[1]
         self.assertEqual(call_kwargs["cwd"], str(self.repo_root))
 
-    @mock.patch("tools.auto_prd.command.shutil.which")
-    @mock.patch("tools.auto_prd.command.subprocess.Popen")
-    @mock.patch("tools.auto_prd.command.env_with_zsh")
+    @mock.patch("auto_prd.command.shutil.which")
+    @mock.patch("auto_prd.command.subprocess.Popen")
+    @mock.patch("auto_prd.command.env_with_zsh")
     def test_merges_extra_env(self, mock_env, mock_popen, mock_which):
         """Test that extra_env is merged into environment."""
         mock_which.return_value = "/usr/bin/echo"

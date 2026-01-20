@@ -2,6 +2,7 @@ package tui
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"github.com/SimoKiihamaki/autodev/internal/utils"
@@ -183,4 +184,164 @@ func TestBoolPtr(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestJoinPaths(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		paths    []string
+		expected string
+	}{
+		{
+			name:     "empty slice",
+			paths:    []string{},
+			expected: "",
+		},
+		{
+			name:     "nil slice",
+			paths:    nil,
+			expected: "",
+		},
+		{
+			name:     "single path",
+			paths:    []string{"/tmp/scripts"},
+			expected: "/tmp/scripts",
+		},
+		{
+			name:     "multiple paths",
+			paths:    []string{"/tmp/scripts", "~/scripts", "/opt/automation"},
+			expected: "/tmp/scripts" + string(os.PathListSeparator) + "~/scripts" + string(os.PathListSeparator) + "/opt/automation",
+		},
+		{
+			name:     "paths with spaces",
+			paths:    []string{"/tmp/my scripts", "~/scripts"},
+			expected: "/tmp/my scripts" + string(os.PathListSeparator) + "~/scripts",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := joinPaths(tc.paths)
+			if result != tc.expected {
+				t.Errorf("joinPaths(%v) = %q, want %q", tc.paths, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestParsePathList(t *testing.T) {
+	t.Parallel()
+
+	sep := string(os.PathListSeparator)
+
+	testCases := []struct {
+		name     string
+		raw      string
+		expected []string
+	}{
+		{
+			name:     "empty string",
+			raw:      "",
+			expected: []string{},
+		},
+		{
+			name:     "whitespace only",
+			raw:      "   ",
+			expected: []string{},
+		},
+		{
+			name:     "single path",
+			raw:      "/tmp/scripts",
+			expected: []string{"/tmp/scripts"},
+		},
+		{
+			name:     "multiple paths",
+			raw:      "/tmp/scripts" + sep + "~/scripts" + sep + "/opt/automation",
+			expected: []string{"/tmp/scripts", "~/scripts", "/opt/automation"},
+		},
+		{
+			name:     "extra separators",
+			raw:      "/tmp/scripts" + sep + sep + "~/scripts" + sep + sep,
+			expected: []string{"/tmp/scripts", "~/scripts"},
+		},
+		{
+			name:     "spaces around paths",
+			raw:      " /tmp/scripts " + sep + " ~/scripts ",
+			expected: []string{"/tmp/scripts", "~/scripts"},
+		},
+		{
+			name:     "paths with internal spaces",
+			raw:      "/tmp/my scripts" + sep + "~/automation tools",
+			expected: []string{"/tmp/my scripts", "~/automation tools"},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := parsePathList(tc.raw)
+			if !equalStringSlices(result, tc.expected) {
+				t.Errorf("parsePathList(%q) = %v, want %v", tc.raw, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestPathListRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		paths []string
+	}{
+		{
+			name:  "empty list",
+			paths: []string{},
+		},
+		{
+			name:  "single path",
+			paths: []string{"/tmp/scripts"},
+		},
+		{
+			name:  "multiple paths",
+			paths: []string{"/tmp/scripts", "~/automation", "/opt/tools"},
+		},
+		{
+			name:  "paths with spaces",
+			paths: []string{"/tmp/my scripts", "~/automation tools"},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			joined := joinPaths(tc.paths)
+			parsed := parsePathList(joined)
+			if !equalStringSlices(parsed, tc.paths) {
+				t.Errorf("round-trip failed: original %v, joined %q, parsed %v", tc.paths, joined, parsed)
+			}
+		})
+	}
+}
+
+// Helper for comparing string slices in tests
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

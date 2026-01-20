@@ -33,6 +33,9 @@ var settingsGrid = map[string][2]int{
 	"ralphshowguardrails":   {11, 2},
 	"ralphguttertimeout":    {12, 0},
 	"ralphgutternoprogress": {12, 1},
+	// Security settings (rows 13-14)
+	"safescriptdirs":    {13, 0},
+	"allowedpythondirs": {14, 0},
 }
 
 func (m *model) blurAllInputs() {
@@ -58,6 +61,9 @@ func (m *model) blurAllInputs() {
 	m.inRalphShowGuardrails.Blur()
 	m.inRalphGutterTimeout.Blur()
 	m.inRalphGutterNoProgress.Blur()
+	// Security inputs
+	m.inSafeScriptDirs.Blur()
+	m.inAllowedPythonDirs.Blur()
 	m.prompt.Blur()
 	m.tagInput.Blur()
 	m.focusedInput = ""
@@ -115,6 +121,11 @@ func (m *model) focusInput(inputName string) {
 		m.inRalphGutterTimeout.Focus()
 	case "ralphgutternoprogress":
 		m.inRalphGutterNoProgress.Focus()
+	// Security settings
+	case "safescriptdirs":
+		m.inSafeScriptDirs.Focus()
+	case "allowedpythondirs":
+		m.inAllowedPythonDirs.Focus()
 	case "prompt":
 		m.prompt.Focus()
 	default:

@@ -14,7 +14,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from .utils import get_git_sha, get_prd_hash
+from .git_ops import git_head_sha
+from .utils import get_prd_hash
 
 
 class VerificationStatus(str, Enum):
@@ -242,7 +243,7 @@ class VerificationPersistence:
         Returns:
             True if run is fresh, False otherwise
         """
-        current_git_sha = get_git_sha(self.repo_root)
+        current_git_sha = git_head_sha(self.repo_root)
         if current_prd_hash is None:
             current_prd_hash = get_prd_hash(self.repo_root)
 
@@ -321,7 +322,7 @@ def create_verification_run(
     Returns:
         VerificationRun object ready to persist
     """
-    git_sha = get_git_sha(repo_root)
+    git_sha = git_head_sha(repo_root)
     prd_hash = get_prd_hash(repo_root)
 
     run_id = generate_run_id()

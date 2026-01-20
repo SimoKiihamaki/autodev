@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "id": "019-improve-overall-test-coverage-to-80",
+  "branch_name": "wreckit/019-improve-overall-test-coverage-to-80",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Fix failing Go TUI navigation tests",
+      "acceptance_criteria": [
+        "Update test expectations in internal/tui/navigation_test.go to use 'allowedpythondirs' as the last settings input instead of 'safescriptdirs'",
+        "All three failing navigation test cases pass: 'settings wrap down', 'settings wrap up', 'settings confirm wraps to repo'",
+        "go test ./internal/tui -run TestNavigationWrapping -v exits with code 0",
+        "No regression in other TUI tests"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The tests were written before 'allowedpythondirs' was added to the settingsInputNames array. The test expectations need updating, not the production code."
+    },
+    {
+      "id": "US-002",
+      "title": "Fix Python test collection errors",
+      "acceptance_criteria": [
+        "Create tools/auto_prd/tests/conftest.py to configure pytest properly",
+        "uv run pytest auto_prd/tests/ --collect-only succeeds without ValueError errors",
+        "All 569 tests are successfully collected",
+        "No import-related errors during test discovery"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The PurePosixPath('.') errors are caused by pytest trying to import test modules as packages. A conftest.py file should fix path resolution."
+    },
+    {
+      "id": "US-003",
+      "title": "Fix Python command safety tests",
+      "acceptance_criteria": [
+        "Set AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1 in test environment (via conftest.py fixture or Makefile)",
+        "All 27 command safety tests pass without 'Command not allowed' errors",
+        "uv run pytest tests/test_command_safety.py -v shows 0 failed",
+        "Safety checks still work in production (tests don't compromise security)"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Option A: Use pytest autouse fixture in conftest.py. Option B: Set env var in Makefile. Fixture approach is cleaner and more targeted."
+    },
+    {
+      "id": "US-004",
+      "title": "Fix remaining Python test failures",
+      "acceptance_criteria": [
+        "Fix 3 test_agents.py failures (TypeError: fileno())",
+        "Fix 12 test_guardrails.py failures (AttributeError: parse_owner_repo_from_git)",
+        "Fix 3 test_versioned_criteria.py failures (data structure mismatches)",
+        "Fix 1 test_verification.py failure (tuple vs object attribute error)",
+        "uv run pytest auto_prd/tests/ shows 0 failed, 523+ passed"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Each test needs individual investigation. Determine if test expectation is wrong or code changed. Update test to match current implementation."
+    },
+    {
+      "id": "US-005",
+      "title": "Add API server tests",
+      "acceptance_criteria": [
+        "Create internal/api/server_test.go with comprehensive tests",
+        "Test NewServer() configuration (default address, custom address, timeouts)",
+        "Test server lifecycle (Start, Shutdown, StartListener)",
+        "Test Addr() and Handler() accessors",
+        "Test chooseDuration() helper function",
+        "go test ./internal/api -v -cover shows ≥90% coverage for server.go (currently 0%)",
+        "All tests pass in <5 seconds"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Use httptest for HTTP server testing. Test with :0 for random port to avoid conflicts. Use t.Parallel() where safe."
+    },
+    {
+      "id": "US-006",
+      "title": "Add Unix process management tests",
+      "acceptance_criteria": [
+        "Create internal/runner/proc_test.go (Unix-only build tag)",
+        "Test interruptProcess() with nil, exited, and running processes",
+        "Test forceKillProcess() with nil and exited processes",
+        "Test interruptProcessCmd() and forceKillProcessCmd() error handling",
+        "go test ./internal/runner -run '^Test.*Process' -v shows ≥85% coverage for proc_unix.go",
+        "Tests are reliable (no race conditions)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Mock os.Process where possible. For running process tests, use sleep with long duration then interrupt it. Verify process exits after interrupt."
+    },
+    {
+      "id": "US-007",
+      "title": "Add TUI update loop tests",
+      "acceptance_criteria": [
+        "Create internal/tui/update_test.go with comprehensive message handling tests",
+        "Test Update() with tea.WindowSizeMsg (viewport resizing)",
+        "Test Update() with toastExpiredMsg (toast clearing)",
+        "Test Update() with statusMsg (status updates, quit after save)",
+        "Test Update() with runStartMsg (run initialization)",
+        "Test Update() with logBatchMsg (log buffering)",
+        "go test ./internal/tui -run '^TestUpdate' -v shows ≥70% coverage for update.go (currently 7.4%)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Bubbletea programs require specialized testing. Test Update() function directly with controlled Msg inputs. Don't test the full program with tea.NewProgram() - just the Update() logic."
+    },
+    {
+      "id": "US-008",
+      "title": "Add Python command execution tests",
+      "acceptance_criteria": [
+        "Create tools/auto_prd/tests/test_command.py with comprehensive command tests",
+        "Test run_cmd() with successful commands, failed commands, and stderr capture",
+        "Test CommandResult tuple unpacking and is_success() method",
+        "Test get_error_message() fallbacks (stderr → stdout → exit code)",
+        "Test command timeout and environment variable passing",
+        "Test working directory restrictions and safety checks",
+        "Test security: secrets are excluded from error messages",
+        "uv run pytest tests/test_command.py -v --cov=auto_prd.command shows ≥75% coverage"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Mock subprocess.Popen extensively. Don't run real external commands in unit tests. Use AUTO_PRD_ALLOW_UNSAFE_EXECUTION fixture from US-003."
+    },
+    {
+      "id": "US-009",
+      "title": "Enhance Python agent integration tests",
+      "acceptance_criteria": [
+        "Add tests to tools/auto_prd/tests/test_agents.py for streaming and timeout logic",
+        "Test claude_exec_streaming() timeout handling",
+        "Test buffer processing for JSON chunks",
+        "Test rate limit handling with jitter",
+        "Test timeout configuration from environment variables (CLAUDE_TIMEOUT_SECONDS, CODEX_TIMEOUT_SECONDS)",
+        "Test default timeout values when env vars not set",
+        "uv run pytest tests/test_agents.py -v --cov=auto_prd.agents shows ≥65% coverage (currently ~20%)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Mock subprocess.Popen for streaming tests. Test rate limit backoff logic. Verify timeout values are read correctly from environment."
+    },
+    {
+      "id": "US-010",
+      "title": "Add Python CLI tests",
+      "acceptance_criteria": [
+        "Create tools/auto_prd/tests/test_cli.py with argument parsing tests",
+        "Test parse_args() with default values",
+        "Test --prd, --phases, --executor arguments",
+        "Test boolean flags (--unsafe, --dry-run, --sync-git)",
+        "Test main() entry point with successful execution",
+        "Test main() error handling (KeyboardInterrupt, generic exceptions)",
+        "uv run pytest tests/test_cli.py -v --cov=auto_prd.cli shows ≥60% coverage (currently ~0%)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Mock run_loop() function in main() tests. Test all argument combinations. Verify exit codes are correct for different scenarios."
+    },
+    {
+      "id": "US-011",
+      "title": "Add TUI view rendering tests",
+      "acceptance_criteria": [
+        "Create test files for internal/tui/view_*.go files",
+        "Test view_settings.go: Repository, Python, Ralph sections present",
+        "Test view_settings.go: Help text contains keyboard shortcuts",
+        "Test view_progress.go: Progress bars render correctly",
+        "Test view_prd.go: PRD list renders correctly",
+        "Test view_env.go: Environment variables display",
+        "go test ./internal/tui -run '^TestView' -v shows ≥60% combined coverage for all view files"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Views are rendering functions that return strings. Tests verify key strings are present in output. Don't test exact formatting - test presence of key UI elements."
+    },
+    {
+      "id": "US-012",
+      "title": "Add config loading and saving tests",
+      "acceptance_criteria": [
+        "Enhance internal/config/config_test.go with Load() and Save() tests",
+        "Test Load() with non-existent config (returns defaults)",
+        "Test Load() with valid config file",
+        "Test Save() writes file correctly",
+        "Test SaveWithTimeout() respects timeout",
+        "Test config migration logic (migrateConfig)",
+        "go test ./internal/config -v -cover shows ≥80% coverage for config.go (currently 50.4%)"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Use t.TempDir() for config file operations. Test error paths (invalid JSON, permission errors). Verify defaults are applied when config missing."
+    },
+    {
+      "id": "US-013",
+      "title": "Add Python workflow module tests",
+      "acceptance_criteria": [
+        "Create tools/auto_prd/tests/test_local_loop.py",
+        "Create tools/auto_prd/tests/test_git_ops.py",
+        "Create tools/auto_prd/tests/test_gh_ops.py",
+        "Test local loop iteration logic and command failure handling",
+        "Test git operations (branch, status parsing)",
+        "Test GitHub API operations (with mocked gh CLI)",
+        "Each test file shows ≥50% coverage for its module",
+        "All external subprocess calls are mocked"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Focus on control flow and decision logic. Mock all external calls (git, gh, subprocess). Test error handling paths."
+    },
+    {
+      "id": "US-014",
+      "title": "Add Go runner package error path tests",
+      "acceptance_criteria": [
+        "Enhance internal/runner/runner_test.go with validation and error tests",
+        "Test ValidatePythonFlagsForTest() with disallowed flags (-c, -m, --verbose)",
+        "Test ValidatePythonFlagsForTest() with safe flags (-u, -E, -I)",
+        "Test ValidatePythonFlagsForTest() with grouped flags (-ucm)",
+        "Test ValidatePythonFlagsForTest() with -X flag (allowed and disallowed arguments)",
+        "Test isRegexPattern() with various patterns",
+        "go test ./internal/runner -v -cover shows ≥80% coverage for runner.go (currently 69.3%)"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Focus on security validation edge cases. Test all error messages are correct. Test boundary cases (empty arrays, nil values)."
+    },
+    {
+      "id": "US-015",
+      "title": "Add TUI keyboard handler edge case tests",
+      "acceptance_criteria": [
+        "Enhance internal/tui/keys_*.go test files with edge case tests",
+        "Test unknown keys are ignored",
+        "Test keys when input is focused vs not focused",
+        "Test boundary cases (first/last item navigation)",
+        "Test modifier key combinations",
+        "go test ./internal/tui -run '^TestKeys' -v shows ≥70% coverage for all keyboard handlers"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Add basic tests for all keyboard handlers. Don't test every possible key combination - test representative cases and edge cases."
+    },
+    {
+      "id": "US-016",
+      "title": "Add Python utility function edge case tests",
+      "acceptance_criteria": [
+        "Enhance tools/auto_prd/tests/test_utils.py with edge case tests",
+        "Test scrub_cli_text() with empty string and binary data",
+        "Test parse_tasks_left() with edge cases (empty, no pattern, invalid number)",
+        "Test compute_file_hash() with nonexistent file",
+        "Test all utility functions with nil/empty inputs",
+        "uv run pytest tests/test_utils.py -v --cov=auto_prd.utils shows ≥90% coverage (currently ~70%)"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Focus on edge cases that could cause crashes. Test empty strings, nil values, invalid inputs. Ensure graceful error handling."
+    },
+    {
+      "id": "US-017",
+      "title": "Verify 80% coverage target achieved",
+      "acceptance_criteria": [
+        "go test ./... -coverprofile=coverage.out completes successfully",
+        "go tool cover -func=coverage.out | grep 'total:' shows ≥80% for Go",
+        "cd tools && uv run pytest --cov=auto_prd shows ≥80% for Python",
+        "All tests pass (0 failures)",
+        "No package below 60% coverage (except cmd/ entry points)",
+        "No module below 50% coverage"
+      ],
+      "priority": 5,
+      "status": "done",
+      "notes": "Final verification story. Run after all test stories are complete. If coverage targets not met, identify remaining gaps and add targeted tests."
+    }
+  ]
+}

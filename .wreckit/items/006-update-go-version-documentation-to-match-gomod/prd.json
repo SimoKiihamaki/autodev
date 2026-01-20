@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "006-update-go-version-documentation-to-match-gomod",
+  "branch_name": "wreckit/006-update-go-version-documentation-to-match-gomod",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Update README.md to state Go 1.23+ requirement",
+      "acceptance_criteria": [
+        "README.md line 26 contains exactly '- Go 1.23+'",
+        "No other lines in README.md are modified",
+        "Markdown formatting is preserved",
+        "The Requirements section renders correctly",
+        "The version matches go.mod requirement"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the primary fix and must be completed. Change is a simple string replacement from '- Go 1.21+' to '- Go 1.23+' on line 26."
+    },
+    {
+      "id": "US-002",
+      "title": "Update .codacy/codacy.yaml to use Go 1.23.0",
+      "acceptance_criteria": [
+        ".codacy/codacy.yaml line 3 contains exactly '- go@1.23.0'",
+        "No other lines in .codacy/codacy.yaml are modified",
+        "YAML syntax is valid and properly formatted",
+        "The version matches go.mod requirement",
+        "Version format matches other runtime specifications (e.g., 'dart@3.7.2')"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Secondary fix to prevent CI failures. Change is a simple string replacement from '- go@1.22.3' to '- go@1.23.0' on line 3. Using exact patch version to match go.mod specification."
+    },
+    {
+      "id": "US-003",
+      "title": "Verify documentation consistency after updates",
+      "acceptance_criteria": [
+        "README.md renders correctly with updated Go version",
+        ".codacy/codacy.yaml has valid YAML syntax",
+        "go.mod still specifies 'go 1.23.0' (no regressions)",
+        "All version references are consistent across files",
+        "Build succeeds with Go 1.23 (if available for testing)"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Verification and testing story. Manual review of rendered documentation and validation that no unintended changes were made."
+    }
+  ]
+}
