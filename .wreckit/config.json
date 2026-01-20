@@ -1,13 +1,12 @@
 {
   "schema_version": 1,
-  "base_branch": "main",
+  "base_branch": "master",
   "branch_prefix": "wreckit/",
   "merge_mode": "pr",
   "agent": {
     "mode": "sdk",
     "command": "claude",
     "args": [
-      "--dangerously-skip-permissions",
       "--print"
     ],
     "completion_signal": "<promise>COMPLETE</promise>"
