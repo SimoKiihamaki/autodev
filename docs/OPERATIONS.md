@@ -180,16 +180,61 @@ rm -rf .aprd/
 
 ## Environment Variables
 
+### Executor Control
+
+Control which AI executor (Codex or Claude) handles different phases of the PRD workflow.
+
+| Variable | Purpose | Valid Values | Default |
+|----------|---------|--------------|---------|
+| `AUTO_PRD_EXECUTOR_POLICY` | Override global executor policy | codex-first, codex-only, claude-only | codex-first |
+| `AUTO_PRD_EXECUTOR_IMPLEMENT` | Override executor for local implementation phase | codex, claude, or empty | (uses policy) |
+| `AUTO_PRD_EXECUTOR_FIX` | Override executor for CodeRabbit fix phase | codex, claude, or empty | (uses policy) |
+| `AUTO_PRD_EXECUTOR_PR` | Override executor for PR creation phase | codex, claude, or empty | (uses policy) |
+| `AUTO_PRD_EXECUTOR_REVIEW_FIX` | Override executor for review/fix phase | codex, claude, or empty | (uses policy) |
+
+### Security & Safety
+
+Control security settings and safety checks for automation scripts and command execution.
+
+| Variable | Purpose | Valid Values | Default |
+|----------|---------|--------------|---------|
+| `AUTO_PRD_ALLOW_UNSAFE_EXECUTION` | Allow unsafe operations (e.g., command injection risks) | 1 (requires CI=1) | (unset) |
+| `AUTO_PRD_SAFE_SCRIPT_DIRS` | Colon-separated whitelist of directories for Python automation scripts | colon-separated absolute paths | (from config) |
+| `AUTO_PRD_ALLOW_NO_ZSH` | Skip zsh binary requirement | 1, true, yes | (unset) |
+
+**⚠️ Security Note:** `AUTO_PRD_SAFE_SCRIPT_DIRS` is a critical security feature. Only add directories you trust. Python scripts outside these directories cannot be executed.
+
+### Timeout & Performance
+
+Control execution timeouts and streaming performance parameters.
+
+| Variable | Purpose | Valid Values | Default |
+|----------|---------|--------------|---------|
+| `AUTO_PRD_CODEX_TIMEOUT_SECONDS` | Codex execution timeout in seconds | positive integer, "none", "off", "disable" | (no timeout) |
+| `AUTO_PRD_CLAUDE_TIMEOUT_SECONDS` | Claude execution timeout in seconds | positive integer, "none", "off", "disable" | 5400 (90 min) |
+| `AUTO_PRD_STREAMING_CHUNK_SIZE` | Streaming read chunk size in bytes | positive integer | 4096 |
+| `AUTO_PRD_STREAMING_POLL_TIMEOUT` | Streaming poll timeout in seconds | positive float | 0.1 |
+
+**⚠️ Performance Note:** Streaming variables (`AUTO_PRD_STREAMING_CHUNK_SIZE`, `AUTO_PRD_STREAMING_POLL_TIMEOUT`) are read once at process startup. Changes require restarting the TUI to take effect.
+
+### Output & Debugging
+
+Control output formatting and validation behavior.
+
+| Variable | Purpose | Valid Values | Default |
+|----------|---------|--------------|---------|
+| `AUTO_PRD_ASCII_OUTPUT` | Force ASCII instead of Unicode box-drawing characters | 1, true, yes | (unset) |
+| `AUTO_PRD_STRICT` | Enable strict config validation (fail on errors instead of warning) | 1 | (unset) |
+
+### Internal System Variables
+
+These variables are set automatically by the system and typically do not require manual configuration. They are documented here for reference.
+
 | Variable | Purpose |
 |----------|---------|
-| `AUTO_PRD_EXECUTOR_POLICY` | Override executor policy |
-| `AUTO_PRD_EXECUTOR_IMPLEMENT` | Override implement phase executor |
-| `AUTO_PRD_EXECUTOR_FIX` | Override fix phase executor |
-| `AUTO_PRD_EXECUTOR_PR` | Override PR phase executor |
-| `AUTO_PRD_EXECUTOR_REVIEW_FIX` | Override review_fix phase executor |
-| `AUTO_PRD_ALLOW_UNSAFE_EXECUTION` | Allow unsafe operations |
-| `AUTO_PRD_CODEX_TIMEOUT_SECONDS` | Codex execution timeout |
-| `AUTO_PRD_CLAUDE_TIMEOUT_SECONDS` | Claude execution timeout |
+| `AUTO_PRD_ROOT` | Auto-set repository root path for subprocess communication |
+| `AUTO_PRD_SHELL` | Auto-set zsh path for shell environment policy |
+| `AUTO_PRD_SCRIPT` | Override Python automation script path (for non-standard installations) |
 
 ## Rollback Operations
 

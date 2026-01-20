@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "020-remove-deprecated-cleanup-method",
+  "branch_name": "wreckit/020-remove-deprecated-cleanup-method",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Remove Cleanup() calls from TUI update logic",
+      "acceptance_criteria": [
+        "Remove m.Cleanup() call from internal/tui/update_keys.go line 97 (ActInterrupt handler)",
+        "Remove m.Cleanup() call from internal/tui/update_keys.go line 107 (ActQuit handler)",
+        "Remove m.Cleanup() call from internal/tui/update_keys.go line 182 (Discard selection handler)",
+        "Remove m.Cleanup() call from internal/tui/update.go line 51 (quitAfterSave handler)",
+        "All four locations now only return tea.Quit without any cleanup calls",
+        "Code compiles without errors",
+        "All existing tests pass"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "These calls are made during the Bubble Tea update loop, which is premature. Cleanup should happen after p.Run() completes via CleanupFinalModel()."
+    },
+    {
+      "id": "US-002",
+      "title": "Delete the deprecated Cleanup() method from model.go",
+      "acceptance_criteria": [
+        "Delete lines 666-691 from internal/tui/model.go",
+        "This includes the deprecation comment (lines 666-672) and entire method body (lines 674-691)",
+        "CleanupFinalModel() function remains unchanged",
+        "Private cleanup() method remains unchanged",
+        "Code compiles without errors (confirms no external callers)",
+        "All existing tests pass"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "The compiler will verify no missed calls exist. The private cleanup() method will still be used via type assertion in CleanupFinalModel()."
+    },
+    {
+      "id": "US-003",
+      "title": "Verify cleanup still works correctly after changes",
+      "acceptance_criteria": [
+        "Run go test ./cmd/aprd/... - all tests pass",
+        "Run go test ./internal/tui/... - all tests pass",
+        "Run go build ./cmd/aprd - build succeeds",
+        "Manual test: Application exits cleanly with Ctrl+C",
+        "Manual test: Application exits cleanly after saving changes",
+        "Manual test: Application exits cleanly after discarding changes",
+        "Manual test: Context is cancelled and resources are released on exit",
+        "No goroutine leaks or resource leaks detected"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "CleanupFinalModel() in cmd/aprd/main.go is already called unconditionally after p.Run() returns. This verifies the single cleanup point works correctly."
+    }
+  ]
+}

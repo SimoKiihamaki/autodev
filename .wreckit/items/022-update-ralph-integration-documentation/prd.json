@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "022-update-ralph-integration-documentation",
+  "branch_name": "wreckit/022-update-ralph-integration-documentation",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create comprehensive Ralph mode user guide",
+      "acceptance_criteria": [
+        "User guide created at docs/ralph-mode.md",
+        "Guide explains Ralph concepts from first principles (no prior knowledge assumed)",
+        "Guide includes Overview, Features, Quick Start, Configuration, Storage, Usage Workflow, Troubleshooting, Advanced Topics, FAQ sections",
+        "All configuration fields documented with correct defaults from internal/config/config.go:169-178",
+        "All file paths match actual implementation (verified with ls/grep)",
+        "All code references include correct file:line numbers",
+        "Real examples included from ~/.config/aprd/guardrails/ and ~/.config/aprd/progress/",
+        "Implemented features (Phases 1, 3, 4) clearly distinguished from planned features (Phases 2, 5, 6, 7)",
+        "Troubleshooting section covers common issues with actionable solutions",
+        "Quick Start section enables user to enable Ralph mode via TUI and YAML config",
+        "Storage section explains XDG Base Directory specification",
+        "Links to technical design docs (ralph-integration-plan.md, RALPH_WIGGUM_LOOP.md) for implementation details",
+        "Markdown syntax valid (parsable by CommonMark)",
+        "User can understand what Ralph mode is and how to use it after reading guide"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Primary deliverable. Use docs/API.md as style template. Length: 600-800 lines estimated."
+    },
+    {
+      "id": "US-002",
+      "title": "Update README.md with Ralph mode reference",
+      "acceptance_criteria": [
+        "Ralph mode added to features list in README.md",
+        "Ralph mode is the first feature listed (most prominent)",
+        "Features list includes link to docs/ralph-mode.md",
+        "Configure flags & env section updated to mention Ralph settings",
+        "Optional: Add Ralph Mode subsection to Advanced Control section with brief description and link",
+        "Markdown syntax valid",
+        "Link to docs/ralph-mode.md resolves (after US-001 complete)",
+        "README tone matches existing content (technical but accessible)",
+        "Ralph mode description is concise but informative (doesn't overwhelm main README)"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Quick visibility boost. Depends on US-001 (ralph-mode.md must exist first)."
+    },
+    {
+      "id": "US-003",
+      "title": "Update ARCHITECTURE.md with Ralph components",
+      "acceptance_criteria": [
+        "Ralph mode added to System Overview section",
+        "System Overview diagram updated to include Ralph mode components",
+        "New Ralph Mode Architecture section added with Components description (Guardrails, Progress Tracking, Gutter Detection)",
+        "New Ralph Mode Architecture section added with Integration points (Configuration, Loop Integration, App Entry Point)",
+        "New Ralph Mode Architecture section added with Storage locations and formats",
+        "All file paths verified to exist (ls check)",
+        "All line numbers verified to be correct (grep check)",
+        "Diagram renders correctly (ASCII art aligned)",
+        "Component descriptions match actual implementation",
+        "Links to user-facing docs (ralph-mode.md) work",
+        "Markdown syntax valid",
+        "Ralph mode section fits with existing architecture content"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Context for developers. Depends on US-001 (ralph-mode.md must exist for links)."
+    }
+  ]
+}

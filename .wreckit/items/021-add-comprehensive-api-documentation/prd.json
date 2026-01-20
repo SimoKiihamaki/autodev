@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "id": "021-add-comprehensive-api-documentation",
+  "branch_name": "wreckit/021-add-comprehensive-api-documentation",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create comprehensive API documentation file (API.md)",
+      "acceptance_criteria": [
+        "File created at /Users/simo/Projects/autodev/docs/API.md",
+        "Document includes Overview section explaining API purpose and current experimental state",
+        "Document includes Quick Start section with build and run commands",
+        "Document includes Endpoints Reference section documenting GET /healthz with request/response examples",
+        "Document includes Configuration section with table of Config fields (Addr, ReadTimeout, WriteTimeout, IdleTimeout), types, defaults, and APRD_API_ADDR environment variable",
+        "Document includes Integration Examples section with Go, curl, and Python code examples",
+        "Document includes Architecture section explaining middleware stack (RequestID, RealIP, Logger, Recoverer) and chi router",
+        "Document includes Development section explaining how to add new endpoints",
+        "Document includes Future Expansion section documenting Dependencies struct for extensibility",
+        "Documentation follows same structure and style as docs/ARCHITECTURE.md and docs/OPERATIONS.md",
+        "All code examples are syntactically correct and runnable",
+        "All file references use file:line format and are accurate (e.g., internal/api/server.go:14-19)",
+        "Markdown is valid with no syntax errors",
+        "Stability disclaimer included noting API is experimental and may change"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "This is the main deliverable. Follow existing documentation patterns: use ## for main sections, ### for subsections, code blocks with language tags, tables for configuration options, and file:line references."
+    },
+    {
+      "id": "US-002",
+      "title": "Update README.md with API server section",
+      "acceptance_criteria": [
+        "README.md updated with new \"HTTP API Server\" section after \"Live Feed at a Glance\" section",
+        "Section includes brief overview of API server purpose",
+        "Section includes link to docs/API.md",
+        "Section includes quick start code example (make build, ./bin/api, curl command)",
+        "Content is concise and does not duplicate API.md",
+        "Link to docs/API.md is correct and works",
+        "Code example is accurate and runnable",
+        "Markdown is valid with no syntax errors"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Place after line 100 (after Live Feed at a Glance section, before Requirements section). Keep content brief - just an overview and link to comprehensive documentation."
+    },
+    {
+      "id": "US-003",
+      "title": "Update ARCHITECTURE.md to expand API section",
+      "acceptance_criteria": [
+        "ARCHITECTURE.md updated to expand API server section at line 63-64",
+        "Package structure updated to show all files: server.go, router.go, server_test.go",
+        "New \"HTTP API Server\" section added after \"Python Agent Harness\" section (before Data Flow)",
+        "New section includes overview of chi router, middleware stack, graceful shutdown, and extensibility",
+        "New section lists current endpoint (GET /healthz)",
+        "New section includes link to docs/API.md for complete documentation",
+        "New section includes ASCII diagram showing API architecture (cmd/api → internal/api/server → internal/api/router)",
+        "New section includes key design decisions (Chi Router, Middleware-first, Empty Dependencies, No Authentication)",
+        "Content summarizes API without duplicating API.md",
+        "Link to docs/API.md is correct and works",
+        "ASCII diagram renders correctly",
+        "Markdown is valid with no syntax errors"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Expand the brief mention at line 63-64 and add a full section after line 143. Include ASCII diagram showing the architecture flow from cmd/api down to the router."
+    },
+    {
+      "id": "US-004",
+      "title": "Add package-level godoc comment to internal/api",
+      "acceptance_criteria": [
+        "Package comment added to internal/api/server.go before 'package api' declaration",
+        "Comment includes overview paragraph explaining API purpose and current state",
+        "Comment includes Quick Start section with Go code example",
+        "Comment includes Configuration section documenting Config struct fields and defaults",
+        "Comment includes Server Lifecycle section with graceful shutdown example",
+        "Comment includes Adding New Endpoints section explaining how to extend router.go",
+        "Comment includes Stability section linking to docs/API.md",
+        "Comment follows Go documentation conventions (proper capitalization, spacing)",
+        "All code examples are syntactically correct",
+        "Running 'go doc github.com/SimoKiihamaki/autodev/internal/api' displays the comment"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Add standard Go package comment with sections (Overview, Quick Start, Configuration, Server Lifecycle, Adding New Endpoints, Stability). This improves godoc output for developers."
+    }
+  ]
+}

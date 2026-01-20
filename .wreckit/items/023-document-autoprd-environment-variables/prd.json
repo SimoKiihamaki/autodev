@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "023-document-autoprd-environment-variables",
+  "branch_name": "wreckit/023-document-autoprd-environment-variables",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Document Executor Control environment variables",
+      "acceptance_criteria": [
+        "Replace existing 2-column table with 4-column table format (Variable | Purpose | Valid Values | Default)",
+        "Document all 5 executor control variables (AUTO_PRD_EXECUTOR_POLICY, AUTO_PRD_EXECUTOR_IMPLEMENT, AUTO_PRD_EXECUTOR_FIX, AUTO_PRD_EXECUTOR_PR, AUTO_PRD_EXECUTOR_REVIEW_FIX)",
+        "Valid values for AUTO_PRD_EXECUTOR_POLICY are: codex-first, codex-only, claude-only",
+        "Valid values for per-phase executors are: codex, claude, or empty (uses policy)",
+        "Default for AUTO_PRD_EXECUTOR_POLICY is: codex-first",
+        "Default for per-phase executors is: (uses policy)",
+        "Markdown table syntax is valid and renders correctly",
+        "Section header: '### Executor Control' with description: 'Control which AI executor (Codex or Claude) handles different phases of the PRD workflow.'",
+        "File location: docs/OPERATIONS.md, replacing lines 181-193"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Verify valid values against tools/auto_prd/policy.py:13-83 and internal/config/config.go:16-22. Verify defaults against policy.py:14."
+    },
+    {
+      "id": "US-002",
+      "title": "Document Security & Safety environment variables",
+      "acceptance_criteria": [
+        "Add new section '### Security & Safety' after Executor Control section",
+        "Document all 3 security variables (AUTO_PRD_ALLOW_UNSAFE_EXECUTION, AUTO_PRD_SAFE_SCRIPT_DIRS, AUTO_PRD_ALLOW_NO_ZSH)",
+        "AUTO_PRD_ALLOW_UNSAFE_EXECUTION valid values: 1 (requires CI=1), default: (unset)",
+        "AUTO_PRD_SAFE_SCRIPT_DIRS valid values: colon-separated absolute paths, default: (from config)",
+        "AUTO_PRD_ALLOW_NO_ZSH valid values: 1, true, yes, default: (unset)",
+        "Include security warning: '⚠️ Security Note: AUTO_PRD_SAFE_SCRIPT_DIRS is a critical security feature. Only add directories you trust.'",
+        "Section description: 'Control security settings and safety checks for automation scripts and command execution.'",
+        "4-column table format matches Executor Control section"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Verify AUTO_PRD_ALLOW_UNSAFE_EXECUTION against tools/auto_prd/constants.py:54 and internal/config/config.go:23. Verify AUTO_PRD_SAFE_SCRIPT_DIRS against internal/runner/runner.go:233. Verify AUTO_PRD_ALLOW_NO_ZSH against tools/auto_prd/constants.py:33."
+    },
+    {
+      "id": "US-003",
+      "title": "Document Timeout & Performance environment variables",
+      "acceptance_criteria": [
+        "Add new section '### Timeout & Performance' after Security & Safety section",
+        "Document all 4 performance variables (AUTO_PRD_CODEX_TIMEOUT_SECONDS, AUTO_PRD_CLAUDE_TIMEOUT_SECONDS, AUTO_PRD_STREAMING_CHUNK_SIZE, AUTO_PRD_STREAMING_POLL_TIMEOUT)",
+        "Timeout variables valid values: positive integer, 'none', 'off', 'disable', default: (no timeout) for CODEX, 5400 (90 min) for CLAUDE",
+        "AUTO_PRD_STREAMING_CHUNK_SIZE valid values: positive integer, default: 4096",
+        "AUTO_PRD_STREAMING_POLL_TIMEOUT valid values: positive float, default: 0.1",
+        "Include performance note: '⚠️ Performance Note: Streaming variables are read once at process startup. Changes require restarting the TUI to take effect.'",
+        "Section description: 'Control execution timeouts and streaming performance parameters.'",
+        "4-column table format matches previous sections"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Verify timeout defaults against tools/auto_prd/agents.py:254,260,277-279. Verify special timeout values ('none', 'off', 'disable') against agents.py:227-242. Verify streaming defaults against agents.py:174,200. Verify startup-time reading behavior against agents.py:160-164."
+    },
+    {
+      "id": "US-004",
+      "title": "Document Output & Debugging environment variables",
+      "acceptance_criteria": [
+        "Add new section '### Output & Debugging' after Timeout & Performance section",
+        "Document all 2 output variables (AUTO_PRD_ASCII_OUTPUT, AUTO_PRD_STRICT)",
+        "AUTO_PRD_ASCII_OUTPUT valid values: 1, true, yes, default: (unset)",
+        "AUTO_PRD_STRICT valid values: 1, default: (unset)",
+        "Section description: 'Control output formatting and validation behavior.'",
+        "4-column table format matches previous sections"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Verify AUTO_PRD_ASCII_OUTPUT against tools/auto_prd/review_loop.py:179-183. Verify AUTO_PRD_STRICT against internal/config/config.go:26."
+    },
+    {
+      "id": "US-005",
+      "title": "Document Internal System environment variables",
+      "acceptance_criteria": [
+        "Add new section '### Internal System Variables' after Output & Debugging section",
+        "Document all 3 internal variables (AUTO_PRD_ROOT, AUTO_PRD_SHELL, AUTO_PRD_SCRIPT)",
+        "Include introductory paragraph: 'These variables are set automatically by the system and typically do not require manual configuration. They are documented here for reference.'",
+        "AUTO_PRD_ROOT purpose: Auto-set repository root path for subprocess communication",
+        "AUTO_PRD_SHELL purpose: Auto-set zsh path for shell environment policy",
+        "AUTO_PRD_SCRIPT purpose: Override Python automation script path (for non-standard installations)",
+        "Use simpler 2-column table format (Variable | Purpose) since valid values don't apply"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Verify AUTO_PRD_ROOT against tools/auto_prd/command.py:109,645,781,787,838. Verify AUTO_PRD_SHELL against command.py:316. Verify AUTO_PRD_SCRIPT against internal/tui/path.go:25,35."
+    }
+  ]
+}

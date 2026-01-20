@@ -662,30 +662,3 @@ func getLastErrorText(m *model) string {
 	}
 	return ""
 }
-
-// Cleanup performs graceful shutdown of the model's resources.
-// It should be called before exiting the application to ensure:
-// - Any running process is cancelled
-// - Log channels are properly closed
-// - File handles are released
-//
-// Deprecated: Use CleanupFinalModel() instead for post-Run() cleanup.
-// This method is retained for internal use and backwards compatibility.
-func (m *model) Cleanup() {
-	// Cancel any running process
-	if m.cancel != nil {
-		m.cancel()
-		m.cancel = nil
-	}
-
-	// Close the log channel if still open
-	// Note: only the sender should close channels, and we're not the sender
-	// The logCh is closed by the runner goroutine when it completes
-
-	// Clear large buffers to help GC
-	m.logBuf = nil
-	m.runFeedBuf = nil
-
-	// Close any open log file (though this is now handled by Python)
-	m.closeLogFile("cleanup")
-}

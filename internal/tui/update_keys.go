@@ -94,7 +94,6 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.Cleanup()
 		return true, tea.Quit
 	case ActQuit:
 		if m.running {
@@ -104,7 +103,6 @@ func (m *model) handleGlobalAction(act Action, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.beginQuitConfirm()
 			return true, nil
 		}
-		m.Cleanup()
 		return true, tea.Quit
 	case ActHelp:
 		m.showHelp = !m.showHelp
@@ -179,7 +177,6 @@ func (m *model) executeQuitSelection() (bool, tea.Cmd) {
 		return true, m.saveConfig()
 	case 1: // Discard
 		m.cancelQuitConfirm()
-		m.Cleanup()
 		return true, tea.Quit
 	default: // Cancel
 		m.cancelQuitConfirm()
