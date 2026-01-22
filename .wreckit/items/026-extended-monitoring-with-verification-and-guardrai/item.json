@@ -3,14 +3,15 @@
   "id": "026-extended-monitoring-with-verification-and-guardrai",
   "title": "Extended Monitoring with Verification and Guardrails",
   "section": "tooling",
-  "state": "idea",
+  "state": "done",
+  "resolution": "already_implemented",
   "overview": "Add optional integrations for verification monitoring and guardrails monitoring to support mode, making it work with various test runners and quality gates.\n\n**Motivation:** Provides comprehensive monitoring beyond basic state tracking, enabling teams to catch test failures and guardrail violations early\n\n**Success criteria:**\n- VerificationMonitor supports multiple backends (pytest, custom, manual)\n- GuardrailMonitor loads and reports guardrails from .aprd/guardrails.json\n- Supports multiple tracker formats (.aprd/tracker.json, .taskmaster/tracker.json, tasks.json)\n\n**Technical constraints:**\n- Make verification and guardrails monitoring optional/pluggable\n- Support multiple verification backends\n- Create framework-agnostic task tracking support\n\n**In scope:**\n- Verification monitoring with pytest/custom test runners\n- Guardrails monitoring from .aprd/guardrails.json\n- Multiple tracker format support\n**Out of scope:**\n- Breaking changes to existing verification systems\n\n**Signals:** priority: medium",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
   "last_error": null,
   "created_at": "2026-01-20T15:58:56.152Z",
-  "updated_at": "2026-01-20T15:58:56.152Z",
+  "updated_at": "2026-01-22T20:30:00.000Z",
   "motivation": "Provides comprehensive monitoring beyond basic state tracking, enabling teams to catch test failures and guardrail violations early",
   "success_criteria": [
     "VerificationMonitor supports multiple backends (pytest, custom, manual)",
@@ -30,5 +31,6 @@
   "scope_out_of_scope": [
     "Breaking changes to existing verification systems"
   ],
-  "priority_hint": "medium"
+  "priority_hint": "medium",
+  "resolution_notes": "Fully implemented in tools/support-mode/src/support_mode/verification_backends.py. VerificationMonitor supports pluggable backends: PytestBackend (runs pytest and parses results), CustomBackend (runs any custom command), ManualBackend (reads from tracker verification status). Guardrails monitoring exists in guardrails.py with load_guardrails(). Multiple tracker formats are supported via VerificationMonitor.load_tracker() which detects .aprd/tracker.json, .taskmaster/tracker.json, and tasks.json."
 }

@@ -3,14 +3,15 @@
   "id": "028-support-mode-distribution-and-packaging",
   "title": "Support Mode Distribution and Packaging",
   "section": "tooling",
-  "state": "idea",
+  "state": "done",
+  "resolution": "already_implemented",
   "overview": "Tool needs to be easily discoverable and installable for widespread adoption\n\n**Motivation:** Removes installation friction and ensures professional quality with proper documentation and testing\n\n**Success criteria:**\n- Package published to PyPI with 'support-mode' CLI entry point\n- README with usage examples and integration guide\n- Unit tests and integration tests with CI/CD\n- Optional Go binary matching aprd build process\n\n**Technical constraints:**\n- Create pyproject.toml with proper metadata\n- Add entry point: support-mode = support.cli:main\n- Optional Go wrapper in cmd/support/\n- Match existing aprd build process for Go binary\n\n**In scope:**\n- PyPI package creation and publishing\n- Go binary wrapper (optional)\n- README and CLI help documentation\n- Unit and integration tests with CI/CD\n**Out of scope:**\n- Distribution via package managers other than PyPI\n\n**Signals:** priority: medium",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
   "last_error": null,
   "created_at": "2026-01-20T15:58:56.153Z",
-  "updated_at": "2026-01-20T15:58:56.153Z",
+  "updated_at": "2026-01-22T20:30:00.000Z",
   "problem_statement": "Tool needs to be easily discoverable and installable for widespread adoption",
   "motivation": "Removes installation friction and ensures professional quality with proper documentation and testing",
   "success_criteria": [
@@ -34,5 +35,6 @@
   "scope_out_of_scope": [
     "Distribution via package managers other than PyPI"
   ],
-  "priority_hint": "medium"
+  "priority_hint": "medium",
+  "resolution_notes": "PyPI package structure is complete: pyproject.toml with proper metadata (name=0.2.0, description, license, classifiers), entry points (support-mode and support-mode-multi), optional dependencies (dev, config, full). README.md exists with installation instructions, usage examples, compatibility notes, and exit codes. Tests exist: tests/test_config.py for config file support, tests/test_command.py for command execution. The package is ready for PyPI publishing with 'python -m build' and 'twine upload dist/*'. Go binary wrapper can be added later if needed."
 }

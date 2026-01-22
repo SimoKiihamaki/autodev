@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "support-mode"
-version = "0.1.0"
-description = "Framework-agnostic continuous monitoring and review tool"
+version = "0.2.0"
+description = "Framework-agnostic continuous monitoring and review tool for AI-assisted development"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "AutoDev Contributors"}
 ]
-keywords = ["monitoring", "review", "tracker", "continuous"]
+keywords = ["monitoring", "review", "tracker", "continuous", "ai", "development"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "jsonschema>=4.0.0",  # Optional but recommended for validation
+    "jsonschema>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -32,9 +32,17 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
 ]
+config = [
+    "pyyaml>=6.0",
+    "tomli>=2.0; python_version<'3.11'",
+]
+full = [
+    "support-mode[config]",
+]
 
 [project.scripts]
 support-mode = "support_mode.cli:main"
+support-mode-multi = "support_mode.multi_repo_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/autodev/support-mode"
