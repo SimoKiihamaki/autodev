@@ -3,15 +3,17 @@
   "id": "023-document-autoprd-environment-variables",
   "title": "Document AUTO_PRD_* environment variables",
   "section": "docs",
-  "state": "implementing",
+  "state": "done",
+  "resolution": "already_implemented",
   "overview": "Users must read source code to discover available environment variables.\n\n**Motivation:** Improves discoverability of configuration options.\n\n**Signals:** priority: low",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
-  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "last_error": null,
   "created_at": "2026-01-19T18:40:58.574Z",
-  "updated_at": "2026-01-22T19:04:27.184Z",
+  "updated_at": "2026-01-22T20:00:00.000Z",
   "problem_statement": "Users must read source code to discover available environment variables.",
   "motivation": "Improves discoverability of configuration options.",
-  "priority_hint": "low"
+  "priority_hint": "low",
+  "resolution_notes": "Already implemented. docs/OPERATIONS.md contains comprehensive documentation of all AUTO_PRD_* environment variables (lines 189-237), including: executor policy vars (AUTO_PRD_EXECUTOR_*), security vars (AUTO_PRD_SAFE_SCRIPT_DIRS, AUTO_PRD_ALLOW_UNSAFE_EXECUTION), timeout vars (AUTO_PRD_CODEX_TIMEOUT_SECONDS, AUTO_PRD_CLAUDE_TIMEOUT_SECONDS), and utility vars (AUTO_PRD_STRICT, AUTO_PRD_ROOT, etc.). Each var has description, valid values, and defaults documented."
 }
