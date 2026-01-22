@@ -10,7 +10,7 @@
   "pr_number": null,
   "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
   "created_at": "2026-01-20T15:58:56.151Z",
-  "updated_at": "2026-01-22T18:10:53.689Z",
+  "updated_at": "2026-01-22T19:04:27.223Z",
   "problem_statement": "Support mode is currently embedded within the auto_prd tool, preventing it from being used with other coding frameworks (Cursor, Windsurf, Claude Code, Copilot, etc.)",
   "motivation": "Creates a framework-agnostic companion tool for continuous monitoring and review, improving developer workflow and enabling broader adoption across different AI coding environments",
   "success_criteria": [

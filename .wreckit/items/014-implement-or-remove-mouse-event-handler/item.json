@@ -1,20 +1,21 @@
 {
   "schema_version": 1,
   "id": "014-implement-or-remove-mouse-event-handler",
-  "title": "Implement or remove mouse event handler",
   "section": "frontend",
-  "state": "implementing",
+  "state": "done",
+  "resolution": "already_removed",
   "overview": "Mouse events are captured but not handled, potentially confusing users who try to interact via mouse.\n\n**Motivation:** Either completes mouse support feature or removes unnecessary event handling code.\n\n**Technical constraints:**\n- Either implement mouse handling functionality or remove the case if not needed\n\n**Signals:** priority: high",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
-  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "last_error": null,
   "created_at": "2026-01-19T18:40:58.571Z",
-  "updated_at": "2026-01-22T18:10:53.387Z",
+  "updated_at": "2026-01-22T19:30:00.000Z",
   "problem_statement": "Mouse events are captured but not handled, potentially confusing users who try to interact via mouse.",
   "motivation": "Either completes mouse support feature or removes unnecessary event handling code.",
   "technical_constraints": [
     "Either implement mouse handling functionality or remove the case if not needed"
   ],
-  "priority_hint": "high"
+  "priority_hint": "high",
+  "resolution_notes": "No mouse event handling code exists in the codebase. A grep for 'tea.MouseMsg', 'MouseMsg', and mouse-related patterns found no results. This was a false positive from the original codebase analysis - any mouse handling code was already removed."
 }

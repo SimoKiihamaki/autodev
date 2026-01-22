@@ -3,18 +3,20 @@
   "id": "012-implement-or-remove-codexmodel-config-field",
   "title": "Implement or remove CodexModel config field",
   "section": "frontend",
-  "state": "implementing",
+  "state": "done",
+  "resolution": "already_implemented",
   "overview": "Users see this field in UI but it has no effect, creating confusion.\n\n**Motivation:** Either implements the feature or removes misleading UI element.\n\n**Technical constraints:**\n- Either implement usage in Python automation script or remove from TUI and config\n\n**Signals:** priority: high",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
-  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "last_error": null,
   "created_at": "2026-01-19T18:40:58.570Z",
-  "updated_at": "2026-01-22T18:10:53.328Z",
+  "updated_at": "2026-01-22T19:30:00.000Z",
   "problem_statement": "Users see this field in UI but it has no effect, creating confusion.",
   "motivation": "Either implements the feature or removes misleading UI element.",
   "technical_constraints": [
     "Either implement usage in Python automation script or remove from TUI and config"
   ],
-  "priority_hint": "high"
+  "priority_hint": "high",
+  "resolution_notes": "The CodexModel feature is fully implemented. The Go TUI passes --codex-model to the Python script (runner.go:457), the Python CLI accepts the argument (cli.py:60), and it's used throughout the codebase (worker.py, local_loop.py, pr_flow.py, review_loop.py) to configure the Codex model. The TUI also properly dims the field when disabled by policy via isCodexModelDisabled()."
 }
