@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "028-support-mode-distribution-and-packaging",
+  "title": "Support Mode Distribution and Packaging",
+  "section": "tooling",
+  "state": "idea",
+  "overview": "Tool needs to be easily discoverable and installable for widespread adoption\n\n**Motivation:** Removes installation friction and ensures professional quality with proper documentation and testing\n\n**Success criteria:**\n- Package published to PyPI with 'support-mode' CLI entry point\n- README with usage examples and integration guide\n- Unit tests and integration tests with CI/CD\n- Optional Go binary matching aprd build process\n\n**Technical constraints:**\n- Create pyproject.toml with proper metadata\n- Add entry point: support-mode = support.cli:main\n- Optional Go wrapper in cmd/support/\n- Match existing aprd build process for Go binary\n\n**In scope:**\n- PyPI package creation and publishing\n- Go binary wrapper (optional)\n- README and CLI help documentation\n- Unit and integration tests with CI/CD\n**Out of scope:**\n- Distribution via package managers other than PyPI\n\n**Signals:** priority: medium",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-01-20T15:58:56.153Z",
+  "updated_at": "2026-01-20T15:58:56.153Z",
+  "problem_statement": "Tool needs to be easily discoverable and installable for widespread adoption",
+  "motivation": "Removes installation friction and ensures professional quality with proper documentation and testing",
+  "success_criteria": [
+    "Package published to PyPI with 'support-mode' CLI entry point",
+    "README with usage examples and integration guide",
+    "Unit tests and integration tests with CI/CD",
+    "Optional Go binary matching aprd build process"
+  ],
+  "technical_constraints": [
+    "Create pyproject.toml with proper metadata",
+    "Add entry point: support-mode = support.cli:main",
+    "Optional Go wrapper in cmd/support/",
+    "Match existing aprd build process for Go binary"
+  ],
+  "scope_in_scope": [
+    "PyPI package creation and publishing",
+    "Go binary wrapper (optional)",
+    "README and CLI help documentation",
+    "Unit and integration tests with CI/CD"
+  ],
+  "scope_out_of_scope": [
+    "Distribution via package managers other than PyPI"
+  ],
+  "priority_hint": "medium"
+}

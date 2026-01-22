@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "id": "024-standalone-support-mode-cli",
+  "branch_name": "wreckit/024-standalone-support-mode-cli",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Create package skeleton with basic CLI",
+      "acceptance_criteria": [
+        "Create support-mode package directory structure with src/ and tests/",
+        "Create pyproject.toml with package metadata, dependencies, and CLI entry point",
+        "Implement basic CLI with argparse (--prd, --repo, --poll-seconds, --version)",
+        "Register 'support-mode' CLI entry point in pyproject.toml",
+        "Support 'python -m support_mode' alternative invocation",
+        "Validate minimum poll-seconds (5s) and PRD file existence",
+        "Package builds successfully with 'python -m build'",
+        "Package installs in editable mode with 'pip install -e .'"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "See Phase 1 in plan.md for detailed implementation steps. This creates the foundation for all subsequent work."
+    },
+    {
+      "id": "US-002",
+      "title": "Extract simplified command execution module",
+      "acceptance_criteria": [
+        "Create src/support_mode/command.py with simplified run_cmd() function",
+        "Implement CommandResult dataclass with stdout, stderr, exit_code fields",
+        "Implement basic safety checks (executable exists via shutil.which)",
+        "Remove agent-specific validation (COMMAND_ALLOWLIST, SAFE_CWD_ROOTS)",
+        "Remove complex retry logic (use simple subprocess.run)",
+        "Add CalledProcessError support for check=True parameter",
+        "Support cwd and capture parameters",
+        "Include __iter__ method for backward-compatible tuple unpacking"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/command.py lines 422-612. Simplified for read-only monitoring use case."
+    },
+    {
+      "id": "US-003",
+      "title": "Extract minimal git operations module",
+      "acceptance_criteria": [
+        "Create src/support_mode/git_ops.py with 4 functions",
+        "Implement git_root() to find repository root via 'git rev-parse --show-toplevel'",
+        "Implement git_current_branch() via 'git rev-parse --abbrev-ref HEAD'",
+        "Implement git_head_sha() via 'git rev-parse HEAD'",
+        "Implement git_status_snapshot() via 'git status --porcelain'",
+        "All functions use simplified run_cmd() from command.py",
+        "Handle errors gracefully with check=False where appropriate",
+        "Return types: Path for git_root(), str for branch/SHA, tuple for status"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/git_ops.py lines 36-115. Only 4 functions needed for support mode."
+    },
+    {
+      "id": "US-004",
+      "title": "Extract tracker utilities module",
+      "acceptance_criteria": [
+        "Create src/support_mode/tracker.py with tracker loading and validation",
+        "Implement compute_prd_hash() using hashlib.sha256 (first 16 hex chars)",
+        "Implement get_tracker_path() to construct .aprd/tracker.json path",
+        "Implement load_tracker() with 1MB size check and error handling",
+        "Implement validate_tracker() with jsonschema support and fallback",
+        "Include tracker_schema.json in package data",
+        "Handle malformed JSON gracefully (return None on load errors)",
+        "Support optional jsonschema dependency with basic validation fallback",
+        "Log warnings for oversized or malformed tracker files"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/tracker_generator.py lines 295-332 and 580-672. Only 3 functions needed."
+    },
+    {
+      "id": "US-005",
+      "title": "Copy tracker validator module",
+      "acceptance_criteria": [
+        "Copy src/support_mode/tracker_validator.py from auto_prd/tracker_validator.py",
+        "Include _as_list() helper function",
+        "Include validate_tracker_state() function",
+        "Include validate_completion_consistency() function",
+        "Include repair_tracker_state() function (optional, for future use)",
+        "Include calculate_completion_confidence() function (optional, for future use)",
+        "All functions work with dict[str, Any] tracker objects",
+        "No dependencies on other auto_prd modules"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Entire file can be copied as-is from /tools/auto_prd/tracker_validator.py (285 lines). Pure validation logic."
+    },
+    {
+      "id": "US-006",
+      "title": "Extract support state persistence module",
+      "acceptance_criteria": [
+        "Create src/support_mode/state.py with SupportState dataclass",
+        "Support 4 fields: iteration (int), last_reviewed_sha (str), last_reviewed_prd_hash (str), last_reviewed_at (str)",
+        "Implement _state_path() to return .aprd/support_state.json path",
+        "Implement load_support_state() with error handling for missing/malformed JSON",
+        "Implement save_support_state() with atomic write (parent mkdir, json dump)",
+        "Handle type coercion safely (int() with try/except, str() conversion)",
+        "Return empty SupportState() if file doesn't exist or is invalid"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/support_loop.py lines 26-63. Identical format for compatibility."
+    },
+    {
+      "id": "US-007",
+      "title": "Extract verification persistence module",
+      "acceptance_criteria": [
+        "Create src/support_mode/verification.py with verification status checking",
+        "Define VerificationStatus enum (PENDING, RUNNING, PASSED, FAILED, STALE)",
+        "Define VerifierResult and VerificationRun dataclasses",
+        "Implement VerificationPersistence class with .aprd/verification/runs.jsonl storage",
+        "Implement get_latest_run() to retrieve most recent verification",
+        "Implement is_run_fresh() with current_prd_hash parameter (replaces get_prd_hash())",
+        "Handle missing verification directory gracefully",
+        "Parse JSONL format (one JSON object per line)",
+        "Return None if no verification runs exist"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/verification_persistence.py lines 98-252. Replace get_prd_hash() with parameter."
+    },
+    {
+      "id": "US-008",
+      "title": "Extract guardrails module",
+      "acceptance_criteria": [
+        "Create src/support_mode/guardrails.py with minimal guardrails support",
+        "Define Sign dataclass with name, trigger, instruction fields",
+        "Implement load_guardrails() function to read from ~/.config/aprd/guardrails/<repo_slug>.md",
+        "Parse markdown format with '## sign:' headers",
+        "Return list of Sign objects",
+        "Handle missing guardrails file gracefully (return empty list)",
+        "Determine repo_slug from git remote URL",
+        "Support display of sign count in support mode output"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/guardrails.py lines 1-150. Minimal implementation for display only."
+    },
+    {
+      "id": "US-009",
+      "title": "Extract main support loop logic",
+      "acceptance_criteria": [
+        "Create src/support_mode/support_loop.py with run_support_mode() function",
+        "Implement infinite polling loop with KeyboardInterrupt handler",
+        "Load support state on startup and increment iteration counter",
+        "Monitor repository state (branch, SHA, working tree status)",
+        "Load and validate tracker.json, display task counts",
+        "Validate tracker state consistency (task timestamps, feature status)",
+        "Check dependency resolution between features",
+        "Extract and compare PRD checkboxes with tracker tasks",
+        "Run git quality checks via 'git diff --check'",
+        "Check verification run status and freshness",
+        "Display guardrails sign count",
+        "Persist state on each iteration (sha, prd_hash, timestamp)",
+        "Sleep for configured poll_seconds between iterations",
+        "Display output with emoji prefixes (✓, ⚠️, ❌, →)"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extracted from /tools/auto_prd/support_loop.py lines 138-458. All logic identical, only imports changed."
+    },
+    {
+      "id": "US-010",
+      "title": "Implement complete CLI integration",
+      "acceptance_criteria": [
+        "Update src/support_mode/cli.py to call run_support_mode()",
+        "Add setup_logging() function with configurable log level",
+        "Validate PRD file exists before starting support mode",
+        "Auto-detect git root if --repo not provided",
+        "Wrap run_support_mode() in try/except for error handling",
+        "Return 0 on success/KeyboardInterrupt, 1 on errors",
+        "Support --log-level argument (DEBUG, INFO, WARNING, ERROR)",
+        "Display helpful error messages for missing files",
+        "Initialize logging before calling support loop"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Connects CLI (US-001) to support loop (US-009). See Phase 4 in plan.md."
+    },
+    {
+      "id": "US-011",
+      "title": "Create comprehensive documentation",
+      "acceptance_criteria": [
+        "Write README.md with installation instructions",
+        "Document all CLI arguments and defaults",
+        "Explain compatibility with auto_prd (.aprd directory structure)",
+        "Include usage examples for common scenarios",
+        "Document requirements (Python 3.10+, Git, existing tracker)",
+        "Add MIT LICENSE file",
+        "Create MANIFEST.in for package data inclusion",
+        "Add .gitignore for Python build artifacts"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "See Phase 5 in plan.md. Documentation is critical for adoption."
+    },
+    {
+      "id": "US-012",
+      "title": "Implement unit tests for core modules",
+      "acceptance_criteria": [
+        "Create tests/test_command.py for run_cmd() function",
+        "Create tests/test_git_ops.py for git operations",
+        "Create tests/test_tracker.py for tracker loading and validation",
+        "Create tests/test_state.py for state persistence",
+        "Use pytest framework",
+        "Mock subprocess calls for git operations",
+        "Test error handling (missing files, invalid JSON)",
+        "Test edge cases (empty tracker, oversized file)",
+        "Achieve >80% code coverage"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Unit tests ensure reliability of extracted code. Use pytest and pytest-mock for mocking."
+    },
+    {
+      "id": "US-013",
+      "title": "Implement integration tests for CLI",
+      "acceptance_criteria": [
+        "Create tests/test_cli.py for argument parsing",
+        "Test --help, --version, and error cases",
+        "Test PRD file validation",
+        "Test minimum poll-seconds validation",
+        "Test auto-detection of git root",
+        "Use subprocess to run CLI as separate process",
+        "Verify exit codes (0 for success, 1 for errors)",
+        "Test with invalid arguments and missing files"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Integration tests verify CLI works end-to-end. Test real invocation via subprocess."
+    },
+    {
+      "id": "US-014",
+      "title": "Verify backward compatibility with auto_prd",
+      "acceptance_criteria": [
+        "Test reading existing .aprd/tracker.json from auto_prd project",
+        "Test reading existing .aprd/support_state.json from auto_prd project",
+        "Verify state file format is identical (iteration, sha, prd_hash, timestamp)",
+        "Test writing state files that auto_prd can read",
+        "Run support-mode alongside auto_prd --support-mode",
+        "Compare output and verify identical behavior",
+        "Test with multiple iterations and state persistence",
+        "Verify no file format breaking changes"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Critical requirement - tool must work with existing auto_prd projects. Test thoroughly."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "024-standalone-support-mode-cli",
+  "title": "Standalone Support Mode CLI",
+  "section": "tooling",
+  "state": "implementing",
+  "overview": "Support mode is currently embedded within the auto_prd tool, preventing it from being used with other coding frameworks (Cursor, Windsurf, Claude Code, Copilot, etc.)\n\n**Motivation:** Creates a framework-agnostic companion tool for continuous monitoring and review, improving developer workflow and enabling broader adoption across different AI coding environments\n\n**Success criteria:**\n- Tool runs without auto_prd installed\n- Works with existing tracker/state files\n- Simple CLI with sensible defaults\n- Configurable polling interval with graceful shutdown\n\n**Technical constraints:**\n- Maintain compatibility with existing .aprd/support_state.json format\n- Extract minimal dependencies from auto_prd (command.run_cmd, git_ops, tracker_generator)\n- Support multiple entry points: python -m support, installed CLI, optional Go binary\n\n**In scope:**\n- Repository state monitoring (branch, commit SHA, working tree)\n- Tracker validation (structure, features, tasks, dependencies)\n- PRD synchronization (checkbox extraction, comparison)\n- Git quality checks (git diff --check)\n- State persistence between iterations\n**Out of scope:**\n- Complete rewrite of auto_prd\n- Breaking changes to existing tracker/state file formats\n\n**Signals:** priority: high, urgency: ASAP",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "created_at": "2026-01-20T15:58:56.151Z",
+  "updated_at": "2026-01-22T18:10:53.689Z",
+  "problem_statement": "Support mode is currently embedded within the auto_prd tool, preventing it from being used with other coding frameworks (Cursor, Windsurf, Claude Code, Copilot, etc.)",
+  "motivation": "Creates a framework-agnostic companion tool for continuous monitoring and review, improving developer workflow and enabling broader adoption across different AI coding environments",
+  "success_criteria": [
+    "Tool runs without auto_prd installed",
+    "Works with existing tracker/state files",
+    "Simple CLI with sensible defaults",
+    "Configurable polling interval with graceful shutdown"
+  ],
+  "technical_constraints": [
+    "Maintain compatibility with existing .aprd/support_state.json format",
+    "Extract minimal dependencies from auto_prd (command.run_cmd, git_ops, tracker_generator)",
+    "Support multiple entry points: python -m support, installed CLI, optional Go binary"
+  ],
+  "scope_in_scope": [
+    "Repository state monitoring (branch, commit SHA, working tree)",
+    "Tracker validation (structure, features, tasks, dependencies)",
+    "PRD synchronization (checkbox extraction, comparison)",
+    "Git quality checks (git diff --check)",
+    "State persistence between iterations"
+  ],
+  "scope_out_of_scope": [
+    "Complete rewrite of auto_prd",
+    "Breaking changes to existing tracker/state file formats"
+  ],
+  "priority_hint": "high",
+  "urgency_hint": "ASAP"
+}
