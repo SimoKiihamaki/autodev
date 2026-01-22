@@ -517,7 +517,6 @@ class CallWithBackoffTests(unittest.TestCase):
 
     def test_max_retries_exhausted_raises_error(self) -> None:
         """Verify error is raised after max retries are exhausted."""
-        import time
 
         call_with_backoff = safe_import(
             "tools.auto_prd.utils", "auto_prd.utils", "call_with_backoff"

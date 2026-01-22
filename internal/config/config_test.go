@@ -177,7 +177,7 @@ func TestLoadWithWarningsStrictMode(t *testing.T) {
 		if result.Error == nil {
 			t.Error("expected error in strict mode with nil MaxBatchSize, got nil")
 		}
-		if result.Warnings != nil && len(result.Warnings) > 0 {
+		if len(result.Warnings) > 0 {
 			t.Errorf("expected no warnings in strict mode, got %d", len(result.Warnings))
 		}
 	})
@@ -478,7 +478,7 @@ func TestMigrateConfig(t *testing.T) {
 		t.Parallel()
 
 		oldConfig := Config{
-			Version: "", // Pre-versioning
+			Version:  "", // Pre-versioning
 			RepoPath: "/test/repo",
 		}
 
@@ -502,7 +502,7 @@ func TestMigrateConfig(t *testing.T) {
 		t.Parallel()
 
 		currentConfig := Config{
-			Version: ConfigVersion,
+			Version:  ConfigVersion,
 			RepoPath: "/test/repo",
 		}
 
@@ -526,7 +526,7 @@ func TestMigrateConfig(t *testing.T) {
 
 		// Simulate a future version config
 		futureConfig := Config{
-			Version: "9.9.9",
+			Version:  "9.9.9",
 			RepoPath: "/test/repo",
 		}
 
@@ -636,8 +636,8 @@ func TestConfigDir(t *testing.T) {
 		// Note: Cannot use t.Parallel() with t.Setenv()
 		// Unset HOME environment variable
 		oldHome := os.Getenv("HOME")
-		defer os.Setenv("HOME", oldHome)
-		os.Unsetenv("HOME")
+		defer func() { _ = os.Setenv("HOME", oldHome) }()
+		_ = os.Unsetenv("HOME")
 
 		_, err := configDir()
 		if err == nil {

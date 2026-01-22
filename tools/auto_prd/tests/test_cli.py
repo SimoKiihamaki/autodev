@@ -13,7 +13,7 @@ import argparse
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from .test_helpers import safe_import
 

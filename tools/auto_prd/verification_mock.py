@@ -40,6 +40,7 @@ def run_verification_gates(repo_root: Path, tracker_path: Path) -> MockVerificat
     - Playwright for user journey tests
     - ML evaluation frameworks for model validation
     """
+    _ = repo_root, tracker_path  # Currently unused, kept for interface compatibility
     verifiers = [
         VerifierResult(
             name="unit_tests",
@@ -78,6 +79,7 @@ def is_verification_fresh(
     For testing purposes, this always returns True.
     In production, this would check git_sha and prd_hash match.
     """
+    _ = verification_ref, current_git_sha, current_prd_hash  # Currently unused
     return True
 
 
@@ -87,6 +89,7 @@ def create_test_tracker(repo_root: Path) -> dict[str, Any]:
 
     Returns a basic tracker structure with a few features.
     """
+    _ = repo_root  # Currently unused, kept for interface compatibility
     return {
         "version": "2.0.0",
         "prd_hash": "test_hash_123",

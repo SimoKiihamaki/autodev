@@ -309,23 +309,6 @@ func (m *model) syncInputFieldFromModel(name string, field *textinput.Model) {
 	}
 }
 
-// getActualInputField returns a pointer to the actual model field for the given input name.
-// This returns the real field in the model, not a stale pointer from the settingsInputs map.
-func (m *model) getActualInputField(name string) *textinput.Model {
-	if accessor, ok := inputFieldAccessors[name]; ok {
-		return accessor.get(m)
-	}
-	return nil
-}
-
-// setActualInputField updates the actual model field with the given textinput.Model value.
-// It uses getActualInputField to avoid duplicating the switch statement.
-func (m *model) setActualInputField(name string, field textinput.Model) {
-	if actual := m.getActualInputField(name); actual != nil {
-		*actual = field
-	}
-}
-
 // tryNavigateOrCycle navigates the settings input list, or cycles the current toggle if navigation is blocked.
 func (m *model) tryNavigateOrCycle(direction string, cycleDir int) {
 	prev := m.focusedInput

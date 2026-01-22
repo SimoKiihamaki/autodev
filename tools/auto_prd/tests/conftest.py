@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Configure Python path BEFORE any tests are imported
 # This must be done at module load time, not in pytest_configure
 _tools_dir = Path(__file__).parent.parent
