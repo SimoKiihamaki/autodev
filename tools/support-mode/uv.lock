@@ -459,8 +459,9 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pyyaml", marker = "extra == 'config'", specifier = ">=6.0" },
-    { name = "support-mode", extras = ["config"], marker = "extra == 'full'" },
+    { name = "pyyaml", marker = "extra == 'full'", specifier = ">=6.0" },
     { name = "tomli", marker = "python_full_version < '3.11' and extra == 'config'", specifier = ">=2.0" },
+    { name = "tomli", marker = "python_full_version < '3.11' and extra == 'full'", specifier = ">=2.0" },
 ]
 provides-extras = ["dev", "config", "full"]
 

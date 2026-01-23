@@ -470,3 +470,357 @@ class TestGetSignCount:
 
                 count = get_sign_count(repo_root)
                 assert count == 3
+
+
+class TestLoadGuardrailsEdgeCases:
+    """Tests for load_guardrails edge cases and malformed data."""
+
+    def test_load_empty_file(self):
+        """Test loading from an empty guardrails file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "empty-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+                guardrails_path.write_text("")
+
+                signs = load_guardrails(repo_root)
+                assert signs == []
+
+    def test_load_multiple_signs(self):
+        """Test loading multiple signs from the same file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "multi-sign-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: first_sign
+- **Trigger**: First trigger
+- **Instruction**: First instruction
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z
+
+## sign: second_sign
+- **Trigger**: Second trigger
+- **Instruction**: Second instruction
+- **Added**: Iteration 2
+- **Timestamp**: 2025-01-23T10:01:00Z
+
+## sign: third_sign
+- **Trigger**: Third trigger
+- **Instruction**: Third instruction
+- **Added**: Iteration 3
+- **Timestamp**: 2025-01-23T10:02:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 3
+                assert signs[0].name == "first_sign"
+                assert signs[1].name == "second_sign"
+                assert signs[2].name == "third_sign"
+
+    def test_load_sign_with_spaces_in_header(self):
+        """Test loading sign with spaces around the colon in header."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "spaces-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Note: The parser strips spaces from the name
+                content = """## sign: sign_with_spaces
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].name == "sign_with_spaces"
+
+    def test_load_sign_with_extra_spaces_after_colon(self):
+        """Test loading sign with extra spaces after the colon in fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "extra-spaces-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: test_sign
+- **Trigger** :  Trigger with spaces
+- **Instruction** :  Instruction with spaces
+- **Added** :  Iteration 5
+- **File** :  src/test.py
+- **Category** :  test_category
+- **Phase** :  local
+- **Timestamp** :  2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].trigger == "Trigger with spaces"
+                assert signs[0].instruction == "Instruction with spaces"
+                assert signs[0].added_iteration == 5
+                assert signs[0].file_context == "src/test.py"
+                assert signs[0].category == "test_category"
+                assert signs[0].phase == "local"
+
+    def test_load_sign_with_optional_fields_missing(self):
+        """Test loading sign with only required fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "minimal-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: minimal_sign
+- **Trigger**: Minimal trigger
+- **Instruction**: Minimal instruction
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].name == "minimal_sign"
+                assert signs[0].trigger == "Minimal trigger"
+                assert signs[0].instruction == "Minimal instruction"
+                assert signs[0].added_iteration == 1
+                assert signs[0].file_context is None
+                assert signs[0].category is None
+                assert signs[0].phase is None
+
+    def test_load_sign_with_iteration_number_only(self):
+        """Test loading sign when Added field contains just a number."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "number-only-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Test with just a number (no "Iteration" prefix)
+                content = """## sign: number_sign
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: 7
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].added_iteration == 7
+
+    def test_load_sign_with_malformed_iteration(self):
+        """Test loading sign with malformed iteration defaults to 1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "malformed-iter-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # No number in the Added field
+                content = """## sign: malformed_sign
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: some text without number
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                # Should default to 1 when no number is found
+                assert signs[0].added_iteration == 1
+
+    def test_load_sign_without_trailing_newline(self):
+        """Test loading sign when file doesn't end with newline."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "no-newline-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # No trailing newline after timestamp
+                content = """## sign: last_sign
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z"""  # No newline at end
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].name == "last_sign"
+
+    def test_load_ignores_unknown_fields(self):
+        """Test that unknown fields in sign are ignored."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "unknown-fields-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: test_sign
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: Iteration 1
+- **UnknownField**: This should be ignored
+- **AnotherUnknown**: Also ignored
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].trigger == "Test trigger"
+
+    def test_load_handles_lines_without_colon(self):
+        """Test that lines without colons are handled gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "no-colon-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Field line without colon - should result in empty string
+                content = """## sign: test_sign
+- **Trigger**: Test trigger
+- **Instruction**
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                # Instruction line without colon should give empty string
+                assert signs[0].instruction == ""
+
+    def test_load_handles_blank_lines(self):
+        """Test that blank lines between signs are handled correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "blank-lines-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: first_sign
+- **Trigger**: First trigger
+- **Instruction**: First instruction
+- **Added**: Iteration 1
+- **Timestamp**: 2025-01-23T10:00:00Z
+
+
+## sign: second_sign
+- **Trigger**: Second trigger
+- **Instruction**: Second instruction
+- **Added**: Iteration 2
+- **Timestamp**: 2025-01-23T10:01:00Z
+
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 2
+                assert signs[0].name == "first_sign"
+                assert signs[1].name == "second_sign"
+
+    def test_load_sign_with_case_insensitive_iteration(self):
+        """Test loading sign with 'iteration' in various cases."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "case-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                content = """## sign: test_sign
+- **Trigger**: Test trigger
+- **Instruction**: Test instruction
+- **Added**: ITERATION 10
+- **Timestamp**: 2025-01-23T10:00:00Z
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].added_iteration == 10
+
+    def test_load_partial_sign_returns_available_fields(self):
+        """Test that a sign with only some fields still returns what it has."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir) / "partial-test"
+            repo_root.mkdir()
+
+            with mock.patch(
+                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+            ):
+                guardrails_path = get_guardrails_path(repo_root)
+                guardrails_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Only name and trigger - minimal sign
+                content = """## sign: partial_sign
+- **Trigger**: Only trigger defined
+"""
+                guardrails_path.write_text(content)
+
+                signs = load_guardrails(repo_root)
+                assert len(signs) == 1
+                assert signs[0].name == "partial_sign"
+                assert signs[0].trigger == "Only trigger defined"
+                assert signs[0].instruction == ""  # Empty string when not provided
+                assert signs[0].added_iteration == 1  # Default value
