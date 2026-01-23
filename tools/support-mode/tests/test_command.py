@@ -25,6 +25,7 @@ def test_run_cmd_not_found():
         run_cmd(["nonexistent_command_xyz"])
         assert False, "Should have raised FileNotFoundError"
     except FileNotFoundError:
+        # Expected exception - test passes if we reach here
         pass
 
 
