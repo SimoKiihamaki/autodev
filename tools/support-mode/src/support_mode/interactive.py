@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import platform
 import subprocess
+import sys
 from dataclasses import dataclass
 from enum import Enum
 
@@ -254,7 +255,7 @@ class KeyHandler:
 
     def _is_terminal(self) -> bool:
         """Check if running in an interactive terminal."""
-        return sys.stdin.isatty() if "sys" in globals() else False
+        return sys.stdin.isatty()
 
     def poll_key(self, timeout_ms: int = 100) -> str | None:
         """Poll for a single keypress without blocking.
@@ -281,7 +282,6 @@ class KeyHandler:
     def _poll_unix(self, timeout_ms: int) -> str | None:
         """Poll for key on Unix-like systems."""
         import select
-        import sys
 
         # Check if data is available
         readable, _, _ = select.select([sys.stdin], [], [], timeout_ms / 1000)
@@ -312,8 +312,6 @@ class KeyHandler:
         """
         print(prompt, flush=True, end=" ")
         try:
-            import sys
-
             if platform.system() == "Windows":
                 import msvcrt
 
@@ -330,7 +328,3 @@ class KeyHandler:
     def enable(self) -> None:
         """Enable key handling."""
         self._enabled = True
-
-
-# Import sys at module level for poll_unix
-import sys
