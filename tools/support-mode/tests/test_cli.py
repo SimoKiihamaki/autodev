@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from support_mode import __version__
+
 
 def test_cli_help():
     result = subprocess.run(
@@ -23,7 +25,7 @@ def test_cli_version():
     )
     assert result.returncode == 0
     # Version is sourced from __version__ in support_mode/__init__.py
-    assert "0.2.0" in result.stdout
+    assert __version__ in result.stdout
 
 
 def test_cli_requires_prd():

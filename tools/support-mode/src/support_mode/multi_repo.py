@@ -33,12 +33,11 @@ class RepoStatus:
     warnings: list[str] | None = None
 
 
-def check_repository(repo_path: Path, prd_path: Path | None = None) -> RepoStatus:
+def check_repository(repo_path: Path) -> RepoStatus:
     """Check status of a single repository.
 
     Args:
         repo_path: Path to repository.
-        prd_path: Optional path to PRD file.
 
     Returns:
         RepoStatus with repository information.
@@ -116,7 +115,7 @@ def check_repositories_parallel(
     """Check multiple repositories in parallel.
 
     Args:
-        repos: List of {path: str, prd: str} dicts.
+        repos: List of {path: str} dicts.
         max_workers: Maximum parallel workers.
 
     Returns:
@@ -128,8 +127,7 @@ def check_repositories_parallel(
         futures = {}
         for repo in repos:
             path = Path(repo["path"])
-            prd = Path(repo["prd"]) if "prd" in repo else None
-            future = executor.submit(check_repository, path, prd)
+            future = executor.submit(check_repository, path)
             futures[future] = path
 
         for future in concurrent.futures.as_completed(futures):

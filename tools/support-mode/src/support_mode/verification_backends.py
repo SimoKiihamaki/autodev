@@ -137,10 +137,15 @@ class PytestBackend(VerificationBackend):
         if args:
             cmd.extend(args)
 
-        # Add JSON output if pytest-json-report is available
+        # Check if pytest-json-report plugin is available before adding JSON flags
+        # This prevents pytest from failing with "unrecognized arguments" error
         try:
-            cmd.extend(["--json-report", "--json-report-file=/dev/stdout"])
-        except (OSError, ValueError):
+            check_result = run_cmd(
+                ["pytest", "--help"], cwd=repo_root, check=False, capture=True
+            )
+            if "--json-report" in check_result.stdout:
+                cmd.extend(["--json-report", "--json-report-file=/dev/stdout"])
+        except (OSError, subprocess.CalledProcessError):
             # JSON report plugin not available, will parse stdout instead
             pass
 
