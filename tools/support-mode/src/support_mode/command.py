@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -85,9 +86,21 @@ def run_cmd(
     if not cmd:
         raise ValueError("cmd must be a non-empty list of strings")
 
-    exe = shutil.which(cmd[0])
-    if not exe:
-        raise FileNotFoundError(f"Command not found: {cmd[0]}")
+    # Honor cwd when validating command paths.
+    # Path-like commands (relative or absolute) are resolved against cwd,
+    # bare command names fall back to PATH search via shutil.which.
+    cmd_path = Path(cmd[0])
+    if cmd_path.is_absolute() or len(cmd_path.parts) > 1:
+        # Path-like command: resolve against cwd and check if executable
+        base = Path(cwd) if cwd is not None else Path.cwd()
+        resolved = (base / cmd_path).resolve()
+        if not (resolved.exists() and os.access(resolved, os.X_OK)):
+            raise FileNotFoundError(cmd[0])
+    else:
+        # Bare command name: search PATH
+        exe = shutil.which(cmd[0])
+        if not exe:
+            raise FileNotFoundError(cmd[0])
 
     # Execute
     result = subprocess.run(
