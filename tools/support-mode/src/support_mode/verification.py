@@ -68,7 +68,7 @@ class VerificationPersistence:
                 # Last line is most recent
                 run_dict = json.loads(lines[-1])
                 return self._dict_to_run(run_dict)
-        except (OSError, json.JSONDecodeError, KeyError):
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
             return None
 
     def is_run_fresh(self, run: VerificationRun, current_prd_hash: str) -> bool:
@@ -92,11 +92,26 @@ class VerificationPersistence:
 
         Returns:
             VerificationRun instance
+
+        Raises:
+            ValueError: If status values are not valid VerificationStatus values
         """
+
+        def _parse_status(status_str: str | None) -> VerificationStatus:
+            """Parse status string, defaulting to PENDING for unknown values."""
+            try:
+                return (
+                    VerificationStatus(status_str)
+                    if status_str
+                    else VerificationStatus.PENDING
+                )
+            except ValueError:
+                return VerificationStatus.PENDING
+
         verifiers = [
             VerifierResult(
                 name=v.get("name", "unknown"),
-                status=VerificationStatus(v.get("status", "pending")),
+                status=_parse_status(v.get("status")),
                 exit_code=v.get("exit_code"),
             )
             for v in data.get("verifiers", [])
@@ -109,5 +124,5 @@ class VerificationPersistence:
             git_sha=data.get("git_sha", ""),
             prd_hash=data.get("prd_hash", ""),
             verifiers=verifiers,
-            overall_status=VerificationStatus(data.get("overall_status", "pending")),
+            overall_status=_parse_status(data.get("overall_status")),
         )

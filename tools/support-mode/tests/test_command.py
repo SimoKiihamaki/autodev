@@ -1,5 +1,6 @@
 """Tests for command execution module."""
 
+import pytest
 import subprocess
 from support_mode.command import CommandResult, run_cmd
 
@@ -21,12 +22,8 @@ def test_run_cmd_failure():
 
 def test_run_cmd_not_found():
     """Test command not found error."""
-    try:
+    with pytest.raises(FileNotFoundError):
         run_cmd(["nonexistent_command_xyz"])
-        assert False, "Should have raised FileNotFoundError"
-    except FileNotFoundError:
-        # Expected exception - test passes if we reach here
-        pass
 
 
 def test_command_result_tuple_unpacking():

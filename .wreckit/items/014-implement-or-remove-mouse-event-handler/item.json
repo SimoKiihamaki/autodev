@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "id": "014-implement-or-remove-mouse-event-handler",
+  "title": "Implement or remove mouse event handler",
   "section": "frontend",
   "state": "done",
   "resolution": "already_removed",
