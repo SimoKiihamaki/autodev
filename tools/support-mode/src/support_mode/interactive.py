@@ -7,12 +7,10 @@ during continuous monitoring loops.
 from __future__ import annotations
 
 import logging
-import os
 import platform
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +77,20 @@ def _notify_macos(title: str, message: str, level: NotificationLevel) -> None:
         }
         sound = sounds.get(level, "Glass")
 
+        # Escape strings for AppleScript to prevent injection
+        # Backslashes and double quotes must be escaped with backslash
+        def _escape_applescript(s: str) -> str:
+            return s.replace("\\", "\\\\").replace('"', '\\"')
+
+        safe_title = _escape_applescript(title)
+        safe_message = _escape_applescript(message)
+        safe_sound = _escape_applescript(sound)
+
         subprocess.run(
             [
                 "osascript",
                 "-e",
-                f'display notification "{message}" with title "{title}" sound name "{sound}"',
+                f'display notification "{safe_message}" with title "{safe_title}" sound name "{safe_sound}"',
             ],
             check=False,
             capture_output=True,

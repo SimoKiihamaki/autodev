@@ -8,7 +8,6 @@ from enum import Enum
 from pathlib import Path
 
 from .git_ops import git_head_sha
-from .tracker import compute_prd_hash
 
 
 class VerificationStatus(str, Enum):
@@ -110,7 +109,5 @@ class VerificationPersistence:
             git_sha=data.get("git_sha", ""),
             prd_hash=data.get("prd_hash", ""),
             verifiers=verifiers,
-            overall_status=VerificationStatus(
-                data.get("overall_status", "pending")
-            ),
+            overall_status=VerificationStatus(data.get("overall_status", "pending")),
         )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import subprocess
@@ -14,7 +13,7 @@ from typing import Any
 from .command import run_cmd
 from .git_ops import git_current_branch, git_head_sha, git_status_snapshot
 from .guardrails import load_guardrails
-from .state import SupportState, load_support_state, save_support_state
+from .state import load_support_state, save_support_state
 from .tracker import compute_prd_hash, load_tracker, validate_tracker
 from .tracker_validator import validate_tracker_state
 from .verification import VerificationPersistence, VerificationStatus
@@ -122,9 +121,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
         try:
             current_sha = git_head_sha(repo_root)
             current_branch = git_current_branch(repo_root)
-            current_prd_hash = (
-                compute_prd_hash(prd_path) if prd_path.exists() else ""
-            )
+            current_prd_hash = compute_prd_hash(prd_path) if prd_path.exists() else ""
 
             print(f"\n=== Iteration {iteration}: Support Review ===", flush=True)
             print(f"-> {current_branch} @ {current_sha[:7]}", flush=True)
@@ -155,7 +152,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
             info: list[str] = []
 
             tracker = load_tracker(repo_root)
-            if not tracker:
+            if tracker is None:
                 issues.append(
                     "Tracker file not found at .aprd/tracker.json. "
                     "Support mode requires an existing tracker."
@@ -175,7 +172,9 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                         {
                             **f,
                             "tasks": (
-                                f.get("tasks") if isinstance(f.get("tasks"), list) else []
+                                f.get("tasks")
+                                if isinstance(f.get("tasks"), list)
+                                else []
                             ),
                         }
                         for f in raw_features

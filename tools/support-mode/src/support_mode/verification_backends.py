@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -139,12 +140,22 @@ class PytestBackend(VerificationBackend):
 
         # Check if pytest-json-report plugin is available before adding JSON flags
         # This prevents pytest from failing with "unrecognized arguments" error
+        # Use a temporary file instead of /dev/stdout for Windows compatibility
+        json_report_file = None
         try:
             check_result = run_cmd(
                 ["pytest", "--help"], cwd=repo_root, check=False, capture=True
             )
             if "--json-report" in check_result.stdout:
-                cmd.extend(["--json-report", "--json-report-file=/dev/stdout"])
+                # Use a temporary file for JSON report output
+                # /dev/stdout doesn't exist on Windows, so we use a cross-platform temp file
+                json_report_file = tempfile.NamedTemporaryFile(
+                    mode="w+", suffix=".json", delete=False
+                )
+                json_report_file.close()
+                cmd.extend(
+                    ["--json-report", f"--json-report-file={json_report_file.name}"]
+                )
         except (OSError, subprocess.CalledProcessError):
             # JSON report plugin not available, will parse stdout instead
             pass
@@ -153,6 +164,12 @@ class PytestBackend(VerificationBackend):
         try:
             stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False)
         except (OSError, subprocess.CalledProcessError) as e:
+            # Clean up temp file if it was created
+            if json_report_file is not None:
+                try:
+                    Path(json_report_file.name).unlink(missing_ok=True)
+                except (OSError, ValueError):
+                    pass
             return VerificationSummary(
                 backend=self.name,
                 status=VerificationStatus.FAILED,
@@ -165,6 +182,13 @@ class PytestBackend(VerificationBackend):
             )
 
         duration = time.time() - start
+
+        # Clean up temp file if it was created
+        if json_report_file is not None:
+            try:
+                Path(json_report_file.name).unlink(missing_ok=True)
+            except (OSError, ValueError):
+                pass
 
         # Parse pytest output
         results = self._parse_pytest_output(stdout)
@@ -339,7 +363,6 @@ class ManualBackend(VerificationBackend):
         results = []
         passed = 0
         failed = 0
-        skipped = 0
 
         for feature in tracker.get("features", []):
             for ac in feature.get("acceptance_criteria", []):
