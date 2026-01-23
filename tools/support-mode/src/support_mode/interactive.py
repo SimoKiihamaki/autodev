@@ -241,9 +241,6 @@ class KeyHandler:
     def __init__(self) -> None:
         """Initialize key handler."""
         self._enabled = True
-        self._last_key_check = 0.0
-        self._pending_key: str | None = None
-        self._old_settings: object | None = None
 
     def is_enabled(self) -> bool:
         """Check if key handling is enabled."""
@@ -289,30 +286,36 @@ class KeyHandler:
         import select
         import termios
 
-        # Enable raw mode for single-key detection
-        if self._old_settings is None:
-            try:
-                self._old_settings = termios.tcgetattr(sys.stdin)
-                # Set raw mode (cbreak) - disable line buffering
-                new_settings = termios.tcgetattr(sys.stdin)
-                new_settings[3] = new_settings[3] & ~termios.ICANON
-                # Also disable echo so the key isn't displayed
-                new_settings[3] = new_settings[3] & ~termios.ECHO
-                new_settings[6][termios.VMIN] = 0  # Non-blocking read
-                new_settings[6][termios.VTIME] = 0  # No inter-character timer
-                termios.tcsetattr(sys.stdin, termios.TCSANOW, new_settings)
-            except (OSError, termios.error):
-                # Not a TTY or termios not available
-                return None
+        try:
+            old_settings = termios.tcgetattr(sys.stdin)
+        except (OSError, termios.error):
+            # Not a TTY or termios not available
+            return None
 
-        # Check if data is available
-        readable, _, _ = select.select([sys.stdin], [], [], timeout_ms / 1000)
-        if readable:
+        try:
+            # Set raw mode (cbreak) - disable line buffering
+            new_settings = termios.tcgetattr(sys.stdin)
+            new_settings[3] = new_settings[3] & ~termios.ICANON
+            # Also disable echo so the key isn't displayed
+            new_settings[3] = new_settings[3] & ~termios.ECHO
+            new_settings[6][termios.VMIN] = 0  # Non-blocking read
+            new_settings[6][termios.VTIME] = 0  # No inter-character timer
+            termios.tcsetattr(sys.stdin, termios.TCSANOW, new_settings)
+
+            # Check if data is available
+            readable, _, _ = select.select([sys.stdin], [], [], timeout_ms / 1000)
+            if readable:
+                try:
+                    return sys.stdin.read(1)
+                except OSError:
+                    return None
+            return None
+        finally:
+            # Always restore original TTY settings
             try:
-                return sys.stdin.read(1)
-            except OSError:
-                return None
-        return None
+                termios.tcsetattr(sys.stdin, termios.TCSANOW, old_settings)
+            except (OSError, termios.error):
+                pass  # Best effort restore
 
     def _poll_windows(self) -> str | None:
         """Poll for key on Windows."""
@@ -370,24 +373,8 @@ class KeyHandler:
             return ""
 
     def disable(self) -> None:
-        """Disable key handling and restore TTY settings."""
+        """Disable key handling."""
         self._enabled = False
-        self._restore_tty()
-
-    def _restore_tty(self) -> None:
-        """Restore original TTY settings if they were modified."""
-        if self._old_settings is not None:
-            try:
-                import termios
-
-                termios.tcsetattr(sys.stdin, termios.TCSANOW, self._old_settings)
-            except (OSError, termios.error):
-                pass  # Best effort restore
-            self._old_settings = None
-
-    def __del__(self) -> None:
-        """Cleanup: restore TTY settings when object is destroyed."""
-        self._restore_tty()
 
     def enable(self) -> None:
         """Enable key handling."""
