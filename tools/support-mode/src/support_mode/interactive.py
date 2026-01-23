@@ -318,14 +318,26 @@ class KeyHandler:
                 pass  # Best effort restore
 
     def _poll_windows(self) -> str | None:
-        """Poll for key on Windows."""
+        """Poll for key on Windows.
+
+        Extended keys (arrows, function keys) return a prefix byte (0x00 or 0xe0)
+        followed by the actual key code. These are ignored as only single-letter
+        shortcuts are supported.
+        """
         try:
             import msvcrt
 
             if msvcrt.kbhit():
-                return msvcrt.getch().decode("utf-8")
-        except ImportError:
-            # msvcrt not available on this platform
+                ch = msvcrt.getch()
+                # Extended keys (arrows, function keys) start with 0x00 or 0xe0
+                # Consume and ignore the following key code byte
+                if ch in (b"\x00", b"\xe0"):
+                    msvcrt.getch()  # Consume the extended key code
+                    return None
+                # Regular ASCII key - safe to decode
+                return ch.decode("utf-8")
+        except (ImportError, UnicodeDecodeError, OSError):
+            # msvcrt not available or decode error from unexpected input
             pass
         return None
 
@@ -343,7 +355,13 @@ class KeyHandler:
             if platform.system() == "Windows":
                 import msvcrt
 
-                return msvcrt.getch().decode("utf-8").lower()
+                ch = msvcrt.getch()
+                # Extended keys (arrows, function keys) start with 0x00 or 0xe0
+                if ch in (b"\x00", b"\xe0"):
+                    msvcrt.getch()  # Consume the extended key code
+                    # For extended keys, wait for a regular key
+                    ch = msvcrt.getch()
+                return ch.decode("utf-8").lower()
             else:
                 import termios
 
@@ -369,7 +387,7 @@ class KeyHandler:
                             termios.tcsetattr(sys.stdin, termios.TCSANOW, old_settings)
                         except (OSError, termios.error):
                             pass
-        except (OSError, ImportError):
+        except (OSError, ImportError, UnicodeDecodeError):
             return ""
 
     def disable(self) -> None:
