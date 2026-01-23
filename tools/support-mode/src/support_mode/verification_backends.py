@@ -230,7 +230,12 @@ class CustomBackend(VerificationBackend):
 
         Args:
             command: Command to run (list of strings).
+
+        Raises:
+            ValueError: If command is empty.
         """
+        if not command:
+            raise ValueError("command must be a non-empty list of strings")
         self._command = command
 
     @property
