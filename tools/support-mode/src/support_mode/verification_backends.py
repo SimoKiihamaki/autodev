@@ -151,7 +151,7 @@ class PytestBackend(VerificationBackend):
 
         start = time.time()
         try:
-            stdout, stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False)
+            stdout, _stderr, exit_code = run_cmd(cmd, cwd=repo_root, check=False)
         except (OSError, subprocess.CalledProcessError) as e:
             # Clean up temp file if it was created
             if json_report_file is not None:
@@ -172,15 +172,24 @@ class PytestBackend(VerificationBackend):
 
         duration = time.time() - start
 
-        # Clean up temp file if it was created
+        # Parse pytest output - prefer JSON report if available
+        results = []
         if json_report_file is not None:
             try:
-                Path(json_report_file.name).unlink(missing_ok=True)
-            except (OSError, ValueError):
-                pass
-
-        # Parse pytest output
-        results = self._parse_pytest_output(stdout)
+                json_content = Path(json_report_file.name).read_text()
+                json_data = json.loads(json_content)
+                results = self._parse_json_report(json_data)
+            except (OSError, json.JSONDecodeError, KeyError):
+                # Fall back to stdout parsing if JSON is unavailable/invalid
+                results = self._parse_pytest_output(stdout)
+            finally:
+                # Clean up temp file after reading
+                try:
+                    Path(json_report_file.name).unlink(missing_ok=True)
+                except (OSError, ValueError):
+                    pass
+        else:
+            results = self._parse_pytest_output(stdout)
 
         # Count results
         passed = sum(1 for r in results if r.status == VerificationStatus.PASSED)
@@ -232,6 +241,38 @@ class PytestBackend(VerificationBackend):
                         status = VerificationStatus.PENDING
 
                     results.append(TestResult(name=name, status=status))
+        return results
+
+    def _parse_json_report(self, json_data: dict[str, Any]) -> list[TestResult]:
+        """Parse pytest-json-report output.
+
+        Args:
+            json_data: Parsed JSON report data from pytest-json-report.
+
+        Returns:
+            List of TestResult.
+        """
+        results = []
+        # The JSON report has a 'tests' list with detailed test results
+        for test in json_data.get("tests", []):
+            name = test.get("name", "")
+            outcome = test.get("outcome", "").lower()
+
+            if outcome == "passed":
+                status = VerificationStatus.PASSED
+            elif outcome == "failed":
+                status = VerificationStatus.FAILED
+            elif outcome in ("skipped", "skip"):
+                status = VerificationStatus.SKIPPED
+            else:
+                status = VerificationStatus.PENDING
+
+            duration = test.get("duration", 0.0)
+            message = test.get("call", {}).get("crash", {}).get("message", "")
+
+            results.append(
+                TestResult(name=name, status=status, duration=duration, message=message)
+            )
         return results
 
 
