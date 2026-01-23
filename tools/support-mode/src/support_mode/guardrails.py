@@ -94,6 +94,7 @@ def load_guardrails(repo_root: Path) -> list[Sign]:
                         )
                     )
     except (OSError, UnicodeDecodeError):
+        # Guardrails file not readable, skip it
         pass
 
     return signs

@@ -109,7 +109,7 @@ class PytestBackend(VerificationBackend):
         try:
             run_cmd(["pytest", "--version"], cwd=repo_root, check=False, capture=True)
             return True
-        except (OSError, FileNotFoundError):
+        except (OSError, FileNotFoundError, subprocess.SubprocessError):
             return False
 
     def run(
@@ -141,6 +141,7 @@ class PytestBackend(VerificationBackend):
         try:
             cmd.extend(["--json-report", "--json-report-file=/dev/stdout"])
         except (OSError, ValueError):
+            # JSON report plugin not available, will parse stdout instead
             pass
 
         start = time.time()
@@ -307,9 +308,8 @@ class ManualBackend(VerificationBackend):
         Returns:
             VerificationSummary with manual verification status.
         """
-        from .tracker import get_tracker_path, load_tracker
+        from .tracker import load_tracker
 
-        tracker_path = get_tracker_path(repo_root)
         tracker = load_tracker(repo_root)
 
         if tracker is None:
@@ -445,7 +445,7 @@ class VerificationMonitor:
             if summary.status == VerificationStatus.FAILED:
                 return VerificationStatus.FAILED
 
-        return VerificationSummary.PASSED
+        return VerificationStatus.PASSED
 
     def load_tracker(
         self, repo_root: Path, tracker_format: str = "auto"

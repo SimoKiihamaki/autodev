@@ -212,23 +212,28 @@ class Config:
         try:
             import tomli
 
-            with open(config_path, "rb") as f:
-                data = tomli.load(f)
-            return cls._from_dict(data)
+            try:
+                with open(config_path, "rb") as f:
+                    data = tomli.load(f)
+                return cls._from_dict(data)
+            except (OSError, tomli.TOMLDecodeError):
+                logger.warning(f"Failed to load TOML config: {config_path}")
+                return cls()
         except ImportError:
             # Fallback to tomllib (Python 3.11+)
             try:
                 import tomllib
 
-                with open(config_path, "rb") as f:
-                    data = tomllib.load(f)
-                return cls._from_dict(data)
+                try:
+                    with open(config_path, "rb") as f:
+                        data = tomllib.load(f)
+                    return cls._from_dict(data)
+                except (OSError, tomllib.TOMLDecodeError):
+                    logger.warning(f"Failed to load TOML config: {config_path}")
+                    return cls()
             except ImportError:
                 logger.warning("No TOML library available")
                 return cls()
-        except (OSError, OSError) as e:
-            logger.warning(f"Failed to load TOML config: {e}")
-            return cls()
 
     @classmethod
     def _from_dict(cls, data: dict[str, Any]) -> "Config":

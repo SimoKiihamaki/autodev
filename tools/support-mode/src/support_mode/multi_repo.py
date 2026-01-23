@@ -5,14 +5,13 @@ Allows monitoring multiple repositories simultaneously with tabular output.
 
 from __future__ import annotations
 
-import concurrent.futures
 import logging
+import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from .git_ops import git_current_branch, git_head_sha
-from .support_loop import run_single_review
 from .tracker import load_tracker, validate_tracker
 
 logger = logging.getLogger(__name__)

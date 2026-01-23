@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def test_cli_help():
     result = subprocess.run(
         [sys.executable, "-m", "support_mode", "--help"],
@@ -13,6 +14,7 @@ def test_cli_help():
     assert result.returncode == 0
     assert "Continuous monitoring" in result.stdout
 
+
 def test_cli_version():
     result = subprocess.run(
         [sys.executable, "-m", "support_mode", "--version"],
@@ -20,7 +22,9 @@ def test_cli_version():
         text=True,
     )
     assert result.returncode == 0
-    assert "0.1.0" in result.stdout
+    # Version is sourced from __version__ in support_mode/__init__.py
+    assert "0.2.0" in result.stdout
+
 
 def test_cli_requires_prd():
     result = subprocess.run(

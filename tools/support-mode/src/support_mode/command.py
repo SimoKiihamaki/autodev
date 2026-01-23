@@ -76,8 +76,12 @@ def run_cmd(
     Raises:
         CalledProcessError: If check=True and command fails.
         FileNotFoundError: If command executable not found.
+        ValueError: If cmd is empty.
     """
-    # Basic safety: ensure executable exists
+    # Basic safety: ensure cmd is non-empty and executable exists
+    if not cmd:
+        raise ValueError("cmd must be a non-empty list of strings")
+
     exe = shutil.which(cmd[0])
     if not exe:
         raise FileNotFoundError(f"Command not found: {cmd[0]}")
@@ -91,9 +95,11 @@ def run_cmd(
         check=False,
     )
 
+    # Normalize stdout/stderr to ensure they're always strings
+    # (when capture=False, subprocess.run returns None for these)
     cmd_result = CommandResult(
-        stdout=result.stdout,
-        stderr=result.stderr,
+        stdout=result.stdout or "",
+        stderr=result.stderr or "",
         exit_code=result.returncode,
     )
 

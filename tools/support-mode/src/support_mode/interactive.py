@@ -131,6 +131,7 @@ def _notify_windows(title: str, message: str) -> None:
         )
         return
     except (OSError, subprocess.SubprocessError):
+        # toast.exe not available, try PowerShell fallback
         pass
 
     # Fallback to PowerShell BurntToast notification
@@ -152,7 +153,7 @@ def _notify_windows(title: str, message: str) -> None:
             check=False,
             capture_output=True,
         )
-    except (OSError, subprocess.SubprocessProcess):
+    except (OSError, subprocess.SubprocessError):
         logger.debug("Could not send Windows notification")
 
 
@@ -197,7 +198,7 @@ def _send_webhook(
                 check=False,
                 capture_output=True,
             )
-    except (OSError, subprocess.SubprocessProcess, ImportError):
+    except (OSError, subprocess.SubprocessError, ImportError):
         logger.warning("Could not send webhook notification")
 
 
@@ -280,6 +281,7 @@ class KeyHandler:
             if msvcrt.kbhit():
                 return msvcrt.getch().decode("utf-8")
         except ImportError:
+            # msvcrt not available on this platform
             pass
         return None
 

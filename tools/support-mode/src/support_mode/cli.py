@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import __version__
 from .git_ops import git_root
 from .support_loop import run_support_mode
 
@@ -62,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version=f"%(prog)s {__version__}",
     )
 
     return parser
@@ -115,4 +116,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
