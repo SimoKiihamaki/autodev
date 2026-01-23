@@ -82,6 +82,7 @@ def _recent_commits(repo_root: Path, last_sha: str, limit: int) -> list[str]:
             lines = [line for line in out.splitlines() if line.strip()]
             return lines
         except (OSError, subprocess.CalledProcessError):
+            # Gracefully fall back to full log if SHA-range query fails
             logger.debug("Support mode: falling back to recent commit scan")
     try:
         out, _, _ = run_cmd(
@@ -305,3 +306,5 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
         except Exception as exc:
             logger.exception("Support mode iteration failed")
             print(f"❌ Support review crashed: {exc}", flush=True)
+            # Backoff to prevent tight crash loops on deterministic errors
+            time.sleep(poll_seconds)

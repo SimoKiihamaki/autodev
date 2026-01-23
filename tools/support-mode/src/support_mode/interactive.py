@@ -1,7 +1,13 @@
 """Interactive features for support-mode monitoring.
 
-Provides keyboard shortcuts, desktop notifications, and enhanced user experience
-during continuous monitoring loops.
+This module provides keyboard shortcuts and desktop notifications for
+continuous monitoring loops. NOTE: These features are currently library
+primitives only - they are not integrated into the main support_loop.py
+monitoring loop or CLI entry point. Full interactive support is planned
+for a future release.
+
+To use these features, import and integrate them into your own monitoring loop:
+    from support_mode.interactive import KeyHandler, send_notification
 """
 
 from __future__ import annotations
@@ -302,6 +308,7 @@ class KeyHandler:
                 try:
                     return sys.stdin.read(1)
                 except OSError:
+                    # stdin read failed - return None to indicate no input
                     return None
             return None
         finally:
@@ -309,7 +316,8 @@ class KeyHandler:
             try:
                 termios.tcsetattr(sys.stdin, termios.TCSANOW, old_settings)
             except (OSError, termios.error):
-                pass  # Best effort restore
+                # Terminal may be closed or in bad state - best effort restore
+                pass
 
     def _poll_windows(self) -> str | None:
         """Poll for key on Windows.
@@ -383,6 +391,7 @@ class KeyHandler:
                             # Best effort restore - terminal may be in bad state
                             pass
         except (OSError, ImportError, UnicodeDecodeError):
+            # Terminal or platform doesn't support interactive input
             return ""
 
     def disable(self) -> None:
