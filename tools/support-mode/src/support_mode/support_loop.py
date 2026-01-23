@@ -155,8 +155,8 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
             tracker = load_tracker(repo_root)
             if tracker is None:
                 issues.append(
-                    "Tracker file not found at .aprd/tracker.json. "
-                    "Support mode requires an existing tracker."
+                    "Tracker file missing or invalid at .aprd/tracker.json. "
+                    "Support mode requires an existing, valid tracker."
                 )
             else:
                 valid, errors = validate_tracker(tracker)

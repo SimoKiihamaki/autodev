@@ -149,8 +149,10 @@ def _notify_windows(title: str, message: str) -> None:
         ps_script = """
         [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
         [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null
+        $title = [System.Security.SecurityElement]::Escape($env:SUPPORT_MODE_TITLE)
+        $message = [System.Security.SecurityElement]::Escape($env:SUPPORT_MODE_MESSAGE)
         $template = @"
-        <toast><visual><binding template='ToastGeneric'><text>$env:SUPPORT_MODE_TITLE</text><text>$env:SUPPORT_MODE_MESSAGE</text></binding></visual></toast>
+        <toast><visual><binding template='ToastGeneric'><text>$title</text><text>$message</text></binding></visual></toast>
         "@
         $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
         $xml.LoadXml($template)

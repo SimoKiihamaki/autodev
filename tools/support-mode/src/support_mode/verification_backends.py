@@ -199,7 +199,9 @@ class PytestBackend(VerificationBackend):
         status = (
             VerificationStatus.PASSED if exit_code == 0 else VerificationStatus.FAILED
         )
-        if failed == 0 and passed == 0:
+        # Only mark as SKIPPED if pytest exited cleanly with no tests found
+        # Non-zero exit codes should preserve FAILED status even if no tests were parsed
+        if failed == 0 and passed == 0 and exit_code == 0:
             status = VerificationStatus.SKIPPED
 
         return VerificationSummary(
