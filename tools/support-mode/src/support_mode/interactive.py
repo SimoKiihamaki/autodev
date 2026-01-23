@@ -128,26 +128,29 @@ def _notify_linux(title: str, message: str, level: NotificationLevel) -> None:
 
 def _notify_windows(title: str, message: str) -> None:
     """Send notification on Windows using toast.exe or PowerShell."""
+    import os
+
     # Try toast.exe first (part of Windows 10+ SDK)
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["toast", "-t", title, "-m", message],
             check=False,
             capture_output=True,
-            shell=True,
         )
-        return
+        if result.returncode == 0:
+            return
     except (OSError, subprocess.SubprocessError):
         # toast.exe not available, try PowerShell fallback
         pass
 
     # Fallback to PowerShell BurntToast notification
+    # Pass title/message via environment variables to prevent injection
     try:
-        ps_script = f"""
+        ps_script = """
         [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
         [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null
         $template = @"
-        <toast><visual><binding template='ToastGeneric'><text>{title}</text><text>{message}</text></binding></visual></toast>
+        <toast><visual><binding template='ToastGeneric'><text>$env:SUPPORT_MODE_TITLE</text><text>$env:SUPPORT_MODE_MESSAGE</text></binding></visual></toast>
         "@
         $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
         $xml.LoadXml($template)
@@ -155,10 +158,16 @@ def _notify_windows(title: str, message: str) -> None:
         $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('support-mode')
         $notifier.Show($toast)
         """
+        env = {
+            **os.environ,
+            "SUPPORT_MODE_TITLE": title,
+            "SUPPORT_MODE_MESSAGE": message,
+        }
         subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps_script],
             check=False,
             capture_output=True,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         logger.debug("Could not send Windows notification")
