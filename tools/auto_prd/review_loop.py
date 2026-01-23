@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .agents import (
-    _sanitize_stderr_for_exception,
+    _sanitize_output_for_exception,
     claude_exec,
     claude_exec_streaming,
     codex_exec,
@@ -264,7 +264,7 @@ def _should_stop_after_failure(
     # contain echoed config values, auth tokens, or file paths that reveal PII.
     # The same sanitized value is reused for both logging and user display to avoid
     # duplicate regex processing.
-    sanitized_error_detail = _sanitize_stderr_for_exception(
+    sanitized_error_detail = _sanitize_output_for_exception(
         error_detail or "", ERROR_DETAIL_TRUNCATE_CHARS
     )
     logger.warning(
@@ -287,7 +287,7 @@ def _should_stop_after_failure(
         # the already-sanitized output for user display. This avoids duplicate regex
         # processing on potentially large stderr content while ensuring both log and
         # user output are sanitized.
-        sanitized_stderr = _sanitize_stderr_for_exception(
+        sanitized_stderr = _sanitize_output_for_exception(
             stderr_text, STDERR_LOG_TRUNCATE_CHARS
         )
         # Log sanitized stderr at WARNING level for failed executions only. This is
@@ -675,7 +675,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     # Print streaming output with vertical box character.
                     # Note: vert captures vertical_char via default argument to avoid B023.
                     # Security: Output is printed to stdout only (not logged to files) to avoid
-                    # persisting potentially sensitive model output. See _sanitize_stderr_for_exception.
+                    # persisting potentially sensitive model output. See _sanitize_output_for_exception.
                     print(f"  {vert} {line}", flush=True)
 
                 runner_kwargs["on_output"] = output_handler
@@ -698,7 +698,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                 # troubleshooting and could be shared in bug reports. Stdout is not logged at
                 # all (see output_handler above) as it contains actual model responses.
                 if stderr and stderr.strip():
-                    sanitized_debug_stderr = _sanitize_stderr_for_exception(stderr, 500)
+                    sanitized_debug_stderr = _sanitize_output_for_exception(stderr, 500)
                     logger.debug(
                         "Review runner stderr (debug only): %s", sanitized_debug_stderr
                     )
@@ -928,7 +928,9 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     return False
                 sleep_with_jitter(float(poll))
                 continue
-            except Exception as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
                 # (e.g., malformed JSON responses). See the _PROGRAMMING_ERROR_TYPES definition
