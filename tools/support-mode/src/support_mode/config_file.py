@@ -63,8 +63,7 @@ class MultiRepoConfig:
     """Configuration for multi-repository monitoring."""
 
     enabled: bool = False
-    repos: list[dict[str, Any]] = field(default_factory=list)
-    parallel: bool = False
+    repos: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -281,7 +280,6 @@ class Config:
         multi_repo = MultiRepoConfig(
             enabled=multi_repo_data.get("enabled", False),
             repos=multi_repo_data.get("repos", []),
-            parallel=multi_repo_data.get("parallel", False),
         )
 
         return cls(
@@ -337,8 +335,7 @@ output:
 
 multi_repo:
   enabled: false  # Monitor multiple repositories
-  repos: []  # List of {path: "...", prd: "..."} dicts
-  parallel: false  # Check repos in parallel
+  repos: []  # List of {path: "..."} dicts
 """
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,8 +373,7 @@ colors = true
 
 [multi_repo]
 enabled = false  # Monitor multiple repositories
-repos = []  # List of {path = "...", prd = "..."} tables
-parallel = false  # Check repos in parallel
+repos = []  # List of {path = "..."} dicts
 """
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

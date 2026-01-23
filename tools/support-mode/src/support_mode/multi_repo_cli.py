@@ -28,9 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         action="append",
-        nargs=2,
-        metavar=("PATH", "PRD"),
-        help="Add repository (can be used multiple times)",
+        help="Add repository path (can be used multiple times)",
     )
     parser.add_argument(
         "--parallel",
@@ -69,8 +67,8 @@ def main() -> int:
 
     # Add CLI-specified repos
     if args.repo:
-        for path, prd in args.repo:
-            repos.append({"path": path, "prd": prd})
+        for path in args.repo:
+            repos.append({"path": path})
 
     if not repos:
         print(
