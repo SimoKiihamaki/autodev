@@ -243,6 +243,7 @@ class KeyHandler:
         self._enabled = True
         self._last_key_check = 0.0
         self._pending_key: str | None = None
+        self._old_settings: object | None = None
 
     def is_enabled(self) -> bool:
         """Check if key handling is enabled."""
@@ -280,13 +281,37 @@ class KeyHandler:
             return None
 
     def _poll_unix(self, timeout_ms: int) -> str | None:
-        """Poll for key on Unix-like systems."""
+        """Poll for key on Unix-like systems.
+
+        Switches TTY to raw mode to enable single-key detection without
+        waiting for Enter, then restores original settings.
+        """
         import select
+        import termios
+
+        # Enable raw mode for single-key detection
+        if self._old_settings is None:
+            try:
+                self._old_settings = termios.tcgetattr(sys.stdin)
+                # Set raw mode (cbreak) - disable line buffering
+                new_settings = termios.tcgetattr(sys.stdin)
+                new_settings[3] = new_settings[3] & ~termios.ICANON
+                # Also disable echo so the key isn't displayed
+                new_settings[3] = new_settings[3] & ~termios.ECHO
+                new_settings[6][termios.VMIN] = 0  # Non-blocking read
+                new_settings[6][termios.VTIME] = 0  # No inter-character timer
+                termios.tcsetattr(sys.stdin, termios.TCSANOW, new_settings)
+            except (OSError, termios.error):
+                # Not a TTY or termios not available
+                return None
 
         # Check if data is available
         readable, _, _ = select.select([sys.stdin], [], [], timeout_ms / 1000)
         if readable:
-            return sys.stdin.read(1)
+            try:
+                return sys.stdin.read(1)
+            except OSError:
+                return None
         return None
 
     def _poll_windows(self) -> str | None:
@@ -317,13 +342,52 @@ class KeyHandler:
 
                 return msvcrt.getch().decode("utf-8").lower()
             else:
-                return sys.stdin.read(1).lower()
+                import termios
+
+                # Save and set raw mode for wait_for_key
+                old_settings = None
+                try:
+                    old_settings = termios.tcgetattr(sys.stdin)
+                    new_settings = termios.tcgetattr(sys.stdin)
+                    new_settings[3] = new_settings[3] & ~termios.ICANON
+                    new_settings[3] = new_settings[3] & ~termios.ECHO
+                    new_settings[6][
+                        termios.VMIN
+                    ] = 1  # Blocking read until at least 1 char
+                    new_settings[6][termios.VTIME] = 0
+                    termios.tcsetattr(sys.stdin, termios.TCSANOW, new_settings)
+
+                    ch = sys.stdin.read(1).lower()
+                    return ch
+                finally:
+                    # Always restore original settings
+                    if old_settings is not None:
+                        try:
+                            termios.tcsetattr(sys.stdin, termios.TCSANOW, old_settings)
+                        except (OSError, termios.error):
+                            pass
         except (OSError, ImportError):
             return ""
 
     def disable(self) -> None:
-        """Disable key handling."""
+        """Disable key handling and restore TTY settings."""
         self._enabled = False
+        self._restore_tty()
+
+    def _restore_tty(self) -> None:
+        """Restore original TTY settings if they were modified."""
+        if self._old_settings is not None:
+            try:
+                import termios
+
+                termios.tcsetattr(sys.stdin, termios.TCSANOW, self._old_settings)
+            except (OSError, termios.error):
+                pass  # Best effort restore
+            self._old_settings = None
+
+    def __del__(self) -> None:
+        """Cleanup: restore TTY settings when object is destroyed."""
+        self._restore_tty()
 
     def enable(self) -> None:
         """Enable key handling."""
