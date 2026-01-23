@@ -2,9 +2,10 @@
 
 Supports YAML and TOML configuration files (.support.yaml, .support.toml).
 Configuration can be placed in:
-1. Current working directory
+1. Explicit config path (if provided)
 2. Repository root (.support.yaml/toml)
-3. XDG config home (~/.config/support-mode/config.yaml/toml)
+3. Current working directory
+4. XDG config home (~/.config/support-mode/config.yaml/toml)
 """
 
 from __future__ import annotations
