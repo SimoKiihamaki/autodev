@@ -13,6 +13,9 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 
+from .config_file import NotificationConfig
+from .command import run_cmd
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,16 +25,6 @@ class NotificationLevel(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
-
-
-@dataclass
-class NotificationConfig:
-    """Configuration for desktop notifications."""
-
-    enabled: bool = True
-    use_webhook: bool = False
-    webhook_url: str = ""
-    webhook_format: str = "json"  # json or text
 
 
 def send_notification(
@@ -188,6 +181,7 @@ def _send_webhook(
         level: Notification urgency level.
         config: Notification configuration with webhook settings.
     """
+    timeout_s = 10
     try:
         if config.webhook_format == "json":
             import json
@@ -195,7 +189,7 @@ def _send_webhook(
             payload = json.dumps(
                 {"title": title, "message": message, "level": level.value}
             )
-            subprocess.run(
+            run_cmd(
                 [
                     "curl",
                     "-X",
@@ -207,13 +201,13 @@ def _send_webhook(
                     config.webhook_url,
                 ],
                 check=False,
-                capture_output=True,
+                timeout=timeout_s,
             )
         else:  # text format
-            subprocess.run(
+            run_cmd(
                 ["curl", "-X", "POST", "-d", f"{title}: {message}", config.webhook_url],
                 check=False,
-                capture_output=True,
+                timeout=timeout_s,
             )
     except (OSError, subprocess.SubprocessError, ImportError):
         logger.warning("Could not send webhook notification")
@@ -386,6 +380,7 @@ class KeyHandler:
                         try:
                             termios.tcsetattr(sys.stdin, termios.TCSANOW, old_settings)
                         except (OSError, termios.error):
+                            # Best effort restore - terminal may be in bad state
                             pass
         except (OSError, ImportError, UnicodeDecodeError):
             return ""

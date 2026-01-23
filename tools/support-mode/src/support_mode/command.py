@@ -57,6 +57,7 @@ def run_cmd(
     cwd: Path | None = None,
     check: bool = True,
     capture: bool = True,
+    timeout: int | None = None,
 ) -> CommandResult:
     """Execute a command safely.
 
@@ -68,6 +69,7 @@ def run_cmd(
         cwd: Working directory for the command.
         check: If True, raise CalledProcessError on non-zero exit.
         capture: If True, capture stdout/stderr.
+        timeout: Timeout in seconds for command execution.
 
     Returns:
         CommandResult containing stdout, stderr, and exit_code fields.
@@ -76,6 +78,7 @@ def run_cmd(
     Raises:
         CalledProcessError: If check=True and command fails.
         FileNotFoundError: If command executable not found.
+        TimeoutExpired: If timeout is reached.
         ValueError: If cmd is empty.
     """
     # Basic safety: ensure cmd is non-empty and executable exists
@@ -93,6 +96,7 @@ def run_cmd(
         capture_output=capture,
         text=True,
         check=False,
+        timeout=timeout,
     )
 
     # Normalize stdout/stderr to ensure they're always strings
