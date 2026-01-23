@@ -70,7 +70,7 @@ def check_repository(repo_path: Path) -> RepoStatus:
     warnings = []
 
     tracker = load_tracker(repo_path)
-    if tracker:
+    if tracker is not None:
         valid, errors = validate_tracker(tracker)
         tracker_valid = valid
         if not valid:
