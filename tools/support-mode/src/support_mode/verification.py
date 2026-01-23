@@ -17,6 +17,7 @@ class VerificationStatus(str, Enum):
     RUNNING = "running"
     PASSED = "passed"
     FAILED = "failed"
+    SKIPPED = "skipped"
     STALE = "stale"
 
 

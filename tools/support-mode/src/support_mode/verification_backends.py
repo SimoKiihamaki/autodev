@@ -17,24 +17,13 @@ import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from .command import run_cmd
+from .verification import VerificationStatus
 
 logger = logging.getLogger(__name__)
-
-
-class VerificationStatus(str, Enum):
-    """Verification status values."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    PASSED = "passed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    STALE = "stale"
 
 
 @dataclass
