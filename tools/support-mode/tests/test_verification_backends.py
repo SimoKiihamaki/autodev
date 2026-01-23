@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from support_mode.verification_backends import (
     CustomBackend,
     ManualBackend,
@@ -141,11 +143,8 @@ class TestCustomBackend:
 
     def test_init_empty_command(self):
         """Test initialization with empty command raises ValueError."""
-        try:
+        with pytest.raises(ValueError, match="command must be a non-empty list"):
             CustomBackend([])
-            assert False, "Should have raised ValueError"
-        except ValueError as e:
-            assert "command must be a non-empty list" in str(e)
 
     def test_run_success(self):
         """Test successful custom command run."""

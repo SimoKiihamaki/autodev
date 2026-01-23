@@ -469,10 +469,24 @@ class VerificationMonitor:
         if not self._results:
             return VerificationStatus.PENDING
 
+        has_pending = False
+        has_skipped = False
         for summary in self._results.values():
             if summary.status == VerificationStatus.FAILED:
                 return VerificationStatus.FAILED
+            if summary.status in {
+                VerificationStatus.PENDING,
+                VerificationStatus.RUNNING,
+                VerificationStatus.STALE,
+            }:
+                has_pending = True
+            elif summary.status == VerificationStatus.SKIPPED:
+                has_skipped = True
 
+        if has_pending:
+            return VerificationStatus.PENDING
+        if has_skipped:
+            return VerificationStatus.SKIPPED
         return VerificationStatus.PASSED
 
     def load_tracker(
