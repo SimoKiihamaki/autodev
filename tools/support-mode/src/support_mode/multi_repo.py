@@ -6,8 +6,7 @@ Allows monitoring multiple repositories simultaneously with tabular output.
 from __future__ import annotations
 
 import logging
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -130,7 +129,7 @@ def check_repositories_parallel(
             future = executor.submit(check_repository, path)
             futures[future] = path
 
-        for future in concurrent.futures.as_completed(futures):
+        for future in as_completed(futures):
             try:
                 status = future.result()
                 results.append(status)

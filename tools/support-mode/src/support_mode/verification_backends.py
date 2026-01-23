@@ -343,19 +343,16 @@ class ManualBackend(VerificationBackend):
 
         for feature in tracker.get("features", []):
             for ac in feature.get("acceptance_criteria", []):
-                ac_status = ac.get("verification_status", "pending")
+                ac_status = ac.get("status", "pending")
                 ac_id = ac.get("id", "unknown")
                 name = f"{feature.get('id', 'unknown')}:{ac_id}"
 
-                if ac_status == "verified":
+                if ac_status == "passed":
                     status = VerificationStatus.PASSED
                     passed += 1
                 elif ac_status == "failed":
                     status = VerificationStatus.FAILED
                     failed += 1
-                elif ac_status == "skipped":
-                    status = VerificationStatus.SKIPPED
-                    skipped += 1
                 else:
                     status = VerificationStatus.PENDING
 
@@ -367,8 +364,6 @@ class ManualBackend(VerificationBackend):
             overall_status = VerificationStatus.FAILED
         elif passed == total and total > 0:
             overall_status = VerificationStatus.PASSED
-        elif skipped == total:
-            overall_status = VerificationStatus.SKIPPED
 
         return VerificationSummary(
             backend=self.name,
@@ -376,7 +371,7 @@ class ManualBackend(VerificationBackend):
             total=total,
             passed=passed,
             failed=failed,
-            skipped=skipped,
+            skipped=0,
             results=results,
         )
 
