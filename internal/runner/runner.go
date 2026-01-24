@@ -1069,12 +1069,12 @@ func (o Options) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("opening stdout pipe: %w", err)
 	}
-	defer stdout.Close()
+	defer func() { _ = stdout.Close() }()
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("opening stderr pipe: %w", err)
 	}
-	defer stderr.Close()
+	defer func() { _ = stderr.Close() }()
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting runner process: %w", err)

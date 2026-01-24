@@ -56,7 +56,7 @@ func TestInterruptProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Close stdin so cat doesn't block waiting for input
-		stdin.Close()
+		_ = stdin.Close()
 
 		// Give process time to start
 		time.Sleep(100 * time.Millisecond)
@@ -77,18 +77,13 @@ func TestInterruptProcess(t *testing.T) {
 
 		// Verify the signal was sent by checking process state
 		// The process should either be exited or have received the signal
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			// Process exited - verify it was signaled
-			if cmd.ProcessState.Success() {
-				// Exited with status 0 - might have handled SIGINT and exited cleanly
-				// This is acceptable behavior
-			}
-		}
+		// If the process exited with non-zero status, that's expected when SIGINT is received
+		_ = cmd.ProcessState
 
 		// Clean up: force kill if still running
 		if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}
 
 		// Test passed if we got here without error from interruptProcess
@@ -102,7 +97,7 @@ func TestInterruptProcess(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
-		cmd.Wait() // Let it exit
+		_ = cmd.Wait() // Let it exit
 
 		// Try to interrupt the already-exited process
 		// This will cause ESRCH (no such process) which should be ignored
@@ -118,7 +113,7 @@ func TestInterruptProcess(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
-		cmd.Wait()
+		_ = cmd.Wait()
 
 		// Try to interrupt - may get EINVAL which should be ignored
 		if err := interruptProcess(cmd); err != nil {
@@ -173,7 +168,7 @@ func TestForceKillProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Close stdin so cat doesn't block waiting for input
-		stdin.Close()
+		_ = stdin.Close()
 
 		// Give process time to start
 		time.Sleep(100 * time.Millisecond)
@@ -189,10 +184,7 @@ func TestForceKillProcess(t *testing.T) {
 		}
 
 		// Wait for process to die - process must exit
-		if err := cmd.Wait(); err != nil {
-			// Process exited with error - this is expected for SIGKILL
-			// (or it might have exited due to stdin closing, which is OK too)
-		}
+		_ = cmd.Wait()
 
 		// Verify process is actually dead
 		if !cmd.ProcessState.Exited() {
@@ -207,7 +199,7 @@ func TestForceKillProcess(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
-		cmd.Wait() // Let it exit
+		_ = cmd.Wait() // Let it exit
 
 		// Try to kill the already-exited process
 		// This will cause ESRCH (no such process) which should be ignored
@@ -223,7 +215,7 @@ func TestForceKillProcess(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
-		cmd.Wait()
+		_ = cmd.Wait()
 
 		// Try to kill - may get EINVAL which should be ignored
 		if err := forceKillProcess(cmd); err != nil {
@@ -263,7 +255,7 @@ func TestInterruptProcessCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Close stdin so cat doesn't block waiting for input
-		stdin.Close()
+		_ = stdin.Close()
 
 		// Capture the process before it exits
 		proc := cmd.Process
@@ -281,8 +273,8 @@ func TestInterruptProcessCmd(t *testing.T) {
 
 		// Clean up: force kill if still running
 		if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}
 
 		// Test passed if we got here without error from interruptProcessCmd
@@ -300,7 +292,7 @@ func TestInterruptProcessCmd(t *testing.T) {
 		proc := cmd.Process
 
 		// Wait for it to exit
-		cmd.Wait()
+		_ = cmd.Wait()
 
 		// Try to interrupt the already-exited process
 		// Should return nil (ignores ESRCH/EINVAL)
@@ -340,7 +332,7 @@ func TestForceKillProcessCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Close stdin so cat doesn't block waiting for input
-		stdin.Close()
+		_ = stdin.Close()
 
 		// Capture the process before it exits
 		proc := cmd.Process
@@ -354,10 +346,7 @@ func TestForceKillProcessCmd(t *testing.T) {
 		}
 
 		// Wait for process to die - process must exit
-		if err := cmd.Wait(); err != nil {
-			// Process exited with error - this is expected for SIGKILL
-			// (or it might have exited due to stdin closing, which is OK too)
-		}
+		_ = cmd.Wait()
 
 		// Verify process is actually dead
 		if !cmd.ProcessState.Exited() {
@@ -378,7 +367,7 @@ func TestForceKillProcessCmd(t *testing.T) {
 		proc := cmd.Process
 
 		// Wait for it to exit
-		cmd.Wait()
+		_ = cmd.Wait()
 
 		// Try to kill the already-exited process
 		// Should return nil (ignores ESRCH/EINVAL)

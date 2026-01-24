@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "id": "025-support-mode-validation-integration",
+  "branch_name": "wreckit/025-support-mode-validation-integration",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Verify tracker schema validation implementation",
+      "acceptance_criteria": [
+        "validate_tracker() function exists at tracker.py:137-213",
+        "Function returns tuple of (is_valid, error_messages)",
+        "JSON Schema validation implemented with jsonschema library (optional dependency)",
+        "Fallback basic validation implemented when jsonschema unavailable",
+        "Duplicate ID detection for features, tasks, and acceptance criteria",
+        "Validation summary count verification (total_features, total_tasks)",
+        "Existing tests pass: python -m pytest tests/test_tracker.py::test_validate_tracker_valid"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "All verification criteria met. Implementation is complete and functional with proper error handling."
+    },
+    {
+      "id": "US-002",
+      "title": "Verify tracker loading implementation",
+      "acceptance_criteria": [
+        "load_tracker() function exists at tracker.py:50-78",
+        "Function loads tracker.json from .aprd/tracker.json",
+        "Size limit enforcement (1MB max) to prevent memory issues",
+        "Graceful error handling for invalid JSON (returns None)",
+        "Returns None if file not found",
+        "Existing tests pass: python -m pytest tests/test_tracker.py::test_load_tracker_valid"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Implementation complete. Function handles all error cases gracefully."
+    },
+    {
+      "id": "US-003",
+      "title": "Verify tracker state validation implementation",
+      "acceptance_criteria": [
+        "validate_tracker_state() function exists at tracker_validator.py:21-103",
+        "Function returns list of issue messages (empty if valid)",
+        "Detects completed tasks without completed_at timestamps",
+        "Validates feature status matches task completion status",
+        "Ensures verified features have no pending tasks",
+        "Checks completion consistency against agent claims",
+        "Validation integrated into support loop at support_loop.py:168-169"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "All state validation rules implemented and integrated into main support loop."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify PRD checkbox extraction implementation",
+      "acceptance_criteria": [
+        "_extract_prd_checkboxes() function exists at support_loop.py:36-46",
+        "Function extracts checkbox items from markdown PRD files",
+        "Pattern matches: ^\\s*[-*]\\s+\\[( |x|X)\\]\\s*(.*)$",
+        "Returns list of checkbox text items (empty brackets excluded)",
+        "Handles empty checkbox items gracefully"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Extraction function implemented and tested. Works with standard markdown checkbox format."
+    },
+    {
+      "id": "US-005",
+      "title": "Verify PRD vs tracker comparison implementation",
+      "acceptance_criteria": [
+        "PRD comparison logic exists at support_loop.py:210-237",
+        "Text normalization function _normalize_text() exists for fuzzy matching",
+        "Checks if PRD checkboxes are covered by tracker tasks",
+        "Reports missing items as suggestions (not errors)",
+        "Fuzzy matching handles minor text variations",
+        "Comparison integrated into main support loop",
+        "Suggestions limited to MAX_ITEMS (8) to prevent spam"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Comparison logic uses fuzzy text matching for robustness. Integrated into continuous monitoring."
+    },
+    {
+      "id": "US-006",
+      "title": "Verify Git quality checks implementation",
+      "acceptance_criteria": [
+        "Git quality check exists at support_loop.py:239-248",
+        "Runs 'git diff --check' command to detect whitespace issues",
+        "Catches trailing whitespace and conflict markers",
+        "Reports as warnings (non-blocking)",
+        "Graceful error handling if git command fails",
+        "Checks integrated into main support loop",
+        "Does not crash support loop on git failures"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Git quality checks implemented with proper error handling. Reports warnings without blocking execution."
+    },
+    {
+      "id": "US-007",
+      "title": "Verify dependency relationship validation",
+      "acceptance_criteria": [
+        "Dependency schema defined in tracker_schema.json:149-157",
+        "Schema validates dependency IDs match pattern ^F[0-9]{3}$",
+        "Schema ensures dependencies is an array of valid feature IDs",
+        "Dependency validation integrated into validate_tracker() function",
+        "Invalid dependency IDs caught by schema validation"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Dependency validation implemented through JSON Schema. Integrated into tracker validation flow."
+    },
+    {
+      "id": "US-008",
+      "title": "Verify validation integration in support loop",
+      "acceptance_criteria": [
+        "All validation capabilities integrated into run_support_mode() at support_loop.py:106-309",
+        "Tracker loading at line 157",
+        "Tracker schema validation at lines 164-166",
+        "Tracker state validation at lines 168-169",
+        "PRD checkbox extraction at line 212",
+        "PRD comparison at lines 210-237",
+        "Git quality checks at lines 239-248",
+        "Results categorized and displayed at lines 272-294",
+        "Validation runs every polling interval",
+        "Validation failures don't crash support loop"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "All validation capabilities integrated into continuous monitoring loop. Proper error handling and categorization."
+    },
+    {
+      "id": "US-009",
+      "title": "Verify graceful degradation for optional dependencies",
+      "acceptance_criteria": [
+        "Optional jsonschema import with try/except at tracker.py:12-16",
+        "HAS_JSONSCHEMA flag used to conditionally enable schema validation",
+        "Fallback basic validation implemented at tracker.py:92-134",
+        "Tool functions correctly without jsonschema installed",
+        "Basic validation covers essential checks when jsonschema unavailable"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Proper optional dependency pattern implemented. Tool works with or without jsonschema."
+    },
+    {
+      "id": "US-010",
+      "title": "Verify error handling and reporting",
+      "acceptance_criteria": [
+        "All validation functions return errors rather than throwing exceptions",
+        "Issues categorized as errors, warnings, or suggestions",
+        "Output limited to MAX_ITEMS (8) per category to prevent spam",
+        "Counts displayed for items beyond limit",
+        "Error messages are clear and actionable",
+        "Support loop continues after validation failures"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Robust error handling and clear reporting implemented. No crashes from validation failures."
+    },
+    {
+      "id": "US-011",
+      "title": "Document validation capabilities",
+      "acceptance_criteria": [
+        "Plan.md documents all validation capabilities",
+        "Code locations documented with line references",
+        "Validation rules documented with examples",
+        "Integration points documented",
+        "Success criteria documented for each validation type"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Comprehensive documentation created in plan.md file."
+    }
+  ]
+}

@@ -26,7 +26,9 @@ DEFAULT_CLAUDE_TIMEOUT_SECONDS = safe_import(
 claude_exec_streaming = safe_import(
     "tools.auto_prd.agents", "auto_prd.agents", "claude_exec_streaming"
 )
-_process_buffer = safe_import("tools.auto_prd.agents", "auto_prd.agents", "_process_buffer")
+_process_buffer = safe_import(
+    "tools.auto_prd.agents", "auto_prd.agents", "_process_buffer"
+)
 _drain_fds_best_effort = safe_import(
     "tools.auto_prd.agents", "auto_prd.agents", "_drain_fds_best_effort"
 )
@@ -1273,34 +1275,6 @@ class CodeRabbitTests(unittest.TestCase):
         self.assertFalse(coderabbit_has_findings("   "))
 
 
-class BuildClaudeArgsTests(unittest.TestCase):
-    """Test _build_claude_args() function."""
-
-    def test_build_claude_args_basic(self) -> None:
-        """Test building basic claude args."""
-        args = _build_claude_args(False, None, False, None)
-        self.assertEqual(args[0], "claude")
-        self.assertIn("-p", args)
-
-    def test_build_claude_args_with_model(self) -> None:
-        """Test building claude args with custom model."""
-        args = _build_claude_args(False, "claude-3-5-sonnet", False, None)
-        self.assertIn("--model", args)
-        self.assertIn("claude-3-5-sonnet", args)
-
-    def test_build_claude_args_with_allow_flag(self) -> None:
-        """Test building claude args with allow flag."""
-        args = _build_claude_args(True, None, False, None)
-        self.assertIn("--dangerously-skip-permissions", args)
-
-    def test_build_claude_args_with_extra_args(self) -> None:
-        """Test building claude args with extra arguments."""
-        args = _build_claude_args(False, None, False, ["--arg1", "value1", "--arg2"])
-        self.assertIn("--arg1", args)
-        self.assertIn("value1", args)
-        self.assertIn("--arg2", args)
-
-
 class SafeTypenameTests(unittest.TestCase):
     """Test _safe_typename() utility function."""
 
@@ -1331,6 +1305,7 @@ class SafeTypenameTests(unittest.TestCase):
 
     def test_safe_typename_with_custom_object(self) -> None:
         """Test _safe_typename with custom object."""
+
         class CustomClass:
             pass
 

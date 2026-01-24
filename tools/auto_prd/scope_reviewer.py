@@ -270,6 +270,7 @@ class ScopeReviewer:
         self, old_prd_hash: str, prd_content: str | None
     ) -> list[ScopeChange]:
         """Detect changes in PRD since last review."""
+        _ = old_prd_hash  # Currently unused, kept for future use
         changes = []
 
         if not prd_content:

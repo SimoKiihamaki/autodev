@@ -24,7 +24,9 @@ run_sh = safe_import("auto_prd.command", "..command", "run_sh")
 safe_popen = safe_import("auto_prd.command", "..command", "safe_popen")
 popen_streaming = safe_import("auto_prd.command", "..command", "popen_streaming")
 register_safe_cwd = safe_import("auto_prd.command", "..command", "register_safe_cwd")
-validate_command_args = safe_import("auto_prd.command", "..command", "validate_command_args")
+validate_command_args = safe_import(
+    "auto_prd.command", "..command", "validate_command_args"
+)
 validate_cwd = safe_import("auto_prd.command", "..command", "validate_cwd")
 validate_stdin = safe_import("auto_prd.command", "..command", "validate_stdin")
 validate_extra_env = safe_import("auto_prd.command", "..command", "validate_extra_env")
@@ -41,11 +43,7 @@ class CommandResultTests(unittest.TestCase):
 
     def test_tuple_unpacking(self) -> None:
         """Verify backward-compatible tuple unpacking works."""
-        result = CommandResult(
-            stdout="out",
-            stderr="err",
-            exit_code=1
-        )
+        result = CommandResult(stdout="out", stderr="err", exit_code=1)
         stdout, stderr, exit_code = result
         self.assertEqual(stdout, "out")
         self.assertEqual(stderr, "err")
@@ -61,30 +59,18 @@ class CommandResultTests(unittest.TestCase):
 
     def test_get_error_message_from_stderr(self) -> None:
         """Verify get_error_message() prefers stderr."""
-        result = CommandResult(
-            stdout="ignore this",
-            stderr="actual error",
-            exit_code=1
-        )
+        result = CommandResult(stdout="ignore this", stderr="actual error", exit_code=1)
         self.assertIn("actual error", result.get_error_message())
         self.assertNotIn("ignore this", result.get_error_message())
 
     def test_get_error_message_falls_back_to_stdout(self) -> None:
         """Verify get_error_message() falls back to stdout when stderr is empty."""
-        result = CommandResult(
-            stdout="stdout error",
-            stderr="",
-            exit_code=1
-        )
+        result = CommandResult(stdout="stdout error", stderr="", exit_code=1)
         self.assertIn("stdout error", result.get_error_message())
 
     def test_get_error_message_falls_back_to_exit_code(self) -> None:
         """Verify get_error_message() falls back to exit code when both streams are empty."""
-        result = CommandResult(
-            stdout="",
-            stderr="",
-            exit_code=42
-        )
+        result = CommandResult(stdout="", stderr="", exit_code=42)
         self.assertIn("42", result.get_error_message())
 
 
@@ -148,7 +134,9 @@ class RunCmdTests(unittest.TestCase):
 
     @patch("auto_prd.command.subprocess.run")
     @patch("auto_prd.command.shutil.which")
-    def test_environment_variables_passed(self, mock_which: Mock, mock_run: Mock) -> None:
+    def test_environment_variables_passed(
+        self, mock_which: Mock, mock_run: Mock
+    ) -> None:
         """Verify environment variables are passed to subprocess."""
         mock_which.return_value = "/usr/bin/git"
         mock_process = MagicMock()
@@ -157,10 +145,8 @@ class RunCmdTests(unittest.TestCase):
         mock_process.stderr = b""
         mock_run.return_value = mock_process
 
-        result = run_cmd(
-            ["git", "status"],
-            extra_env={"TEST_VAR": "test_value"},
-            check=False
+        _ = run_cmd(
+            ["git", "status"], extra_env={"TEST_VAR": "test_value"}, check=False
         )
         # Verify env was passed
         self.assertTrue(mock_run.called)
@@ -181,11 +167,7 @@ class RunCmdTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             register_safe_cwd(tmpdir_path)
-            result = run_cmd(
-                ["git", "status"],
-                cwd=tmpdir_path,
-                check=False
-            )
+            _ = run_cmd(["git", "status"], cwd=tmpdir_path, check=False)
             # Verify cwd was passed
             call_kwargs = mock_run.call_args[1]
             self.assertEqual(call_kwargs["cwd"], str(tmpdir_path))
@@ -201,11 +183,7 @@ class RunCmdTests(unittest.TestCase):
         mock_process.stderr = b""
         mock_run.return_value = mock_process
 
-        result = run_cmd(
-            ["git", "status"],
-            stdin="test input",
-            check=False
-        )
+        _ = run_cmd(["git", "status"], stdin="test input", check=False)
         # Verify stdin was passed
         call_kwargs = mock_run.call_args[1]
         self.assertIsNotNone(call_kwargs.get("input"))
@@ -250,11 +228,7 @@ class RunCmdTests(unittest.TestCase):
         mock_process.stderr = None  # type: ignore
         mock_run.return_value = mock_process
 
-        result = run_cmd(
-            ["git", "status"],
-            capture=False,
-            check=False
-        )
+        result = run_cmd(["git", "status"], capture=False, check=False)
         # Output is not captured, so stdout/stderr should be empty
         self.assertEqual(result.stdout, "")
         self.assertEqual(result.stderr, "")
@@ -655,14 +629,13 @@ class RetryLogicTests(unittest.TestCase):
         mock_process_success.returncode = 0
         mock_process_success.stdout = b"success"
         mock_process_success.stderr = b""
-        mock_run.side_effect = [mock_process_fail, mock_process_fail, mock_process_success]
+        mock_run.side_effect = [
+            mock_process_fail,
+            mock_process_fail,
+            mock_process_success,
+        ]
 
-        result = run_cmd(
-            ["git", "status"],
-            retries=2,
-            retry_on_codes={1},
-            check=False
-        )
+        result = run_cmd(["git", "status"], retries=2, retry_on_codes={1}, check=False)
 
         # Should have succeeded after retries
         self.assertTrue(result.is_success())
@@ -686,13 +659,14 @@ class RetryLogicTests(unittest.TestCase):
         mock_process_success.returncode = 0
         mock_process_success.stdout = b"success"
         mock_process_success.stderr = b""
-        mock_run.side_effect = [mock_process_fail, mock_process_fail, mock_process_success]
+        mock_run.side_effect = [
+            mock_process_fail,
+            mock_process_fail,
+            mock_process_success,
+        ]
 
         result = run_cmd(
-            ["git", "status"],
-            retries=2,
-            retry_on_stderr=["transient"],
-            check=False
+            ["git", "status"], retries=2, retry_on_stderr=["transient"], check=False
         )
 
         # Should have succeeded after retries
@@ -701,9 +675,7 @@ class RetryLogicTests(unittest.TestCase):
 
     @patch("auto_prd.command.subprocess.run")
     @patch("auto_prd.command.shutil.which")
-    def test_no_retry_when_not_match(
-        self, mock_which: Mock, mock_run: Mock
-    ) -> None:
+    def test_no_retry_when_not_match(self, mock_which: Mock, mock_run: Mock) -> None:
         """Verify that retry is skipped when conditions don't match."""
         mock_which.return_value = "/usr/bin/git"
         mock_process = MagicMock()
@@ -717,7 +689,7 @@ class RetryLogicTests(unittest.TestCase):
             retries=2,
             retry_on_codes={2},  # Doesn't match exit code 1
             retry_on_stderr=["transient"],  # Doesn't match stderr
-            check=False
+            check=False,
         )
 
         # Should have failed without retries

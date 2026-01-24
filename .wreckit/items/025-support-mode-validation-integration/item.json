@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "025-support-mode-validation-integration",
+  "title": "Support Mode Validation Integration",
+  "section": "tooling",
+  "state": "done",
+  "resolution": "already_implemented",
+  "overview": "Add comprehensive validation capabilities to the standalone support mode tool, including tracker validation, PRD validation, and Git quality checks.\n\n**Motivation:** Ensures data integrity and catches common issues early in the development process\n\n**Success criteria:**\n- Tracker state validation detects status inconsistencies\n- PRD checkbox extraction and comparison works\n- Git quality checks detect trailing whitespace and conflict markers\n\n**Technical constraints:**\n- Extract validate_tracker() and load_tracker() functions\n- Implement PRD checkbox extraction\n- Integrate git diff --check for quality checks\n\n**In scope:**\n- Tracker schema validation\n- Feature/task status consistency checks\n- Dependency relationship verification\n- PRD checkbox extraction and comparison\n- Git whitespace and conflict marker detection\n**Out of scope:**\n- Commit message quality (marked optional)\n\n**Signals:** priority: high",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-01-20T15:58:56.152Z",
+  "updated_at": "2026-01-22T20:15:00.000Z",
+  "motivation": "Ensures data integrity and catches common issues early in the development process",
+  "success_criteria": [
+    "Tracker state validation detects status inconsistencies",
+    "PRD checkbox extraction and comparison works",
+    "Git quality checks detect trailing whitespace and conflict markers"
+  ],
+  "technical_constraints": [
+    "Extract validate_tracker() and load_tracker() functions",
+    "Implement PRD checkbox extraction",
+    "Integrate git diff --check for quality checks"
+  ],
+  "scope_in_scope": [
+    "Tracker schema validation",
+    "Feature/task status consistency checks",
+    "Dependency relationship verification",
+    "PRD checkbox extraction and comparison",
+    "Git whitespace and conflict marker detection"
+  ],
+  "scope_out_of_scope": [
+    "Commit message quality (marked optional)"
+  ],
+  "priority_hint": "high",
+  "resolution_notes": "Fully implemented in tools/support-mode/. tracker.py contains validate_tracker() with JSON schema validation, load_tracker() with size protection, and semantic validation for duplicate IDs. tracker_validator.py provides validate_tracker_state() for status consistency checks. support_loop.py implements _extract_prd_checkboxes() for PRD parsing and comparison against tracker content. Git quality checks use 'git diff --check' for whitespace detection (support_loop.py line 239-248)."
+}

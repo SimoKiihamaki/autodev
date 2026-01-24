@@ -411,12 +411,12 @@ func TestOptionsRunCancellation(t *testing.T) {
 
 	// Create a stub Python script that sleeps for a long time
 	script := filepath.Join(repo, "stub.py")
-	stub := fmt.Sprintf(`#!/usr/bin/env python3
+	stub := `#!/usr/bin/env python3
 import time
 import sys
 time.sleep(30)  # Sleep long enough to be cancelled
 sys.exit(0)
-`)
+`
 	if err := os.WriteFile(script, []byte(stub), 0o644); err != nil {
 		t.Fatalf("write script: %v", err)
 	}
@@ -498,89 +498,89 @@ func TestIsRegexPattern(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
+		name    string
 		pattern string
-		want   bool
+		want    bool
 	}{
 		{
-			name:   "simple string has no regex",
+			name:    "simple string has no regex",
 			pattern: "hello",
-			want:   false,
+			want:    false,
 		},
 		{
-			name:   "string with brackets",
+			name:    "string with brackets",
 			pattern: "test[123]",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with plus",
+			name:    "string with plus",
 			pattern: "test+",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with asterisk",
+			name:    "string with asterisk",
 			pattern: "test*",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with parentheses",
+			name:    "string with parentheses",
 			pattern: "test(foo)",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with caret",
+			name:    "string with caret",
 			pattern: "^test",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with dollar",
+			name:    "string with dollar",
 			pattern: "test$",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with question mark",
+			name:    "string with question mark",
 			pattern: "test?",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with curly braces",
+			name:    "string with curly braces",
 			pattern: "test{1,3}",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with backslash",
+			name:    "string with backslash",
 			pattern: "test\\n",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with pipe",
+			name:    "string with pipe",
 			pattern: "test|foo",
-			want:   true,
+			want:    true,
 		},
 		{
-			name:   "string with dot (not regex)",
+			name:    "string with dot (not regex)",
 			pattern: "test.py",
-			want:   false,
+			want:    false,
 		},
 		{
-			name:   "string with dash (not regex)",
+			name:    "string with dash (not regex)",
 			pattern: "test-file",
-			want:   false,
+			want:    false,
 		},
 		{
-			name:   "string with underscore (not regex)",
+			name:    "string with underscore (not regex)",
 			pattern: "test_file",
-			want:   false,
+			want:    false,
 		},
 		{
-			name:   "empty string",
+			name:    "empty string",
 			pattern: "",
-			want:   false,
+			want:    false,
 		},
 		{
-			name:   "complex regex",
+			name:    "complex regex",
 			pattern: "^[a-z]+\\d{2,4}$",
-			want:   true,
+			want:    true,
 		},
 	}
 

@@ -25,8 +25,8 @@ func TestNewServer(t *testing.T) {
 			wantNotNil: true,
 		},
 		{
-			name: "custom address",
-			cfg:  Config{Addr: ":9090"},
+			name:       "custom address",
+			cfg:        Config{Addr: ":9090"},
 			wantAddr:   ":9090",
 			wantNotNil: true,
 		},
@@ -148,7 +148,7 @@ func TestServerLifecycle(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Health check returned status %d", resp.StatusCode)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close() // Ignore error in test
 
 		// Shutdown server
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -174,7 +174,7 @@ func TestServerStartListener(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create listener: %v", err)
 		}
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 
 		errCh := make(chan error, 1)
 		go func() {
@@ -199,40 +199,40 @@ func TestChooseDuration(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
+		name      string
 		candidate time.Duration
-		fallback time.Duration
-		want     time.Duration
+		fallback  time.Duration
+		want      time.Duration
 	}{
 		{
-			name:     "positive candidate uses candidate",
+			name:      "positive candidate uses candidate",
 			candidate: 10 * time.Second,
-			fallback: 5 * time.Second,
-			want:     10 * time.Second,
+			fallback:  5 * time.Second,
+			want:      10 * time.Second,
 		},
 		{
-			name:     "zero candidate uses fallback",
+			name:      "zero candidate uses fallback",
 			candidate: 0,
-			fallback: 5 * time.Second,
-			want:     5 * time.Second,
+			fallback:  5 * time.Second,
+			want:      5 * time.Second,
 		},
 		{
-			name:     "negative candidate uses fallback",
+			name:      "negative candidate uses fallback",
 			candidate: -5 * time.Second,
-			fallback: 5 * time.Second,
-			want:     5 * time.Second,
+			fallback:  5 * time.Second,
+			want:      5 * time.Second,
 		},
 		{
-			name:     "zero fallback with zero candidate returns zero",
+			name:      "zero fallback with zero candidate returns zero",
 			candidate: 0,
-			fallback: 0,
-			want:     0,
+			fallback:  0,
+			want:      0,
 		},
 		{
-			name:     "zero fallback with positive candidate returns candidate",
+			name:      "zero fallback with positive candidate returns candidate",
 			candidate: 10 * time.Second,
-			fallback: 0,
-			want:     10 * time.Second,
+			fallback:  0,
+			want:      10 * time.Second,
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestServerShutdownContext(t *testing.T) {
 		// Clean up with valid context
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel2()
-		srv.Shutdown(ctx2)
+		_ = srv.Shutdown(ctx2) // Ignore error in cleanup
 		<-errCh
 	})
 }

@@ -30,7 +30,7 @@ def detect_completed_task_from_changes(
 
     Args:
         tracker: Current tracker state
-        repo_root: Repository root directory
+        repo_root: Repository root directory (currently unused)
         assigned_task_id: Task ID assigned to this iteration
         assigned_feature_id: Feature ID for this iteration
         before_status: Git status before implementation
@@ -45,6 +45,7 @@ def detect_completed_task_from_changes(
         - evidence: list[str] (supporting evidence)
         - actual_task_id: str | None (detected task ID if different)
     """
+    _ = repo_root  # Currently unused, kept for interface compatibility
     result = {
         "completed": False,
         "confidence": 0.0,
@@ -108,11 +109,12 @@ def validate_tasks_left_progression(
     Args:
         previous_tasks_left: Tasks left from previous iteration
         current_tasks_left: Tasks left from current iteration
-        iteration: Current iteration number
+        iteration: Current iteration number (currently unused)
 
     Returns:
         Tuple of (is_valid, error_message)
     """
+    _ = iteration  # Currently unused, kept for future use
     # If no previous value, cannot validate
     if previous_tasks_left is None:
         return (True, "")

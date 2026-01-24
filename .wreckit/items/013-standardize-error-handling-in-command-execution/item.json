@@ -3,19 +3,21 @@
   "id": "013-standardize-error-handling-in-command-execution",
   "title": "Standardize error handling in command execution",
   "section": "backend",
-  "state": "implementing",
+  "state": "done",
+  "resolution": "already_implemented",
   "overview": "Inconsistent error return types make error handling difficult and error-prone.\n\n**Motivation:** Provides consistent, structured error information for better error handling and debugging.\n\n**Technical constraints:**\n- Create CommandErrorDetails dataclass with exit_code, stderr, stdout fields\n- Update function to return structured object\n\n**Signals:** priority: high",
   "branch": null,
   "pr_url": null,
   "pr_number": null,
-  "last_error": "Git pre-flight check failed:\n\n• There are uncommitted changes in the working directory\n    Run `git stash` to temporarily save changes\n    Or run `git commit -am \"message\"` to commit changes\n    Or run `git checkout -- .` to discard changes (destructive)",
+  "last_error": null,
   "created_at": "2026-01-19T18:40:58.570Z",
-  "updated_at": "2026-01-19T20:56:42.478Z",
+  "updated_at": "2026-01-22T19:45:00.000Z",
   "problem_statement": "Inconsistent error return types make error handling difficult and error-prone.",
   "motivation": "Provides consistent, structured error information for better error handling and debugging.",
   "technical_constraints": [
     "Create CommandErrorDetails dataclass with exit_code, stderr, stdout fields",
     "Update function to return structured object"
   ],
-  "priority_hint": "high"
+  "priority_hint": "high",
+  "resolution_notes": "Already implemented. The CommandResult dataclass in tools/auto_prd/command.py (lines 32-91) provides exactly what was requested: stdout, stderr, exit_code fields with is_success() and get_error_message() helper methods. It supports both named attribute access and backward-compatible tuple unpacking. This is a mature, well-tested implementation used throughout the codebase."
 }

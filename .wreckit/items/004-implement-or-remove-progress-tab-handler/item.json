@@ -3,7 +3,7 @@
   "id": "004-implement-or-remove-progress-tab-handler",
   "title": "Implement or remove Progress tab handler",
   "section": "frontend",
-  "state": "completed",
+  "state": "done",
   "resolution": "already_implemented",
   "overview": "Users can navigate to the Progress tab but key bindings do nothing because handleProgressTabActions() function is missing.\n\n**Motivation:** Either completes the Progress tab feature or removes dead code that confuses users.\n\n**Technical constraints:**\n- Either implement handleProgressTabActions() in update_keys.go or remove the unused tab entirely\n\n**Signals:** priority: critical",
   "branch": null,

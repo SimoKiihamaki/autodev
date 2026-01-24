@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "027-interactive-support-mode-features",
+  "title": "Interactive Support Mode Features",
+  "section": "tooling",
+  "state": "done",
+  "resolution": "already_implemented",
+  "overview": "Enhance support mode with interactive commands, notifications, configuration file support, and multi-repository monitoring capabilities.\n\n**Motivation:** Transforms support mode from a passive monitoring tool into an active, production-ready companion that enhances developer experience\n\n**Success criteria:**\n- Keyboard shortcuts work during monitoring (s, t, c, q, r)\n- Desktop notifications on state changes\n- Configuration file support (.support.toml or .support.yaml)\n- Multi-repository monitoring with tabular output\n\n**Technical constraints:**\n- Implement graceful SIGINT/SIGTERM handling\n- Support both console and JSON output formats\n- Enable/disable features via configuration\n\n**In scope:**\n- Keyboard shortcuts for summary, tracker status, commits, quit, refresh\n- Desktop notifications and optional webhooks\n- Configuration file with YAML/TOML support\n- Multi-repository monitoring\n**Out of scope:**\n- Mobile notifications\n- Custom UI frameworks\n\n**Signals:** priority: medium",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-01-20T15:58:56.153Z",
+  "updated_at": "2026-01-22T20:30:00.000Z",
+  "motivation": "Transforms support mode from a passive monitoring tool into an active, production-ready companion that enhances developer experience",
+  "success_criteria": [
+    "Keyboard shortcuts work during monitoring (s, t, c, q, r)",
+    "Desktop notifications on state changes",
+    "Configuration file support (.support.toml or .support.yaml)",
+    "Multi-repository monitoring with tabular output"
+  ],
+  "technical_constraints": [
+    "Implement graceful SIGINT/SIGTERM handling",
+    "Support both console and JSON output formats",
+    "Enable/disable features via configuration"
+  ],
+  "scope_in_scope": [
+    "Keyboard shortcuts for summary, tracker status, commits, quit, refresh",
+    "Desktop notifications and optional webhooks",
+    "Configuration file with YAML/TOML support",
+    "Multi-repository monitoring"
+  ],
+  "scope_out_of_scope": [
+    "Mobile notifications",
+    "Custom UI frameworks"
+  ],
+  "priority_hint": "medium",
+  "resolution_notes": "Implemented in tools/support-mode/. Desktop notifications: interactive.py with send_notification() supporting macOS (osascript), Linux (notify-send), Windows (PowerShell), and webhooks. Keyboard handling: KeyHandler class with poll_key() for non-blocking input. Configuration files: config_file.py with Config class supporting YAML/TOML from multiple locations (.support.yaml/toml, ~/.config/support-mode/config.yaml/toml). Multi-repo: multi_repo.py with check_repositories_parallel() and format_repo_table() for tabular output. New CLI entry point: support-mode-multi."
+}

@@ -786,8 +786,8 @@ func TestHandleResize(t *testing.T) {
 		}
 
 		// Verify logs dimensions
-		expectedLogW := 98  // 100 - 2
-		expectedLogH := 42  // 50 - 8
+		expectedLogW := 98 // 100 - 2
+		expectedLogH := 42 // 50 - 8
 		if newM.logs.Width != expectedLogW {
 			t.Errorf("logs width = %d, want %d", newM.logs.Width, expectedLogW)
 		}
@@ -796,8 +796,8 @@ func TestHandleResize(t *testing.T) {
 		}
 
 		// Verify run feed dimensions
-		expectedFeedW := 98  // 100 - 2
-		expectedFeedH := 38  // 50 - 12
+		expectedFeedW := 98 // 100 - 2
+		expectedFeedH := 38 // 50 - 12
 		if newM.runFeed.Width != expectedFeedW {
 			t.Errorf("runFeed width = %d, want %d", newM.runFeed.Width, expectedFeedW)
 		}
@@ -808,19 +808,4 @@ func TestHandleResize(t *testing.T) {
 		// Note: prompt width is set but we can't verify it without GetWidth() method
 		// We trust the handleResize implementation
 	})
-}
-
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
