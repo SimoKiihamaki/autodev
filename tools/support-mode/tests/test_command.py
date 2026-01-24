@@ -1,7 +1,6 @@
 """Tests for command execution module."""
 
 import pytest
-import subprocess
 from support_mode.command import CommandResult, run_cmd
 
 

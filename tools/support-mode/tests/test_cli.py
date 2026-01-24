@@ -2,7 +2,6 @@
 
 import subprocess
 import sys
-from pathlib import Path
 
 from support_mode import __version__
 

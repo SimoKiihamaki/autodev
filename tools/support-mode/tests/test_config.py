@@ -1,13 +1,12 @@
 """Tests for configuration file support."""
 
-import json
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from support_mode.config_file import Config, MonitoringConfig, NotificationConfig
+from support_mode.config_file import Config
 
 
 @pytest.fixture
