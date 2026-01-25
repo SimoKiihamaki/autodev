@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -88,6 +89,7 @@ class ReadinessOrchestrator:
         self.verification_persistence = VerificationPersistence(self.repo_root)
         self.stall_detector = StallDetector()
         self._execution_runner = None
+        self._seen_reviews: set[tuple[str, int, str]] = set()
 
     def set_execution_runner(self, runner: Callable[[], None]) -> None:
         """Override the default execution runner used during the loop."""
@@ -476,15 +478,23 @@ class ReadinessOrchestrator:
     def _collect_review_statistics(self) -> None:
         """Collect review round statistics from iteration summaries.
 
-        Reads progress history from all local loop sessions and aggregates
-        review round results to update readiness statistics.
+        Reads progress history from the config progress directory (~/.config/aprd/progress/)
+        and aggregates review round results to update readiness statistics.
+
+        Uses instance-level _seen_reviews set to avoid double-counting reviews
+        across multiple iterations of the readiness loop.
         """
-        progress_dir = self.state_dir / "progress"
+        # Get the correct progress directory from get_progress_path
+        # This ensures we read from the same location where save_iteration_summary writes
+        xdg_config = os.getenv("XDG_CONFIG_HOME", None)
+        if xdg_config and xdg_config.strip():
+            base_config = Path(xdg_config).expanduser()
+        else:
+            base_config = Path.home() / ".config"
+        progress_dir = (base_config / "aprd" / "progress").resolve()
+
         if not progress_dir.exists():
             return
-
-        # Track seen reviews to avoid double-counting
-        seen_reviews = set()
 
         # Iterate over all progress files
         for progress_file in progress_dir.glob("*.jsonl"):
@@ -503,9 +513,9 @@ class ReadinessOrchestrator:
                         iteration.iteration,
                         review_round.get("overall_status", ""),
                     )
-                    if review_key in seen_reviews:
+                    if review_key in self._seen_reviews:
                         continue
-                    seen_reviews.add(review_key)
+                    self._seen_reviews.add(review_key)
 
                     # Update statistics
                     self.stats.review_round_total += 1
