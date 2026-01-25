@@ -18,6 +18,10 @@ class TestRalphSettings:
         assert settings.show_guardrails is False
         assert settings.gutter_output_timeout_sec == 180
         assert settings.gutter_no_progress_iters == 3
+        # Review round defaults
+        assert settings.enable_review_round is True
+        assert settings.review_round_model == "claude-sonnet-4-5-20250514"
+        assert settings.review_round_timeout == 300
 
     def test_normalized_enables_boolean_conversion(self) -> None:
         """Test that normalized() converts boolean values correctly."""
@@ -61,6 +65,35 @@ class TestRalphSettings:
         assert normalized.max_consecutive_failures == 1
         assert normalized.gutter_output_timeout_sec == 0
         assert normalized.gutter_no_progress_iters == 0
+
+    def test_normalized_handles_review_round_fields(self) -> None:
+        """Test that normalized() handles review round fields correctly."""
+        settings = RalphSettings(
+            enable_review_round=0,  # Falsy int
+            review_round_model=None,  # None should fall back to default
+            review_round_timeout=10,  # Below minimum 30 seconds
+        )
+        normalized = settings.normalized()
+
+        # Boolean conversion
+        assert normalized.enable_review_round is False
+        # Fallback to default model when None
+        assert normalized.review_round_model == "claude-sonnet-4-5-20250514"
+        # Minimum timeout enforcement (30 seconds)
+        assert normalized.review_round_timeout == 30
+
+    def test_normalized_applies_review_round_fallback_defaults(self) -> None:
+        """Test that normalized() applies fallback defaults for review round fields."""
+        settings = RalphSettings(
+            enable_review_round=None,
+            review_round_model="",
+            review_round_timeout=None,
+        )
+        normalized = settings.normalized()
+
+        assert normalized.enable_review_round is False
+        assert normalized.review_round_model == "claude-sonnet-4-5-20250514"
+        assert normalized.review_round_timeout == 300  # Default timeout
 
     def test_stall_thresholds_returns_none_when_disabled(self) -> None:
         """Test that stall_thresholds() returns None when Ralph is disabled."""

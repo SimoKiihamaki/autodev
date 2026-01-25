@@ -109,7 +109,7 @@ class ReviewConfig:
 
     enabled: bool = True
     executor: str = "claude"  # claude | codex
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-5-20250514"
     max_review_time: int = 300  # seconds
 
 
@@ -324,7 +324,10 @@ class ReviewRound:
 
         Uses the configured model and timeout from ReviewConfig.
         """
-        if self.config.executor == "codex":
+        # Normalize executor to lowercase for case-insensitive comparison
+        executor = self.config.executor.lower() if self.config.executor else ""
+
+        if executor == "codex":
             # Codex requires unsafe execution; review rounds don't support Codex
             # since it doesn't have safe read-only execution mode
             logger.info(

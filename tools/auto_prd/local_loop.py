@@ -604,9 +604,10 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 print("No CodeRabbit findings detected in this pass.")
                 print(f"CodeRabbit no-findings streak: {no_findings_streak}")
 
-        # Review Round: Run after fix pass if enabled and changes detected
+        # Review Round: Run after fix pass if enabled
+        # Note: execute_review() internally skips if no git changes detected
         review_result = None
-        if ralph.enabled and ralph.enable_review_round and repo_changed_before_review:
+        if ralph.enabled and ralph.enable_review_round:
             from .review_round import ReviewConfig, ReviewRound
 
             print("\n=== Review Round: Validating implementation ===", flush=True)
