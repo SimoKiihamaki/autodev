@@ -1,0 +1,867 @@
+{
+  "version": "2.0.0",
+  "metadata": {
+    "prd_source": "/Users/simo/Projects/autodev/tools/auto_prd/REVIEW_ROUND_PLAN.md",
+    "prd_hash": "sha256:8333ab19f20f7324",
+    "created_at": "2026-01-25T20:17:53.993768+00:00",
+    "created_by": "claude",
+    "project_context": {
+      "language": "Python",
+      "framework": "Bubble Tea (Go TUI), custom automation",
+      "test_framework": "pytest",
+      "build_system": "go"
+    }
+  },
+  "features": [
+    {
+      "id": "F001",
+      "name": "Core Review Module",
+      "description": "Create the review_round.py module with ReviewConfig, ReviewResult, and ReviewRound classes to orchestrate independent review of implementation rounds",
+      "priority": "critical",
+      "complexity": "L",
+      "status": "pending",
+      "dependencies": [],
+      "goals": {
+        "primary": "Create a self-contained review module that can validate implementation work against tracker requirements",
+        "secondary": [
+          "Enable configurable review executors and models",
+          "Provide structured review result parsing with robust JSON extraction"
+        ],
+        "measurable_outcomes": [
+          "Review agent runs independently after each implementation round",
+          "Git diff is compared against task requirements",
+          "Structured JSON output is parsed and applied to tracker"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T001",
+          "description": "Create tools/auto_prd/review_round.py module file with dataclass definitions for ReviewConfig and ReviewResult",
+          "status": "pending"
+        },
+        {
+          "id": "T002",
+          "description": "Implement ReviewRound.__init__ with repo_root and config initialization",
+          "status": "pending"
+        },
+        {
+          "id": "T003",
+          "description": "Implement execute_review method that gets git diff, builds prompt, calls reviewer agent, and returns ReviewResult",
+          "status": "pending"
+        },
+        {
+          "id": "T004",
+          "description": "Implement build_review_prompt method with task requirements, tracker state, and git diff context",
+          "status": "pending"
+        },
+        {
+          "id": "T005",
+          "description": "Implement parse_review_result method with robust JSON extraction using regex fallback patterns",
+          "status": "pending"
+        },
+        {
+          "id": "T006",
+          "description": "Implement apply_review_updates method to update tracker with status changes and review insights",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC001",
+          "criterion": "ReviewRound class initializes correctly with repo_root and optional ReviewConfig",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC002",
+          "criterion": "execute_review returns ReviewResult with iteration, reviewer, timestamp, and status fields populated",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC003",
+          "criterion": "build_review_prompt includes iteration number, base branch, git SHA, tasks to review, tracker summary, and git diff",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC004",
+          "criterion": "parse_review_result extracts valid JSON even when wrapped in markdown code blocks or preceded by explanatory text",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC005",
+          "criterion": "apply_review_updates modifies tracker in-place with status changes and adds review insights to tasks and features",
+          "verification_method": "unit_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test ReviewConfig dataclass initialization with default and custom values",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test ReviewResult dataclass initialization and field validation",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test ReviewRound.execute_review with mocked git diff and agent response",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test build_review_prompt generates expected template structure",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test parse_review_result with various JSON formats (pure, markdown-wrapped, with prefix text)",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test apply_review_updates updates task statuses correctly",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test apply_review_updates adds review_insights to task objects",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test apply_review_updates adds review_history to feature objects",
+            "file_path": "tests/test_review_round.py",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [],
+        "quality_gates": [
+          {
+            "gate": "Code coverage",
+            "requirement": "Minimum 80% coverage for review_round.py module"
+          }
+        ]
+      },
+      "files": {
+        "to_create": [
+          "tools/auto_prd/review_round.py",
+          "tests/test_review_round.py"
+        ],
+        "to_modify": []
+      },
+      "commits": [],
+      "verification_evidence": {}
+    },
+    {
+      "id": "F002",
+      "name": "Tracker Schema Updates",
+      "description": "Update tracker schema version to 2.1.0 and add review_insights fields to tasks, features, and top-level structure",
+      "priority": "critical",
+      "complexity": "M",
+      "status": "pending",
+      "dependencies": [
+        "F001"
+      ],
+      "goals": {
+        "primary": "Extend tracker data model to support review round metadata and history tracking",
+        "secondary": [
+          "Maintain backward compatibility with existing tracker files",
+          "Add validation for new review-related fields"
+        ],
+        "measurable_outcomes": [
+          "Tracker version bumped to 2.1.0",
+          "Tasks can store per-iteration review insights",
+          "Features can store review history across iterations",
+          "Top-level review_insights section captures patterns and recurring issues"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T007",
+          "description": "Bump tracker version from 2.0.0 to 2.1.0 in schema and validator",
+          "status": "pending"
+        },
+        {
+          "id": "T008",
+          "description": "Add review_insights array field to task schema with iteration, reviewer, status, notes, and next_steps properties",
+          "status": "pending"
+        },
+        {
+          "id": "T009",
+          "description": "Add review_history array field to feature schema with iteration, reviewer, overall_assessment, and findings properties",
+          "status": "pending"
+        },
+        {
+          "id": "T010",
+          "description": "Add top-level review_insights object with last_review_iteration, common_patterns, and recurring_issues fields",
+          "status": "pending"
+        },
+        {
+          "id": "T011",
+          "description": "Update tracker validation functions to handle new review fields",
+          "status": "pending"
+        },
+        {
+          "id": "T012",
+          "description": "Add migration logic to initialize empty review fields for existing trackers",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC006",
+          "criterion": "Tracker schema version is 2.1.0 after updates",
+          "verification_method": "code_review",
+          "status": "pending"
+        },
+        {
+          "id": "AC007",
+          "criterion": "Task review_insights field validates against defined schema structure",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC008",
+          "criterion": "Feature review_history field validates against defined schema structure",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC009",
+          "criterion": "Top-level review_insights section is optional and validates when present",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC010",
+          "criterion": "Existing tracker files load successfully with default empty review fields",
+          "verification_method": "integration_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test tracker version 2.1.0 validation accepts valid format",
+            "file_path": "tests/test_tracker_schema.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test review_insights field validation on task objects",
+            "file_path": "tests/test_tracker_schema.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test review_history field validation on feature objects",
+            "file_path": "tests/test_tracker_schema.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test top-level review_insights validation",
+            "file_path": "tests/test_tracker_schema.py",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [
+          {
+            "description": "Test loading 2.0.0 tracker and migrating to 2.1.0 with empty review fields",
+            "components_tested": [
+              "tracker_loader",
+              "review_round"
+            ],
+            "status": "pending"
+          }
+        ],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [],
+        "quality_gates": [
+          {
+            "gate": "Backward compatibility",
+            "requirement": "All existing 2.0.0 tracker files must load without errors"
+          }
+        ]
+      },
+      "files": {
+        "to_create": [],
+        "to_modify": [
+          "tools/auto_prd/tracker_schema.json",
+          "tools/auto_prd/tracker_generator.py",
+          "tools/auto_prd/tracker.py"
+        ]
+      },
+      "commits": [],
+      "verification_evidence": {}
+    },
+    {
+      "id": "F003",
+      "name": "Local Loop Integration",
+      "description": "Integrate review round into local_loop.py after fix pass completion with configuration and status handling",
+      "priority": "critical",
+      "complexity": "M",
+      "status": "pending",
+      "dependencies": [
+        "F001",
+        "F002"
+      ],
+      "goals": {
+        "primary": "Insert review round execution into local loop flow after fix pass but before stall detection",
+        "secondary": [
+          "Handle status reverts by adjusting tasks_left count",
+          "Update iteration summary with review results",
+          "Skip review when no git changes detected"
+        ],
+        "measurable_outcomes": [
+          "Review runs after each implementation round when enabled",
+          "Task statuses are updated based on review findings",
+          "Iteration summary includes review statistics",
+          "Reverted tasks are reflected in tasks_left count"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T013",
+          "description": "Add enable_review_round, review_round_model, and review_round_timeout fields to RalphSettings dataclass",
+          "status": "pending"
+        },
+        {
+          "id": "T014",
+          "description": "Import ReviewRound and ReviewConfig in local_loop.py",
+          "status": "pending"
+        },
+        {
+          "id": "T015",
+          "description": "Insert review round execution block after fix pass completion (around line 604)",
+          "status": "pending"
+        },
+        {
+          "id": "T016",
+          "description": "Add git change detection to skip review when no changes detected",
+          "status": "pending"
+        },
+        {
+          "id": "T017",
+          "description": "Implement status revert handling to adjust tasks_left when tasks are reverted to in_progress or pending",
+          "status": "pending"
+        },
+        {
+          "id": "T018",
+          "description": "Update iteration summary to include review results (overall_status, tasks_reviewed, statuses_updated)",
+          "status": "pending"
+        },
+        {
+          "id": "T019",
+          "description": "Reload tracker from disk after review updates to ensure fresh state",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC011",
+          "criterion": "Review round runs after fix pass when enable_review_round is True",
+          "verification_method": "integration_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC012",
+          "criterion": "Review round is skipped when enable_review_round is False or no git changes detected",
+          "verification_method": "integration_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC013",
+          "criterion": "tasks_left is increased when review reverts task statuses to in_progress or pending",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC014",
+          "criterion": "Iteration summary includes review_round section with overall_status, tasks_reviewed, and statuses_updated",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC015",
+          "criterion": "Tracker is reloaded from disk after review updates are applied",
+          "verification_method": "integration_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test status revert calculation adds correct amount to tasks_left",
+            "file_path": "tests/test_local_loop_review.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test iteration summary includes review results when review runs",
+            "file_path": "tests/test_local_loop_review.py",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [
+          {
+            "description": "Test full local loop with review round enabled and disabled",
+            "components_tested": [
+              "local_loop",
+              "review_round",
+              "tracker"
+            ],
+            "status": "pending"
+          },
+          {
+            "description": "Test review round skip when no git changes detected",
+            "components_tested": [
+              "local_loop",
+              "review_round"
+            ],
+            "status": "pending"
+          }
+        ],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [
+          {
+            "metric": "Review round execution time",
+            "target": "< 300 seconds for typical PRD",
+            "measurement_method": "Time review round execution in local loop logs"
+          }
+        ],
+        "quality_gates": [
+          {
+            "gate": "No stall increase",
+            "requirement": "Review round should not cause additional stalls beyond normal implementation issues"
+          }
+        ]
+      },
+      "files": {
+        "to_create": [
+          "tests/test_local_loop_review.py"
+        ],
+        "to_modify": [
+          "tools/auto_prd/ralph.py",
+          "tools/auto_prd/local_loop.py"
+        ]
+      },
+      "commits": [],
+      "verification_evidence": {}
+    },
+    {
+      "id": "F004",
+      "name": "Readiness Loop Integration",
+      "description": "Add review statistics and insights to readiness loop for outer loop context and evaluation phase",
+      "priority": "medium",
+      "complexity": "M",
+      "status": "pending",
+      "dependencies": [
+        "F003"
+      ],
+      "goals": {
+        "primary": "Incorporate review round results into readiness loop statistics and scope review context",
+        "secondary": [
+          "Track review pass/fail rates across iterations",
+          "Include review insights in evaluation phase for convergence assessment"
+        ],
+        "measurable_outcomes": [
+          "ReadinessStats includes review_round_passed, review_round_failed, and review_round_total fields",
+          "Scope review can access review history for context",
+          "Evaluation phase considers review insights in 7-signal convergence"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T020",
+          "description": "Add review_round_passed, review_round_failed, and review_round_total fields to ReadinessStats dataclass",
+          "status": "pending"
+        },
+        {
+          "id": "T021",
+          "description": "Update stats collection in readiness_loop.py to increment review counters after each local loop execution",
+          "status": "pending"
+        },
+        {
+          "id": "T022",
+          "description": "Pass review_insights from tracker to scope review context when building review prompt",
+          "status": "pending"
+        },
+        {
+          "id": "T023",
+          "description": "Include review history in evaluation phase output for human review",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC016",
+          "criterion": "ReadinessStats includes review round counters that increment correctly",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC017",
+          "criterion": "Scope review context includes common_patterns and recurring_issues from review_insights",
+          "verification_method": "integration_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC018",
+          "criterion": "Evaluation phase output includes review history summary",
+          "verification_method": "manual_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test ReadinessStats review counter initialization and increment",
+            "file_path": "tests/test_readiness_loop.py",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [
+          {
+            "description": "Test readiness loop collects review stats from local loop execution",
+            "components_tested": [
+              "readiness_loop",
+              "local_loop",
+              "review_round"
+            ],
+            "status": "pending"
+          }
+        ],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [],
+        "quality_gates": []
+      },
+      "files": {
+        "to_create": [],
+        "to_modify": [
+          "tools/auto_prd/readiness_loop.py"
+        ]
+      },
+      "commits": [],
+      "verification_evidence": {}
+    },
+    {
+      "id": "F005",
+      "name": "TUI Configuration Support",
+      "description": "Add review round settings to TUI Settings and Env tabs for runtime configuration",
+      "priority": "medium",
+      "complexity": "M",
+      "status": "pending",
+      "dependencies": [],
+      "goals": {
+        "primary": "Expose review round configuration in TUI for interactive control of Ralph review features",
+        "secondary": [
+          "Add toggle for enable_review_round in Env tab alongside other Ralph flags",
+          "Add model and timeout settings in Settings tab"
+        ],
+        "measurable_outcomes": [
+          "Users can enable/disable review round from Env tab",
+          "Users can configure review model and timeout from Settings tab",
+          "Settings persist to YAML config file"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T024",
+          "description": "Add EnableReviewRound, ReviewRoundModel, and ReviewRoundTimeout fields to RalphConfig struct in internal/config/config.go",
+          "status": "pending"
+        },
+        {
+          "id": "T025",
+          "description": "Update YAML load/save functions to handle new review round fields",
+          "status": "pending"
+        },
+        {
+          "id": "T026",
+          "description": "Add review round toggle item in Env tab UI (after existing Ralph flags)",
+          "status": "pending"
+        },
+        {
+          "id": "T027",
+          "description": "Add review round model and timeout input fields in Settings tab",
+          "status": "pending"
+        },
+        {
+          "id": "T028",
+          "description": "Update environment variable export for review round settings (AUTO_PRD_REVIEW_ROUND_ENABLED, AUTO_PRD_REVIEW_ROUND_MODEL, AUTO_PRD_REVIEW_ROUND_TIMEOUT)",
+          "status": "pending"
+        },
+        {
+          "id": "T029",
+          "description": "Add default values for new settings in config initialization",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC019",
+          "criterion": "RalphConfig struct includes EnableReviewRound, ReviewRoundModel, and ReviewRoundTimeout fields",
+          "verification_method": "code_review",
+          "status": "pending"
+        },
+        {
+          "id": "AC020",
+          "criterion": "Env tab displays review round toggle that reflects and updates EnableReviewRound",
+          "verification_method": "manual_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC021",
+          "criterion": "Settings tab allows configuration of review round model and timeout",
+          "verification_method": "manual_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC022",
+          "criterion": "Settings persist correctly across TUI restarts",
+          "verification_method": "manual_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC023",
+          "criterion": "Environment variables are exported for review round settings when running Python script",
+          "verification_method": "integration_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test RalphConfig default values for new review round fields",
+            "file_path": "internal/config/config_test.go",
+            "status": "pending"
+          },
+          {
+            "description": "Test YAML load/save with review round settings",
+            "file_path": "internal/config/config_test.go",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [],
+        "quality_gates": [
+          {
+            "gate": "Type safety",
+            "requirement": "Go code must pass go vet and staticcheck"
+          }
+        ]
+      },
+      "files": {
+        "to_create": [],
+        "to_modify": [
+          "internal/config/config.go",
+          "internal/config/config_test.go",
+          "internal/tui/model.go",
+          "internal/tui/styles.go",
+          "internal/runner/executor.go"
+        ]
+      },
+      "commits": [],
+      "verification_evidence": {}
+    },
+    {
+      "id": "F006",
+      "name": "Testing and Mocking Infrastructure",
+      "description": "Create comprehensive test suite with mocks for review agent responses and edge case scenarios",
+      "priority": "high",
+      "complexity": "L",
+      "status": "pending",
+      "dependencies": [
+        "F001",
+        "F002",
+        "F003"
+      ],
+      "goals": {
+        "primary": "Provide thorough test coverage for review round functionality with reliable mocks for external agent calls",
+        "secondary": [
+          "Test edge cases like timeout, malformed JSON, and empty git diffs",
+          "Test status revert scenarios and tasks_left adjustments"
+        ],
+        "measurable_outcomes": [
+          "Minimum 80% code coverage for review_round.py",
+          "All edge cases have corresponding tests",
+          "Mock agent responses cover success, failure, and partial scenarios"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "T030",
+          "description": "Create mock agent response fixtures for successful review with status confirmations",
+          "status": "pending"
+        },
+        {
+          "id": "T031",
+          "description": "Create mock agent response fixtures for partial review with some reverts",
+          "status": "pending"
+        },
+        {
+          "id": "T032",
+          "description": "Create mock agent response fixtures for failed review with critical issues",
+          "status": "pending"
+        },
+        {
+          "id": "T033",
+          "description": "Create mock agent response fixtures with malformed JSON for testing parser robustness",
+          "status": "pending"
+        },
+        {
+          "id": "T034",
+          "description": "Create mock git diff fixtures for various scenarios (empty, small changes, large changes)",
+          "status": "pending"
+        },
+        {
+          "id": "T035",
+          "description": "Write tests for review round timeout handling",
+          "status": "pending"
+        },
+        {
+          "id": "T036",
+          "description": "Write tests for empty git diff skip logic",
+          "status": "pending"
+        },
+        {
+          "id": "T037",
+          "description": "Write tests for status revert calculations in local loop integration",
+          "status": "pending"
+        },
+        {
+          "id": "T038",
+          "description": "Write tests for concurrent review rounds (if applicable)",
+          "status": "pending"
+        }
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC024",
+          "criterion": "Code coverage for review_round.py meets or exceeds 80%",
+          "verification_method": "integration_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC025",
+          "criterion": "All mock fixtures produce valid test data for their scenarios",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC026",
+          "criterion": "Timeout scenarios are handled gracefully without crashes",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC027",
+          "criterion": "Malformed JSON responses are handled with fallback parsing or error logging",
+          "verification_method": "unit_test",
+          "status": "pending"
+        },
+        {
+          "id": "AC028",
+          "criterion": "Empty git diff results in review skip with appropriate logging",
+          "verification_method": "unit_test",
+          "status": "pending"
+        }
+      ],
+      "testing": {
+        "unit_tests": [
+          {
+            "description": "Test successful review with mock agent response",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test partial review with status reverts",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test failed review with critical issues",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test JSON parsing with various formats",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test timeout handling with mock subprocess timeout",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          },
+          {
+            "description": "Test empty git diff skip logic",
+            "file_path": "tests/test_review_round_mocks.py",
+            "status": "pending"
+          }
+        ],
+        "integration_tests": [
+          {
+            "description": "Test full review round flow with mocked agent",
+            "components_tested": [
+              "review_round",
+              "tracker",
+              "git"
+            ],
+            "status": "pending"
+          }
+        ],
+        "e2e_tests": []
+      },
+      "validation": {
+        "benchmarks": [],
+        "quality_gates": [
+          {
+            "gate": "Coverage threshold",
+            "requirement": "Minimum 80% coverage for all review-related code"
+          },
+          {
+            "gate": "Type safety",
+            "requirement": "All Python code passes mypy strict type checking"
+          }
+        ]
+      },
+      "files": {
+        "to_create": [
+          "tests/fixtures/review_responses.py",
+          "tests/test_review_round_mocks.py"
+        ],
+        "to_modify": [
+          "tests/test_review_round.py"
+        ]
+      },
+      "commits": [],
+      "verification_evidence": {}
+    }
+  ],
+  "validation_summary": {
+    "total_features": 6,
+    "total_tasks": 38,
+    "estimated_complexity": "large",
+    "critical_path": [
+      "F001",
+      "F002",
+      "F003"
+    ]
+  }
+}
