@@ -481,12 +481,17 @@ class ReadinessOrchestrator:
         Reads progress history from the config progress directory (~/.config/aprd/progress/)
         and aggregates review round results to update readiness statistics.
 
+        Only counts reviews from the current session (derived from the tracker's PRD source)
+        to avoid inflating statistics with progress logs from other repos/PRDs.
+
         Uses instance-level _seen_reviews set to avoid double-counting reviews
         across multiple iterations of the readiness loop.
 
         Uses instance-level _progress_history_cache to avoid re-reading unchanged
         progress files on each iteration, keeping per-iteration cost bounded.
         """
+        import re
+
         # Get the correct progress directory from get_progress_path
         # This ensures we read from the same location where save_iteration_summary writes
         xdg_config = os.getenv("XDG_CONFIG_HOME", None)
@@ -499,6 +504,20 @@ class ReadinessOrchestrator:
         if not progress_dir.exists():
             return
 
+        # Derive the expected session_id prefix from the tracker's PRD source.
+        # The local_loop constructs session_id as "local-{sanitized_prd_stem}",
+        # so we filter progress files to only count reviews from this session.
+        tracker = self._load_tracker()
+        prd_source = tracker.get("metadata", {}).get("prd_source", "")
+        if prd_source:
+            prd_stem = Path(prd_source).stem
+            # Sanitize the same way local_loop does
+            sanitized_stem = re.sub(r"[^\w\-]", "-", prd_stem)
+            expected_session_prefix = f"local-{sanitized_stem}"
+        else:
+            # Fallback: no filtering if PRD source is not available
+            expected_session_prefix = ""
+
         # Lazily initialize a cache of loaded progress histories keyed by session_id.
         # Each entry stores (mtime_ns, history) so we only reload when the file changes.
         if not hasattr(self, "_progress_history_cache"):
@@ -506,8 +525,15 @@ class ReadinessOrchestrator:
 
         # Iterate over all progress files
         for progress_file in progress_dir.glob("*.jsonl"):
+            session_id = progress_file.stem
+
+            # Only count reviews from the current session to avoid cross-contamination
+            if expected_session_prefix and not session_id.startswith(
+                expected_session_prefix
+            ):
+                continue
+
             try:
-                session_id = progress_file.stem
                 mtime_ns = progress_file.stat().st_mtime_ns
 
                 cached = self._progress_history_cache.get(session_id)

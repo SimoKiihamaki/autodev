@@ -236,9 +236,16 @@ class ReviewRound:
         return result
 
     def _get_git_diff(self, base_branch: str) -> str:
-        """Get git diff against base branch."""
+        """Get git diff against base branch.
+
+        Tries in order:
+        1. Remote branch: origin/<base_branch>
+        2. Local base branch using merge-base with HEAD
+        3. HEAD~1 as last resort
+        4. Staged changes as final fallback
+        """
         try:
-            # Check if base branch exists
+            # Try remote branch first
             _, _, exit_code = run_cmd(
                 [
                     "git",
@@ -252,27 +259,62 @@ class ReviewRound:
             )
 
             if exit_code == 0:
-                # Compare against base branch
+                # Compare against remote base branch
                 result = run_cmd(
                     ["git", "diff", f"origin/{base_branch}"],
                     cwd=self.repo_root,
                 )
                 return result.stdout
-            else:
-                # Base branch doesn't exist, use HEAD~1 if available
+
+            # Remote not available, try local base branch
+            _, _, exit_code = run_cmd(
+                [
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{base_branch}",
+                ],
+                cwd=self.repo_root,
+                check=False,
+            )
+
+            if exit_code == 0:
+                # Use merge-base to diff against local base branch
+                # This captures all changes since the branch point
                 result = run_cmd(
-                    ["git", "diff", "HEAD~1"],
+                    ["git", "merge-base", "HEAD", base_branch],
                     cwd=self.repo_root,
                     check=False,
                 )
                 if result.exit_code == 0 and result.stdout.strip():
+                    merge_base = result.stdout.strip()
+                    result = run_cmd(
+                        ["git", "diff", merge_base],
+                        cwd=self.repo_root,
+                    )
                     return result.stdout
-                # Fall back to showing staged changes
-                result = run_cmd(
-                    ["git", "diff", "--cached"],
-                    cwd=self.repo_root,
+
+            # No base branch available, use HEAD~1 as last resort
+            result = run_cmd(
+                ["git", "diff", "HEAD~1"],
+                cwd=self.repo_root,
+                check=False,
+            )
+            if result.exit_code == 0 and result.stdout.strip():
+                logger.warning(
+                    "Base branch '%s' not found locally or remotely; "
+                    "using HEAD~1 for diff (may miss changes in multi-commit branches)",
+                    base_branch,
                 )
                 return result.stdout
+
+            # Fall back to showing staged changes
+            result = run_cmd(
+                ["git", "diff", "--cached"],
+                cwd=self.repo_root,
+            )
+            return result.stdout
         except Exception as e:
             logger.warning("Failed to get git diff: %s", e)
             return f"# Error getting diff: {e}"
