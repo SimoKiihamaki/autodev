@@ -9,6 +9,7 @@ from typing import Any
 
 from .command import CalledProcessError, run_cmd
 from .context import StallDetector
+from .progress_renderer import load_progress_history
 from .scope_reviewer import ScopeChange, ScopeReviewer, ScopeReviewResult, TriggerType
 from .utils import get_prd_hash
 from .verification import run_verification_gates
@@ -201,6 +202,9 @@ class ReadinessOrchestrator:
             if self.stats.iteration >= 3:
                 self.state = ReadinessState.STALLED
                 raise
+
+        # Collect review round statistics from iteration summaries
+        self._collect_review_statistics()
 
     def _handle_verification(self) -> VerificationRun:
         """Handle verification phase."""
@@ -468,6 +472,56 @@ class ReadinessOrchestrator:
                 counts[status] += 1
 
         return counts
+
+    def _collect_review_statistics(self) -> None:
+        """Collect review round statistics from iteration summaries.
+
+        Reads progress history from all local loop sessions and aggregates
+        review round results to update readiness statistics.
+        """
+        progress_dir = self.state_dir / "progress"
+        if not progress_dir.exists():
+            return
+
+        # Track seen reviews to avoid double-counting
+        seen_reviews = set()
+
+        # Iterate over all progress files
+        for progress_file in progress_dir.glob("*.jsonl"):
+            try:
+                session_id = progress_file.stem
+                history = load_progress_history(session_id)
+
+                for iteration in history.iterations:
+                    review_round = iteration.review_round
+                    if not review_round:
+                        continue
+
+                    # Create unique key for this review
+                    review_key = (
+                        session_id,
+                        iteration.iteration,
+                        review_round.get("overall_status", ""),
+                    )
+                    if review_key in seen_reviews:
+                        continue
+                    seen_reviews.add(review_key)
+
+                    # Update statistics
+                    self.stats.review_round_total += 1
+                    overall_status = review_round.get("overall_status", "")
+                    if overall_status == "passed":
+                        self.stats.review_round_passed += 1
+                    elif overall_status == "failed":
+                        self.stats.review_round_failed += 1
+                    # Partial reviews count as neither passed nor failed
+            except (OSError, json.JSONDecodeError) as e:
+                # Log but continue on individual file errors
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Failed to collect review stats from %s: %s", progress_file, e
+                )
 
     def _get_stall_message(self) -> str:
         """Get detailed stall message."""

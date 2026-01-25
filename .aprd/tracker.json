@@ -448,9 +448,7 @@
         ]
       },
       "files": {
-        "to_create": [
-          "tools/tests/test_review_round_mocks.py"
-        ],
+        "to_create": [],
         "to_modify": [
           "tools/auto_prd/ralph.py",
           "tools/auto_prd/local_loop.py"
