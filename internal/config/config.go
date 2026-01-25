@@ -183,7 +183,7 @@ func Defaults() Config {
 			GutterOutputTimeoutSec: intPtr(180), // 3 minutes default
 			GutterNoProgressIters:  intPtr(3),   // 3 iterations default
 			EnableReviewRound:      true,        // Enable review round by default when Ralph is enabled
-			ReviewRoundModel:       "claude-sonnet-4-5-20250514",
+			ReviewRoundModel:       "claude-sonnet-4-5-20250929",
 			ReviewRoundTimeout:     intPtr(300), // 5 minutes default
 		},
 		AllowedPythonDirs: []string{},

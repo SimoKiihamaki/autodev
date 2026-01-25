@@ -1,7 +1,7 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "metadata": {
-    "prd_source": "/Users/simo/Projects/autodev/tools/auto_prd/REVIEW_ROUND_PLAN.md",
+    "prd_source": "tools/auto_prd/REVIEW_ROUND_PLAN.md",
     "prd_hash": "sha256:8333ab19f20f7324",
     "created_at": "2026-01-25T20:17:53.993768+00:00",
     "created_by": "claude",
@@ -685,7 +685,7 @@
       "description": "Create comprehensive test suite with mocks for review agent responses and edge case scenarios",
       "priority": "high",
       "complexity": "L",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "F001",
         "F002",
@@ -707,47 +707,47 @@
         {
           "id": "T030",
           "description": "Create mock agent response fixtures for successful review with status confirmations",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T031",
           "description": "Create mock agent response fixtures for partial review with some reverts",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T032",
           "description": "Create mock agent response fixtures for failed review with critical issues",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T033",
           "description": "Create mock agent response fixtures with malformed JSON for testing parser robustness",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T034",
           "description": "Create mock git diff fixtures for various scenarios (empty, small changes, large changes)",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T035",
           "description": "Write tests for review round timeout handling",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T036",
           "description": "Write tests for empty git diff skip logic",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T037",
           "description": "Write tests for status revert calculations in local loop integration",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "T038",
           "description": "Write tests for concurrent review rounds (if applicable)",
-          "status": "pending"
+          "status": "completed"
         }
       ],
       "acceptance_criteria": [
@@ -755,64 +755,64 @@
           "id": "AC024",
           "criterion": "Code coverage for review_round.py meets or exceeds 80%",
           "verification_method": "integration_test",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "AC025",
           "criterion": "All mock fixtures produce valid test data for their scenarios",
           "verification_method": "unit_test",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "AC026",
           "criterion": "Timeout scenarios are handled gracefully without crashes",
           "verification_method": "unit_test",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "AC027",
           "criterion": "Malformed JSON responses are handled with fallback parsing or error logging",
           "verification_method": "unit_test",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "id": "AC028",
           "criterion": "Empty git diff results in review skip with appropriate logging",
           "verification_method": "unit_test",
-          "status": "pending"
+          "status": "completed"
         }
       ],
       "testing": {
         "unit_tests": [
           {
             "description": "Test successful review with mock agent response",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test partial review with status reverts",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test failed review with critical issues",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test JSON parsing with various formats",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test timeout handling with mock subprocess timeout",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test empty git diff skip logic",
-            "file_path": "tests/test_review_round_mocks.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           }
         ],
         "integration_tests": [
@@ -823,7 +823,7 @@
               "tracker",
               "git"
             ],
-            "status": "pending"
+            "status": "completed"
           }
         ],
         "e2e_tests": []
@@ -843,11 +843,11 @@
       },
       "files": {
         "to_create": [
-          "tests/fixtures/review_responses.py",
-          "tests/test_review_round_mocks.py"
+          "tools/tests/fixtures/review_responses.py",
+          "tools/tests/test_review_round_mocks.py"
         ],
         "to_modify": [
-          "tests/test_review_round.py"
+          "tools/tests/test_review_round.py"
         ]
       },
       "commits": [],

@@ -257,10 +257,28 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                         )
 
                     stored_source = tracker.get("metadata", {}).get("prd_source", "")
-                    if stored_source and prd_path and stored_source != str(prd_path):
-                        warnings.append(
-                            f"Tracker prd_source='{stored_source}' does not match selected PRD '{prd_path}'."
-                        )
+                    # Normalize paths for comparison: handle both absolute and relative paths
+                    # If stored_source is relative, resolve it against repo_root for comparison
+                    normalized_stored = stored_source
+                    if stored_source and prd_path:
+                        try:
+                            # Try to resolve stored_source relative to repo_root
+                            if not Path(stored_source).is_absolute():
+                                resolved = repo_root / stored_source
+                                normalized_stored = str(resolved)
+                            # Compare both normalized and direct paths (for relative/relative match)
+                            if stored_source != str(
+                                prd_path
+                            ) and normalized_stored != str(prd_path.resolve()):
+                                warnings.append(
+                                    f"Tracker prd_source='{stored_source}' does not match selected PRD '{prd_path}'."
+                                )
+                        except (OSError, ValueError):
+                            # If path resolution fails, fall back to simple string comparison
+                            if stored_source != str(prd_path):
+                                warnings.append(
+                                    f"Tracker prd_source='{stored_source}' does not match selected PRD '{prd_path}'."
+                                )
 
                     feature_by_id = {f.get("id"): f for f in features}
                     for feature in features:
