@@ -354,8 +354,11 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	setBool(m.inRalphEnableReviewRound.Value(), "Enable review round", func(v bool) { dst.Ralph.EnableReviewRound = v })
 
 	// Review round settings
-	dst.Ralph.ReviewRoundModel = m.inRalphReviewModel.Value()
+	dst.Ralph.ReviewRoundModel = strings.TrimSpace(m.inRalphReviewModel.Value())
 	setNumeric(m.inRalphReviewTimeout.Value(), "Review round timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
 		dst.Ralph.ReviewRoundTimeout = &v
 	})
 
