@@ -19,7 +19,7 @@
       "description": "Create the review_round.py module with ReviewConfig, ReviewResult, and ReviewRound classes to orchestrate independent review of implementation rounds",
       "priority": "critical",
       "complexity": "L",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [],
       "goals": {
         "primary": "Create a self-contained review module that can validate implementation work against tracker requirements",
@@ -168,7 +168,7 @@
       "description": "Update tracker schema version to 2.1.0 and add review_insights fields to tasks, features, and top-level structure",
       "priority": "critical",
       "complexity": "M",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [
         "F001"
       ],
@@ -310,7 +310,7 @@
       "description": "Integrate review round into local_loop.py after fix pass completion with configuration and status handling",
       "priority": "critical",
       "complexity": "M",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [
         "F001",
         "F002"
@@ -465,7 +465,7 @@
       "description": "Add review statistics and insights to readiness loop for outer loop context and evaluation phase",
       "priority": "medium",
       "complexity": "M",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [
         "F003"
       ],
@@ -563,7 +563,7 @@
       "description": "Add review round settings to TUI Settings and Env tabs for runtime configuration",
       "priority": "medium",
       "complexity": "M",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [],
       "goals": {
         "primary": "Expose review round configuration in TUI for interactive control of Ralph review features",
@@ -842,10 +842,7 @@
         ]
       },
       "files": {
-        "to_create": [
-          "tools/tests/fixtures/review_responses.py",
-          "tools/tests/test_review_round_mocks.py"
-        ],
+        "to_create": [],
         "to_modify": [
           "tools/tests/test_review_round.py"
         ]

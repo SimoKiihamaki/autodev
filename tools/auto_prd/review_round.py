@@ -109,7 +109,7 @@ class ReviewConfig:
 
     enabled: bool = True
     executor: str = "claude"  # claude | codex
-    model: str = "claude-sonnet-4-5-20250514"
+    model: str = "claude-sonnet-4-20250514"
     max_review_time: int = 300  # seconds
 
 
@@ -315,19 +315,24 @@ class ReviewRound:
         )
 
     def _call_review_agent(self, prompt: str) -> str:
-        """Call the reviewer agent with the prompt."""
+        """Call the reviewer agent with the prompt.
+
+        Review is read-only (analyzes diffs and returns JSON), so unsafe
+        execution is disabled. The agent only needs to read git state and
+        produce structured output, not modify files or run commands.
+        """
         if self.config.executor == "codex":
             output, _ = codex_exec(
                 prompt=prompt,
                 repo_root=self.repo_root,
-                allow_unsafe_execution=True,
+                allow_unsafe_execution=False,
                 dry_run=False,
             )
         else:
             output, _ = claude_exec(
                 prompt=prompt,
                 repo_root=self.repo_root,
-                allow_unsafe_execution=True,
+                allow_unsafe_execution=False,
                 dry_run=False,
             )
         return output
