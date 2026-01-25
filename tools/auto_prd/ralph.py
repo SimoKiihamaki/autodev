@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 # Use float('inf') to represent a disabled threshold (effectively infinite)
 THRESHOLD_DISABLED = float("inf")
+
+# Environment variable names for Ralph configuration (must match Go runner)
+ENV_RALPH_ENABLED = "AUTO_PRD_RALPH_ENABLED"
+ENV_RALPH_ENABLE_REVIEW_ROUND = "AUTO_PRD_RALPH_ENABLE_REVIEW_ROUND"
+ENV_RALPH_REVIEW_MODEL = "AUTO_PRD_RALPH_REVIEW_MODEL"
+ENV_RALPH_REVIEW_TIMEOUT = "AUTO_PRD_RALPH_REVIEW_TIMEOUT"
 
 
 @dataclass
@@ -23,8 +30,34 @@ class RalphSettings:
 
     # Review round settings
     enable_review_round: bool = True
-    review_round_model: str = "claude-sonnet-4-5-20250514"
+    review_round_model: str = "claude-sonnet-4-20250514"
     review_round_timeout: int = 300
+
+    @classmethod
+    def from_env(cls) -> RalphSettings:
+        """Create RalphSettings from environment variables (for Go TUI integration).
+
+        This reads settings from AUTO_PRD_RALPH_* environment variables which are
+        set by the Go runner. It provides a fallback path for configuration when
+        the Python CLI is not used directly.
+        """
+
+        def _bool_env(key: str, default: bool = False) -> bool:
+            val = os.environ.get(key, "").lower()
+            if val in ("1", "true", "yes", "on"):
+                return True
+            if val in ("0", "false", "no", "off"):
+                return False
+            return default
+
+        return cls(
+            enabled=_bool_env(ENV_RALPH_ENABLED),
+            enable_review_round=_bool_env(ENV_RALPH_ENABLE_REVIEW_ROUND, default=True),
+            review_round_model=os.environ.get(
+                ENV_RALPH_REVIEW_MODEL, "claude-sonnet-4-20250514"
+            ),
+            review_round_timeout=int(os.environ.get(ENV_RALPH_REVIEW_TIMEOUT, "300")),
+        )
 
     def normalized(self) -> RalphSettings:
         """Return a normalized copy with safe minimums."""
@@ -39,7 +72,7 @@ class RalphSettings:
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
             enable_review_round=bool(self.enable_review_round),
             review_round_model=str(
-                self.review_round_model or "claude-sonnet-4-5-20250514"
+                self.review_round_model or "claude-sonnet-4-20250514"
             ),
             review_round_timeout=max(30, int(self.review_round_timeout or 300)),
         )

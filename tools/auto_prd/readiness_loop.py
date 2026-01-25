@@ -483,6 +483,9 @@ class ReadinessOrchestrator:
 
         Uses instance-level _seen_reviews set to avoid double-counting reviews
         across multiple iterations of the readiness loop.
+
+        Uses instance-level _progress_history_cache to avoid re-reading unchanged
+        progress files on each iteration, keeping per-iteration cost bounded.
         """
         # Get the correct progress directory from get_progress_path
         # This ensures we read from the same location where save_iteration_summary writes
@@ -496,11 +499,24 @@ class ReadinessOrchestrator:
         if not progress_dir.exists():
             return
 
+        # Lazily initialize a cache of loaded progress histories keyed by session_id.
+        # Each entry stores (mtime_ns, history) so we only reload when the file changes.
+        if not hasattr(self, "_progress_history_cache"):
+            self._progress_history_cache: dict[str, tuple[int, Any]] = {}
+
         # Iterate over all progress files
         for progress_file in progress_dir.glob("*.jsonl"):
             try:
                 session_id = progress_file.stem
-                history = load_progress_history(session_id)
+                mtime_ns = progress_file.stat().st_mtime_ns
+
+                cached = self._progress_history_cache.get(session_id)
+                if cached is not None and cached[0] == mtime_ns:
+                    # Reuse cached history if the progress file has not changed.
+                    history = cached[1]
+                else:
+                    history = load_progress_history(session_id)
+                    self._progress_history_cache[session_id] = (mtime_ns, history)
 
                 for iteration in history.iterations:
                     review_round = iteration.review_round
@@ -525,7 +541,7 @@ class ReadinessOrchestrator:
                     elif overall_status == "failed":
                         self.stats.review_round_failed += 1
                     # Partial reviews count as neither passed nor failed
-            except (OSError, json.JSONDecodeError) as e:
+            except (OSError, json.JSONDecodeError, ValueError) as e:
                 # Log but continue on individual file errors
                 import logging
 

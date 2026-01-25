@@ -185,6 +185,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Iterations without progress before stall detection (0 disables).",
     )
+    ralph.add_argument(
+        "--ralph-enable-review-round",
+        "--enable-review-round",
+        dest="ralph_enable_review_round",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable review round after each implementation pass.",
+    )
+    ralph.add_argument(
+        "--ralph-review-round-model",
+        "--review-round-model",
+        dest="ralph_review_round_model",
+        default="claude-sonnet-4-20250514",
+        help="Model to use for review round (default: claude-sonnet-4-20250514).",
+    )
+    ralph.add_argument(
+        "--ralph-review-round-timeout",
+        "--review-round-timeout",
+        dest="ralph_review_round_timeout",
+        type=non_negative,
+        default=300,
+        help="Review round timeout in seconds (default: 300).",
+    )
 
     # Session management arguments
     resume_group = parser.add_argument_group("session management")
@@ -306,6 +329,9 @@ def main() -> None:
         show_guardrails=args.ralph_show_guardrails,
         gutter_output_timeout_sec=args.ralph_gutter_output_timeout_sec,
         gutter_no_progress_iters=args.ralph_gutter_no_progress_iters,
+        enable_review_round=args.ralph_enable_review_round,
+        review_round_model=args.ralph_review_round_model,
+        review_round_timeout=args.ralph_review_round_timeout,
     ).normalized()
     args.ralph_settings = ralph_settings
 

@@ -223,7 +223,20 @@ def orchestrate_local_loop(
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
 
-    ralph = (ralph_settings or RalphSettings()).normalized()
+    # Merge Ralph settings from CLI args with environment variables (for Go TUI integration)
+    # Env vars provide defaults that can be overridden by explicitly passed settings
+    env_ralph = RalphSettings.from_env()
+    if ralph_settings:
+        # Start with env defaults and override with explicitly passed settings
+        from dataclasses import replace
+
+        ralph = replace(
+            env_ralph,
+            **{k: v for k, v in ralph_settings.__dict__.items() if v is not None},
+        )
+    else:
+        ralph = env_ralph
+    ralph = ralph.normalized()
 
     # Load guardrails for Ralph-style mistake prevention
     # Signs from previous iterations are injected into the agent context

@@ -8,6 +8,7 @@ actionable feedback for the next iteration.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 
 from .agents import claude_exec
 from .command import CalledProcessError, TimeoutExpired, run_cmd
+from .constants import HEADLESS_TOOL_ALLOWLISTS
 from .git_ops import git_head_sha
 from .logging_utils import logger
 from .tracker_generator import save_tracker
@@ -156,6 +158,19 @@ class ReviewRound:
         Returns:
             ReviewResult with validation findings
         """
+        # Check if review rounds are enabled
+        if not self.config.enabled:
+            logger.info("Review round is disabled in config; skipping")
+            return ReviewResult(
+                iteration=iteration,
+                reviewer=self.config.executor,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                overall_status="skipped",
+                tasks_reviewed=0,
+                git_diff_summary="Review rounds disabled",
+                summary="Review skipped: disabled in config",
+            )
+
         logger.info(
             "Starting review round for iteration %d (executor: %s)",
             iteration,
@@ -204,8 +219,14 @@ class ReviewRound:
         # Parse review result
         result = self._parse_review_result(agent_output, iteration, git_diff)
 
-        # Apply updates to tracker
-        if result.statuses_updated:
+        # Apply updates to tracker, even if no statuses changed, so that
+        # review insights and metadata (e.g., last_review_iteration) are
+        # consistently persisted for every completed review.
+        if (
+            result.statuses_updated
+            or result.insights
+            or result.overall_status in ("passed", "partial", "failed")
+        ):
             self._apply_review_updates(tracker, result)
 
         return result
@@ -214,7 +235,7 @@ class ReviewRound:
         """Get git diff against base branch."""
         try:
             # Check if base branch exists
-            _, _, rc = run_cmd(
+            _, _, exit_code = run_cmd(
                 [
                     "git",
                     "show-ref",
@@ -226,24 +247,24 @@ class ReviewRound:
                 check=False,
             )
 
-            if rc == 0:
+            if exit_code == 0:
                 # Compare against base branch
-                result, _, _ = run_cmd(
+                result = run_cmd(
                     ["git", "diff", f"origin/{base_branch}"],
                     cwd=self.repo_root,
                 )
                 return result.stdout
             else:
                 # Base branch doesn't exist, use HEAD~1 if available
-                result, _, rc = run_cmd(
+                result = run_cmd(
                     ["git", "diff", "HEAD~1"],
                     cwd=self.repo_root,
                     check=False,
                 )
-                if rc == 0 and result.stdout.strip():
+                if result.exit_code == 0 and result.stdout.strip():
                     return result.stdout
                 # Fall back to showing staged changes
-                result, _, _ = run_cmd(
+                result = run_cmd(
                     ["git", "diff", "--cached"],
                     cwd=self.repo_root,
                 )
@@ -324,24 +345,50 @@ class ReviewRound:
 
         Uses the configured model and timeout from ReviewConfig.
         """
+        import os
+
         # Normalize executor to lowercase for case-insensitive comparison
         executor = self.config.executor.lower() if self.config.executor else ""
 
+        # Determine the model to use
+        model = self.config.model
         if executor == "codex":
             # Codex requires unsafe execution; review rounds don't support Codex
-            # since it doesn't have safe read-only execution mode
+            # since it doesn't have safe read-only execution mode. Fall back to
+            # Claude with a Claude-compatible model instead of forwarding the Codex model.
             logger.info(
                 "Codex executor selected for review round, but Codex does not "
                 "support safe read-only execution; falling back to Claude."
             )
+            # Clear the model to use Claude's default model, since a configured
+            # Codex model (e.g., gpt-5-codex) will fail when passed to Claude.
+            model = None
 
-        output, _ = claude_exec(
-            prompt=prompt,
-            repo_root=self.repo_root,
-            model=self.config.model if self.config.model else None,
-            allow_unsafe_execution=True,
-            dry_run=False,
-        )
+        # Apply timeout from ReviewConfig via environment variable
+        # This is necessary because claude_exec reads timeout from AUTO_PRD_CLAUDE_TIMEOUT_SECONDS
+        original_timeout = os.environ.get("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS")
+        os.environ["AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"] = str(self.config.max_review_time)
+
+        try:
+            output, _ = claude_exec(
+                prompt=prompt,
+                repo_root=self.repo_root,
+                model=model,
+                allow_unsafe_execution=True,
+                dry_run=False,
+                # Restrict the review agent to read-only tools needed for analysis.
+                # Tool names must match those exposed by the agents layer.
+                allowed_tools=list(HEADLESS_TOOL_ALLOWLISTS["review_round"]),
+                # Ask the model to return pure JSON to simplify parsing.
+                output_format="json",
+            )
+        finally:
+            # Restore original timeout value
+            if original_timeout is None:
+                os.environ.pop("AUTO_PRD_CLAUDE_TIMEOUT_SECONDS", None)
+            else:
+                os.environ["AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"] = original_timeout
+
         return output
 
     def _parse_review_result(

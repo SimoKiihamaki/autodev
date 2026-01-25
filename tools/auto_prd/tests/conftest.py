@@ -20,6 +20,11 @@ _project_root = _tools_dir.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+# Also add tools_dir to allow 'auto_prd' imports (alternative import style)
+# This supports both import styles used across the codebase
+if str(_tools_dir) not in sys.path:
+    sys.path.insert(0, str(_tools_dir))
+
 
 @pytest.fixture(autouse=True)
 def allow_unsafe_execution():
