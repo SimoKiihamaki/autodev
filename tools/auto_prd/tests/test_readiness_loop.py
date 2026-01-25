@@ -325,27 +325,34 @@ def test_collect_review_statistics_deduplication_multiple_calls(temp_repo):
     This test verifies the instance-level _seen_reviews set persists across
     multiple iterations of the readiness loop to prevent double-counting.
     """
+    import os
+    import tempfile
+    from unittest.mock import patch
+
     from auto_prd.readiness_loop import ReadinessOrchestrator
 
     orchestrator = ReadinessOrchestrator(temp_repo)
 
-    # Pre-populate seen_reviews to simulate first call already happened
-    orchestrator._seen_reviews = {("session_123", 1, "passed")}
+    with tempfile.TemporaryDirectory() as tmpdir:
+        progress_dir = Path(tmpdir) / "aprd" / "progress"
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        (progress_dir / "session_123.jsonl").write_text("{}")
 
-    # Call the method again - should not count the same review
-    # We use a simplified test that checks the deduplication logic directly
-    # by checking that seen_reviews contains the expected key
-    assert ("session_123", 1, "passed") in orchestrator._seen_reviews
+        mock_history = _make_mock_history(
+            [("session_123", 1, {"overall_status": "passed"})]
+        )
 
-    # Simulate the deduplication check directly
-    review_key = ("session_123", 1, "passed")
-    if review_key in orchestrator._seen_reviews:
-        # This review would be skipped
-        pass
-    else:
-        orchestrator._seen_reviews.add(review_key)
-        orchestrator.stats.review_round_total += 1
-        orchestrator.stats.review_round_passed += 1
+        with patch.dict(os.environ, {"XDG_CONFIG_HOME": tmpdir}):
+            with patch(
+                "auto_prd.readiness_loop.load_progress_history",
+                return_value=mock_history,
+            ):
+                # First call should count the review
+                orchestrator._collect_review_statistics()
+                assert orchestrator.stats.review_round_total == 1
+                assert orchestrator.stats.review_round_passed == 1
 
-    # Verify stats weren't incremented (deduplication worked)
-    assert orchestrator.stats.review_round_total == 0
+                # Second call should NOT re-count the same review
+                orchestrator._collect_review_statistics()
+                assert orchestrator.stats.review_round_total == 1  # Still 1, not 2
+                assert orchestrator.stats.review_round_passed == 1
