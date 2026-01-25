@@ -71,6 +71,7 @@ class IterationSummary:
             "tasks_remaining": self.tasks_remaining,
             "phase": self.phase,
             "commits_made": self.commits_made,
+            "review_round": self.review_round,
         }
 
     @classmethod
@@ -94,6 +95,7 @@ class IterationSummary:
             tasks_remaining=data.get("tasks_remaining", 0),
             phase=data.get("phase", "local"),
             commits_made=data.get("commits_made", 0),
+            review_round=data.get("review_round", {}),
         )
 
     def to_markdown(self) -> str:

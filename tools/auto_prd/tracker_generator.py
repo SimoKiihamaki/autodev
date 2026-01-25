@@ -506,8 +506,8 @@ def _is_compatible_version(version: str) -> bool:
     """
     if not version:
         return False
-    # Accept 2.0.x or 2.1.x
-    return bool(re.match(r"^2\.(0\.[0-9]|1\.[0-9])$", version))
+    # Accept 2.0.x or 2.1.x (including multi-digit patch versions)
+    return bool(re.match(r"^2\.(?:0|1)\.\d+$", version))
 
 
 def _validate_basic_structure(tracker: dict[str, Any]) -> list[str]:

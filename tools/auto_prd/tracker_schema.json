@@ -8,7 +8,7 @@
   "properties": {
     "version": {
       "type": "string",
-      "pattern": "^2\\.(0\\.[0-9]|1\\.[0-9])$",
+      "pattern": "^2\\.(?:0|1)\\.\\d+$",
       "description": "Schema version for migration support (2.0.x or 2.1.x)"
     },
     "metadata": {

@@ -37,8 +37,8 @@ var settingsGrid = map[string][2]int{
 	"ralphreviewmodel":       {13, 0},
 	"ralphreviewtimeout":     {13, 1},
 	// Security settings (rows 14-15)
-	"safescriptdirs":    {13, 0},
-	"allowedpythondirs": {14, 0},
+	"safescriptdirs":    {14, 0},
+	"allowedpythondirs": {15, 0},
 }
 
 func (m *model) blurAllInputs() {
