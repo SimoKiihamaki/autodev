@@ -321,7 +321,9 @@ def main() -> None:
         from copy import copy
 
         from .git_ops import git_root
+        from .policy import policy_runner
         from .readiness_loop import run_ralph_wiggum_loop
+        from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
 
         execution_args = copy(args)
         execution_args.ralph_mode = False
@@ -332,6 +334,36 @@ def main() -> None:
 
         try:
             repo_root = Path(args.repo).resolve() if args.repo else git_root()
+
+            # Ensure tracker exists before starting Ralph loop
+            tracker_path = get_tracker_path(repo_root)
+            existing_tracker = load_tracker(repo_root)
+            if existing_tracker is None:
+                # Generate tracker from PRD
+                prd_path = Path(args.prd).resolve()
+                if not prd_path.is_absolute():
+                    prd_path = (Path.cwd() / prd_path).resolve()
+
+                print("Generating implementation tracker from PRD...", flush=True)
+                _, executor_label = policy_runner(
+                    args.executor_policy, i=1, phase="implement"
+                )
+                tracker_executor = executor_label.lower()
+
+                tracker = generate_tracker(
+                    prd_path=prd_path,
+                    repo_root=repo_root,
+                    executor=tracker_executor,
+                    force=True,
+                    dry_run=args.dry_run,
+                    allow_unsafe_execution=args.allow_unsafe_execution,
+                )
+                print(
+                    f"Tracker generated: {tracker['validation_summary']['total_features']} features, "
+                    f"{tracker['validation_summary']['total_tasks']} tasks",
+                    flush=True,
+                )
+
             run_ralph_wiggum_loop(
                 repo_root=repo_root,
                 execution_runner=_run_once,
