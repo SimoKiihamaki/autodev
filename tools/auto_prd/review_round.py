@@ -543,8 +543,7 @@ class ReviewRound:
         for feature in tracker.get("features", []):
             feature_id = feature.get("id", "")
 
-            # Check if any tasks in this feature need status updates
-            feature_updated = False
+            # Track statistics for this feature's tasks in this review
             feature_tasks_in_review = 0
             feature_tasks_confirmed = 0
             feature_tasks_reverted = 0
@@ -592,7 +591,6 @@ class ReviewRound:
                             }
                         )
 
-                        feature_updated = True
                         logger.info(
                             "Updated task %s/%s status: %s -> %s",
                             feature_id,

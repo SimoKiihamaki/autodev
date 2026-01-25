@@ -126,9 +126,10 @@ _HEADLESS_TOOL_ALLOWLISTS_INTERNAL: dict[str, tuple[str, ...]] = {
         "Edit",
         "Write",
     ),
-    # Review round phase: read-only analysis of git state and code
+    # Review round phase: read-only analysis of code. The diff is already collected
+    # by the Python code and provided via context, so only read tools are needed.
+    # Bash is intentionally excluded to prevent accidental mutations (reset/checkout/clean).
     "review_round": (
-        "Bash(git:*)",  # Only git commands for diff/stat
         "Read",  # Read files for analysis
         "Glob",  # Find files by pattern
         "Grep",  # Search code
