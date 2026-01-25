@@ -7,17 +7,11 @@ to simulate various agent response scenarios.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
-from typing import Any
-from unittest.mock import Mock, patch
-
-import pytest
+from unittest.mock import patch
 
 from tools.auto_prd.command import CalledProcessError, TimeoutExpired
 from tools.auto_prd.review_round import (
-    REVIEW_PROMPT,
     ReviewConfig,
     ReviewResult,
     ReviewRound,
@@ -25,7 +19,6 @@ from tools.auto_prd.review_round import (
 
 # Import fixtures
 from tools.tests.fixtures.review_responses import (
-    GIT_DIFF_EMPTY,
     GIT_DIFF_MEDIUM,
     GIT_DIFF_SMALL,
     REVIEW_EMPTY,
@@ -37,8 +30,6 @@ from tools.tests.fixtures.review_responses import (
     REVIEW_PLAIN_JSON,
     REVIEW_SUCCESSFUL,
     REVIEW_WITH_PREFIX,
-    TRACKER_MINIMAL,
-    TRACKER_WITH_REVIEW_FIELDS,
     get_git_diff,
     get_review_response,
     get_tracker,

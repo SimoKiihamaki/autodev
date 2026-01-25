@@ -600,9 +600,7 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		config.EnvCodexTimeoutSeconds,
 		config.EnvClaudeTimeoutSeconds,
 		config.EnvRalphEnabled,
-		config.EnvRalphEnableReviewRound,
-		config.EnvRalphReviewModel,
-		config.EnvRalphReviewTimeout,
+		// NOTE: AUTO_PRD_RALPH_* review-round env vars intentionally omitted; see comments below.
 		"CI",
 	)
 
@@ -642,15 +640,22 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	// Set Ralph environment variables
 	if cfg.Ralph.Enabled {
 		executorVars[config.EnvRalphEnabled] = "1"
-		if cfg.Ralph.EnableReviewRound {
-			executorVars[config.EnvRalphEnableReviewRound] = "1"
-		}
-		if cfg.Ralph.ReviewRoundModel != "" {
-			executorVars[config.EnvRalphReviewModel] = cfg.Ralph.ReviewRoundModel
-		}
-		if cfg.Ralph.ReviewRoundTimeout != nil && *cfg.Ralph.ReviewRoundTimeout > 0 {
-			executorVars[config.EnvRalphReviewTimeout] = fmt.Sprint(*cfg.Ralph.ReviewRoundTimeout)
-		}
+		// NOTE: Review-round-specific AUTO_PRD_RALPH_* env vars (enable flag, model,
+		// timeout) are intentionally not exported here because the current Python
+		// tooling does not read them. The review round configuration is instead
+		// passed through RalphSettings in the TUI and used in local_loop.py.
+		// Exporting these env vars would create a misleading configuration surface
+		// in the TUI; wire them through end-to-end before adding them back.
+		//
+		// if cfg.Ralph.EnableReviewRound {
+		// 	executorVars[config.EnvRalphEnableReviewRound] = "1"
+		// }
+		// if cfg.Ralph.ReviewRoundModel != "" {
+		// 	executorVars[config.EnvRalphReviewModel] = cfg.Ralph.ReviewRoundModel
+		// }
+		// if cfg.Ralph.ReviewRoundTimeout != nil && *cfg.Ralph.ReviewRoundTimeout > 0 {
+		// 	executorVars[config.EnvRalphReviewTimeout] = fmt.Sprint(*cfg.Ralph.ReviewRoundTimeout)
+		// }
 	}
 
 	env = setExecutorEnv(env, executorVars)

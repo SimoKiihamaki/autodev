@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .agents import claude_exec, codex_exec
+from .agents import claude_exec
 from .command import CalledProcessError, TimeoutExpired, run_cmd
 from .git_ops import git_head_sha
 from .logging_utils import logger
@@ -120,7 +120,7 @@ class ReviewResult:
     iteration: int
     reviewer: str
     timestamp: str
-    overall_status: str  # passed | partial | failed
+    overall_status: str  # passed | partial | failed | skipped
     tasks_reviewed: int
     statuses_updated: dict[str, str] = field(default_factory=dict)
     insights: dict[str, list[str]] = field(default_factory=dict)
@@ -189,7 +189,7 @@ class ReviewRound:
         # Call reviewer agent
         try:
             agent_output = self._call_review_agent(prompt)
-        except (CalledProcessError, TimeoutExpired) as e:
+        except (CalledProcessError, TimeoutExpired, PermissionError) as e:
             logger.error("Review agent failed: %s", e)
             return ReviewResult(
                 iteration=iteration,
@@ -317,24 +317,28 @@ class ReviewRound:
     def _call_review_agent(self, prompt: str) -> str:
         """Call the reviewer agent with the prompt.
 
-        Review is read-only (analyzes diffs and returns JSON), so unsafe
-        execution is disabled. The agent only needs to read git state and
-        produce structured output, not modify files or run commands.
+        Review is read-only (analyzes diffs and returns JSON), but the executor
+        requires allow_unsafe_execution=True for non-dry-run execution. The agent
+        only needs to read git state and produce structured output, not modify
+        files or run commands.
+
+        Uses the configured model and timeout from ReviewConfig.
         """
         if self.config.executor == "codex":
-            output, _ = codex_exec(
-                prompt=prompt,
-                repo_root=self.repo_root,
-                allow_unsafe_execution=False,
-                dry_run=False,
+            # Codex requires unsafe execution; review rounds don't support Codex
+            # since it doesn't have safe read-only execution mode
+            logger.info(
+                "Codex executor selected for review round, but Codex does not "
+                "support safe read-only execution; falling back to Claude."
             )
-        else:
-            output, _ = claude_exec(
-                prompt=prompt,
-                repo_root=self.repo_root,
-                allow_unsafe_execution=False,
-                dry_run=False,
-            )
+
+        output, _ = claude_exec(
+            prompt=prompt,
+            repo_root=self.repo_root,
+            model=self.config.model if self.config.model else None,
+            allow_unsafe_execution=True,
+            dry_run=False,
+        )
         return output
 
     def _parse_review_result(

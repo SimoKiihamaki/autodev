@@ -413,7 +413,8 @@
           },
           "description": "Recommended next steps"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "review_record": {
       "type": "object",
@@ -450,7 +451,8 @@
           },
           "description": "Findings from this review"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "acceptance_criterion": {
       "type": "object",

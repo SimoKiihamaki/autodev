@@ -610,8 +610,13 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
             from .review_round import ReviewConfig, ReviewRound
 
             print("\n=== Review Round: Validating implementation ===", flush=True)
+            # Map policy_runner display names to ReviewConfig executor keys
+            executor_key = {
+                "Codex": "codex",
+                "Claude": "claude",
+            }.get(runner_name, runner_name.lower())
             review_config = ReviewConfig(
-                executor=runner_name,
+                executor=executor_key,
                 model=ralph.review_round_model,
                 max_review_time=ralph.review_round_timeout,
             )
@@ -703,16 +708,16 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 iteration_summary.issues_found.append(
                     "Fix pass failed during this iteration"
                 )
-            # Add review round results if available
-            if review_result and review_result.overall_status not in (
-                "skipped",
-                "failed",
-            ):
+            # Add review round results if available (including failed for stats/history)
+            if review_result and review_result.overall_status != "skipped":
+                summary = review_result.summary
+                if not summary and review_result.overall_status == "failed":
+                    summary = "Review round failed; see logs for details."
                 iteration_summary.review_round = {
                     "overall_status": review_result.overall_status,
                     "tasks_reviewed": review_result.tasks_reviewed,
                     "statuses_updated": len(review_result.statuses_updated),
-                    "summary": review_result.summary,
+                    "summary": summary,
                 }
                 # Add positive insights to learnings
                 for insight in review_result.insights.get("positive", []):
