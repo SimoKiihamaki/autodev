@@ -12,8 +12,8 @@ from unittest import mock
 from auto_prd.verification_persistence import (
     VerificationPersistence,
     VerificationRun,
-    VerifierResult,
     VerificationStatus,
+    VerifierResult,
     VerifierType,
     generate_run_id,
 )
@@ -338,12 +338,15 @@ class TestIsRunFresh:
                 prd_hash="sha256:current_prd",
             )
 
-            with mock.patch(
-                "auto_prd.verification_persistence.git_head_sha",
-                return_value="current_sha",
-            ), mock.patch(
-                "auto_prd.verification_persistence.get_prd_hash",
-                return_value="sha256:current_prd",
+            with (
+                mock.patch(
+                    "auto_prd.verification_persistence.git_head_sha",
+                    return_value="current_sha",
+                ),
+                mock.patch(
+                    "auto_prd.verification_persistence.get_prd_hash",
+                    return_value="sha256:current_prd",
+                ),
             ):
                 assert persistence.is_run_fresh(run) is True
 
@@ -362,11 +365,15 @@ class TestIsRunFresh:
                 prd_hash="sha256:current_prd",
             )
 
-            with mock.patch(
-                "auto_prd.verification_persistence.git_head_sha", return_value="new_sha"
-            ), mock.patch(
-                "auto_prd.verification_persistence.get_prd_hash",
-                return_value="sha256:current_prd",
+            with (
+                mock.patch(
+                    "auto_prd.verification_persistence.git_head_sha",
+                    return_value="new_sha",
+                ),
+                mock.patch(
+                    "auto_prd.verification_persistence.get_prd_hash",
+                    return_value="sha256:current_prd",
+                ),
             ):
                 assert persistence.is_run_fresh(run) is False
 
@@ -385,12 +392,15 @@ class TestIsRunFresh:
                 prd_hash="sha256:old_prd",
             )
 
-            with mock.patch(
-                "auto_prd.verification_persistence.git_head_sha",
-                return_value="current_sha",
-            ), mock.patch(
-                "auto_prd.verification_persistence.get_prd_hash",
-                return_value="sha256:new_prd",
+            with (
+                mock.patch(
+                    "auto_prd.verification_persistence.git_head_sha",
+                    return_value="current_sha",
+                ),
+                mock.patch(
+                    "auto_prd.verification_persistence.get_prd_hash",
+                    return_value="sha256:new_prd",
+                ),
             ):
                 assert persistence.is_run_fresh(run) is False
 

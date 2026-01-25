@@ -24,16 +24,19 @@ var settingsGrid = map[string][2]int{
 	"maxiters":      {8, 3},
 	"codextimeout":  {9, 0},
 	"claudetimeout": {9, 1},
-	// Ralph settings (rows 10-12)
-	"ralphenabled":          {10, 0},
-	"ralphcontextrotate":    {10, 1},
-	"ralphmaxconsecutive":   {10, 2},
-	"ralphautoaddsigns":     {11, 0},
-	"ralphshowprogresslog":  {11, 1},
-	"ralphshowguardrails":   {11, 2},
-	"ralphguttertimeout":    {12, 0},
-	"ralphgutternoprogress": {12, 1},
-	// Security settings (rows 13-14)
+	// Ralph settings (rows 10-13)
+	"ralphenabled":           {10, 0},
+	"ralphcontextrotate":     {10, 1},
+	"ralphmaxconsecutive":    {10, 2},
+	"ralphautoaddsigns":      {11, 0},
+	"ralphshowprogresslog":   {11, 1},
+	"ralphshowguardrails":    {11, 2},
+	"ralphguttertimeout":     {12, 0},
+	"ralphgutternoprogress":  {12, 1},
+	"ralphenablereviewround": {12, 2},
+	"ralphreviewmodel":       {13, 0},
+	"ralphreviewtimeout":     {13, 1},
+	// Security settings (rows 14-15)
 	"safescriptdirs":    {13, 0},
 	"allowedpythondirs": {14, 0},
 }
@@ -61,6 +64,9 @@ func (m *model) blurAllInputs() {
 	m.inRalphShowGuardrails.Blur()
 	m.inRalphGutterTimeout.Blur()
 	m.inRalphGutterNoProgress.Blur()
+	m.inRalphEnableReviewRound.Blur()
+	m.inRalphReviewModel.Blur()
+	m.inRalphReviewTimeout.Blur()
 	// Security inputs
 	m.inSafeScriptDirs.Blur()
 	m.inAllowedPythonDirs.Blur()
@@ -121,6 +127,12 @@ func (m *model) focusInput(inputName string) {
 		m.inRalphGutterTimeout.Focus()
 	case "ralphgutternoprogress":
 		m.inRalphGutterNoProgress.Focus()
+	case "ralphenablereviewround":
+		m.inRalphEnableReviewRound.Focus()
+	case "ralphreviewmodel":
+		m.inRalphReviewModel.Focus()
+	case "ralphreviewtimeout":
+		m.inRalphReviewTimeout.Focus()
 	// Security settings
 	case "safescriptdirs":
 		m.inSafeScriptDirs.Focus()

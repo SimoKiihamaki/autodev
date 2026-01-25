@@ -9,10 +9,11 @@ import (
 
 // Boolean input fields that can be toggled with Space
 var booleanInputs = map[string]bool{
-	"ralphenabled":         true,
-	"ralphautoaddsigns":    true,
-	"ralphshowprogresslog": true,
-	"ralphshowguardrails":  true,
+	"ralphenabled":           true,
+	"ralphautoaddsigns":      true,
+	"ralphshowprogresslog":   true,
+	"ralphshowguardrails":    true,
+	"ralphenablereviewround": true,
 }
 
 func isBooleanInput(name string) bool {
@@ -111,6 +112,18 @@ var inputFieldAccessors = map[string]struct {
 	"ralphgutternoprogress": {
 		get: func(m *model) *textinput.Model { return &m.inRalphGutterNoProgress },
 		set: func(m *model, v string) { m.inRalphGutterNoProgress.SetValue(v) },
+	},
+	"ralphenablereviewround": {
+		get: func(m *model) *textinput.Model { return &m.inRalphEnableReviewRound },
+		set: func(m *model, v string) { m.inRalphEnableReviewRound.SetValue(v) },
+	},
+	"ralphreviewmodel": {
+		get: func(m *model) *textinput.Model { return &m.inRalphReviewModel },
+		set: func(m *model, v string) { m.inRalphReviewModel.SetValue(v) },
+	},
+	"ralphreviewtimeout": {
+		get: func(m *model) *textinput.Model { return &m.inRalphReviewTimeout },
+		set: func(m *model, v string) { m.inRalphReviewTimeout.SetValue(v) },
 	},
 	"safescriptdirs": {
 		get: func(m *model) *textinput.Model { return &m.inSafeScriptDirs },

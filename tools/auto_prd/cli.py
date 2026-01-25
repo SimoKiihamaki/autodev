@@ -323,7 +323,7 @@ def main() -> None:
         from .git_ops import git_root
         from .policy import policy_runner
         from .readiness_loop import run_ralph_wiggum_loop
-        from .tracker_generator import generate_tracker, get_tracker_path, load_tracker
+        from .tracker_generator import generate_tracker, load_tracker
 
         execution_args = copy(args)
         execution_args.ralph_mode = False
@@ -336,7 +336,6 @@ def main() -> None:
             repo_root = Path(args.repo).resolve() if args.repo else git_root()
 
             # Ensure tracker exists before starting Ralph loop
-            tracker_path = get_tracker_path(repo_root)
             existing_tracker = load_tracker(repo_root)
             if existing_tracker is None:
                 # Generate tracker from PRD

@@ -53,6 +53,9 @@ class ReadinessStats:
     guardrail_signs_added: int = 0
     features_verified: int = 0
     features_total: int = 0
+    review_round_passed: int = 0
+    review_round_failed: int = 0
+    review_round_total: int = 0
 
 
 class ReadinessOrchestrator:
@@ -245,6 +248,9 @@ class ReadinessOrchestrator:
             )
             print(f"   Scope reviews: {self.stats.scope_reviews}")
             print(f"   Verification runs: {self.stats.verification_runs}")
+            print(
+                f"   Review rounds: {self.stats.review_round_passed} passed, {self.stats.review_round_failed} failed"
+            )
             print(f"   Guardrail signs added: {self.stats.guardrail_signs_added}")
         else:
             self.state = ReadinessState.EVALUATING
@@ -471,6 +477,7 @@ class ReadinessOrchestrator:
             f"Iterations: {self.stats.iteration}, "
             f"Scope reviews: {self.stats.scope_reviews}, "
             f"Verification runs: {self.stats.verification_runs}, "
+            f"Review rounds: {self.stats.review_round_total}, "
             f"Guardrail signs: {self.stats.guardrail_signs_added}"
         )
         return f"{stall_text}\n\n{stats_summary}"
@@ -587,6 +594,7 @@ def run_ralph_wiggum_loop(
     print(f"Total iterations: {result['stats']['iteration']}")
     print(f"Scope reviews: {result['stats']['scope_reviews']}")
     print(f"Verification runs: {result['stats']['verification_runs']}")
+    print(f"Review rounds: {result['stats']['review_round_total']}")
     print(f"Guardrail signs added: {result['stats']['guardrail_signs_added']}")
     print("=" * 70)
 

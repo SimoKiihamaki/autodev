@@ -21,6 +21,11 @@ class RalphSettings:
     gutter_output_timeout_sec: int = 180
     gutter_no_progress_iters: int = 3
 
+    # Review round settings
+    enable_review_round: bool = True
+    review_round_model: str = "claude-sonnet-4-5-20250514"
+    review_round_timeout: int = 300
+
     def normalized(self) -> RalphSettings:
         """Return a normalized copy with safe minimums."""
         return RalphSettings(
@@ -32,6 +37,11 @@ class RalphSettings:
             show_guardrails=bool(self.show_guardrails),
             gutter_output_timeout_sec=max(0, int(self.gutter_output_timeout_sec or 0)),
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
+            enable_review_round=bool(self.enable_review_round),
+            review_round_model=str(
+                self.review_round_model or "claude-sonnet-4-5-20250514"
+            ),
+            review_round_timeout=max(30, int(self.review_round_timeout or 300)),
         )
 
     def stall_thresholds(self) -> tuple[float, int] | None:

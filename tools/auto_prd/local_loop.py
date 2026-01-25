@@ -604,6 +604,57 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 print("No CodeRabbit findings detected in this pass.")
                 print(f"CodeRabbit no-findings streak: {no_findings_streak}")
 
+        # Review Round: Run after fix pass if enabled and changes detected
+        review_result = None
+        if ralph.enabled and ralph.enable_review_round and repo_changed_before_review:
+            from .review_round import ReviewConfig, ReviewRound
+
+            print("\n=== Review Round: Validating implementation ===", flush=True)
+            review_config = ReviewConfig(
+                executor=runner_name,
+                model=ralph.review_round_model,
+                max_review_time=ralph.review_round_timeout,
+            )
+            review_round = ReviewRound(repo_root, review_config)
+
+            review_result = review_round.execute_review(
+                iteration=i,
+                tracker=tracker,
+                base_branch=base_branch,
+            )
+
+            if review_result.overall_status == "skipped":
+                print("  Review skipped: no git changes detected")
+            elif review_result.overall_status == "failed":
+                print(f"  ⚠️  Review failed: {review_result.summary}")
+            else:
+                print(f"  Review result: {review_result.overall_status}")
+                print(f"  Tasks reviewed: {review_result.tasks_reviewed}")
+                print(f"  Statuses updated: {len(review_result.statuses_updated)}")
+
+                # Handle status reverts - adjust tasks_left if tasks were reverted
+                if review_result.statuses_updated:
+                    reverted_count = sum(
+                        1
+                        for s in review_result.statuses_updated.values()
+                        if s in ("pending", "in_progress")
+                    )
+                    if reverted_count > 0:
+                        # Adjust tasks_left to reflect reverted tasks
+                        if tasks_left is not None:
+                            tasks_left += reverted_count
+                            print(
+                                f"  ⚠️  {reverted_count} tasks reverted to incomplete status"
+                            )
+
+            # Reload tracker after review updates to ensure fresh state
+            tracker = load_tracker(repo_root)
+
+            # Reload git state after potential tracker changes
+            if not dry_run:
+                status_after_iteration = git_status_snapshot(repo_root)
+                head_after_iteration = git_head_sha(repo_root)
+
         repo_changed_after_actions = (
             status_after_iteration != before_status
             or head_after_iteration != before_head
@@ -652,6 +703,23 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 iteration_summary.issues_found.append(
                     "Fix pass failed during this iteration"
                 )
+            # Add review round results if available
+            if review_result and review_result.overall_status not in (
+                "skipped",
+                "failed",
+            ):
+                iteration_summary.review_round = {
+                    "overall_status": review_result.overall_status,
+                    "tasks_reviewed": review_result.tasks_reviewed,
+                    "statuses_updated": len(review_result.statuses_updated),
+                    "summary": review_result.summary,
+                }
+                # Add positive insights to learnings
+                for insight in review_result.insights.get("positive", []):
+                    iteration_summary.learnings.append(f"Review: {insight}")
+                # Add negative insights to issues
+                for insight in review_result.insights.get("negative", []):
+                    iteration_summary.issues_found.append(f"Review: {insight}")
 
             save_iteration_summary(
                 f"local-{sanitize_session_id(prd_path.stem)}", iteration_summary

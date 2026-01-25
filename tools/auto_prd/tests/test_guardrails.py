@@ -244,10 +244,14 @@ class TestAddSign:
             guardrails_dir.mkdir()
 
             # Mock git config and guardrails dir to avoid reading real repo
-            with mock.patch(
-                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
-            ), mock.patch(
-                "auto_prd.guardrails._get_guardrails_dir", return_value=guardrails_dir
+            with (
+                mock.patch(
+                    "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+                ),
+                mock.patch(
+                    "auto_prd.guardrails._get_guardrails_dir",
+                    return_value=guardrails_dir,
+                ),
             ):
                 add_sign(
                     name="first_sign",
@@ -441,10 +445,14 @@ class TestGetSignCount:
             guardrails_dir.mkdir()
 
             # Mock git config and guardrails dir to avoid reading real repo
-            with mock.patch(
-                "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
-            ), mock.patch(
-                "auto_prd.guardrails._get_guardrails_dir", return_value=guardrails_dir
+            with (
+                mock.patch(
+                    "auto_prd.git_ops.parse_owner_repo_from_git", return_value=None
+                ),
+                mock.patch(
+                    "auto_prd.guardrails._get_guardrails_dir",
+                    return_value=guardrails_dir,
+                ),
             ):
                 add_sign(
                     name="first_sign",

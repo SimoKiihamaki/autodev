@@ -928,9 +928,7 @@ After pushing, print: REVIEW_FIXES_PUSHED=YES
                     return False
                 sleep_with_jitter(float(poll))
                 continue
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
+            except Exception as exc:  # noqa: BLE001 - best-effort resilience; specific types handled above
                 # NOTE: KeyError is intentionally handled here (not in _PROGRAMMING_ERROR_TYPES)
                 # because it can indicate both programming bugs and transient API issues
                 # (e.g., malformed JSON responses). See the _PROGRAMMING_ERROR_TYPES definition

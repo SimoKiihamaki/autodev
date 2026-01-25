@@ -28,7 +28,7 @@ from .command import CalledProcessError, TimeoutExpired
 from .logging_utils import logger
 from .tracker_correction import apply_auto_corrections
 
-TRACKER_VERSION = "2.0.0"
+TRACKER_VERSION = "2.1.0"
 TRACKER_DIR = ".aprd"
 TRACKER_FILE = "tracker.json"
 MAX_TRACKER_SIZE = 1 * 1024 * 1024  # 1 MB maximum tracker file size
@@ -117,7 +117,7 @@ Existing Structure:
 Return ONLY valid JSON matching this structure (no markdown, no explanation):
 
 {{
-  "version": "2.0.0",
+  "version": "2.1.0",
   "metadata": {{
     "prd_source": "<path>",
     "prd_hash": "<will be filled>",
@@ -495,6 +495,21 @@ def get_file_structure(repo_root: Path, max_depth: int = 3) -> str:
     return "\n".join(lines[:100])  # Limit total lines
 
 
+def _is_compatible_version(version: str) -> bool:
+    """Check if tracker version is compatible with current implementation.
+
+    Args:
+        version: Version string to check
+
+    Returns:
+        True if version is compatible (2.0.x or 2.1.x)
+    """
+    if not version:
+        return False
+    # Accept 2.0.x or 2.1.x
+    return bool(re.match(r"^2\.(0\.[0-9]|1\.[0-9])$", version))
+
+
 def _validate_basic_structure(tracker: dict[str, Any]) -> list[str]:
     """Perform basic structural validation without jsonschema.
 
@@ -506,11 +521,10 @@ def _validate_basic_structure(tracker: dict[str, Any]) -> list[str]:
     """
     errors: list[str] = []
 
-    # Check version
-    if tracker.get("version") != TRACKER_VERSION:
-        errors.append(
-            f"Invalid version: expected {TRACKER_VERSION}, got {tracker.get('version')}"
-        )
+    # Check version - accept 2.0.x or 2.1.x
+    version = tracker.get("version", "")
+    if not _is_compatible_version(version):
+        errors.append(f"Invalid version: expected 2.0.x or 2.1.x, got {version}")
 
     # Check metadata
     metadata = tracker.get("metadata")

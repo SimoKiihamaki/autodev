@@ -10,18 +10,24 @@ from .test_helpers import safe_import
 
 # Import the context module and classes we need to test
 context_module = safe_import("tools.auto_prd.context", "auto_prd.context")
-SessionMemory = safe_import("tools.auto_prd.context", "auto_prd.context", "SessionMemory")
+SessionMemory = safe_import(
+    "tools.auto_prd.context", "auto_prd.context", "SessionMemory"
+)
 LoadSessionResult = safe_import(
     "tools.auto_prd.context", "auto_prd.context", "LoadSessionResult"
 )
 LoadFailureReason = safe_import(
     "tools.auto_prd.context", "auto_prd.context", "LoadFailureReason"
 )
-StallDetector = safe_import("tools.auto_prd.context", "auto_prd.context", "StallDetector")
+StallDetector = safe_import(
+    "tools.auto_prd.context", "auto_prd.context", "StallDetector"
+)
 build_phase_context = safe_import(
     "tools.auto_prd.context", "auto_prd.context", "build_phase_context"
 )
-compact_context = safe_import("tools.auto_prd.context", "auto_prd.context", "compact_context")
+compact_context = safe_import(
+    "tools.auto_prd.context", "auto_prd.context", "compact_context"
+)
 save_session_memory = safe_import(
     "tools.auto_prd.context", "auto_prd.context", "save_session_memory"
 )

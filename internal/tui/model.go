@@ -149,14 +149,17 @@ type model struct {
 	inClaudeTimeout textinput.Model
 
 	// Ralph settings inputs
-	inRalphEnabled          textinput.Model
-	inRalphContextRotate    textinput.Model
-	inRalphMaxConsecutive   textinput.Model
-	inRalphAutoAddSigns     textinput.Model
-	inRalphShowProgressLog  textinput.Model
-	inRalphShowGuardrails   textinput.Model
-	inRalphGutterTimeout    textinput.Model
-	inRalphGutterNoProgress textinput.Model
+	inRalphEnabled           textinput.Model
+	inRalphContextRotate     textinput.Model
+	inRalphMaxConsecutive    textinput.Model
+	inRalphAutoAddSigns      textinput.Model
+	inRalphShowProgressLog   textinput.Model
+	inRalphShowGuardrails    textinput.Model
+	inRalphGutterTimeout     textinput.Model
+	inRalphGutterNoProgress  textinput.Model
+	inRalphEnableReviewRound textinput.Model
+	inRalphReviewModel       textinput.Model
+	inRalphReviewTimeout     textinput.Model
 
 	// Security settings inputs
 	inSafeScriptDirs    textinput.Model
@@ -259,6 +262,9 @@ var settingsInputNames = []string{
 	"ralphshowguardrails",
 	"ralphguttertimeout",
 	"ralphgutternoprogress",
+	"ralphenablereviewround",
+	"ralphreviewmodel",
+	"ralphreviewtimeout",
 	// Security settings
 	"safescriptdirs",
 	"allowedpythondirs",
@@ -438,6 +444,9 @@ func (m *model) initSettingsInputs() {
 	m.inRalphShowGuardrails = mkInput("Show guardrails (true/false)", formatBool(cfg.Ralph.ShowGuardrails), 6)
 	m.inRalphGutterTimeout = mkInput("Gutter timeout sec", formatIntPtr(cfg.Ralph.GutterOutputTimeoutSec), 6)
 	m.inRalphGutterNoProgress = mkInput("Gutter no progress iters", formatIntPtr(cfg.Ralph.GutterNoProgressIters), 6)
+	m.inRalphEnableReviewRound = mkInput("Enable review round (true/false)", formatBool(cfg.Ralph.EnableReviewRound), 6)
+	m.inRalphReviewModel = mkInput("Review round model", cfg.Ralph.ReviewRoundModel, 40)
+	m.inRalphReviewTimeout = mkInput("Review round timeout sec", formatIntPtr(cfg.Ralph.ReviewRoundTimeout), 6)
 
 	// Security settings inputs
 	m.inSafeScriptDirs = mkInput("Allowed script dirs (path-separated)", joinPaths(cfg.SafeScriptDirs), 80)
@@ -466,14 +475,17 @@ func (m *model) initSettingsInputs() {
 		"claudetimeout": &m.inClaudeTimeout,
 
 		// Ralph settings
-		"ralphenabled":          &m.inRalphEnabled,
-		"ralphcontextrotate":    &m.inRalphContextRotate,
-		"ralphmaxconsecutive":   &m.inRalphMaxConsecutive,
-		"ralphautoaddsigns":     &m.inRalphAutoAddSigns,
-		"ralphshowprogresslog":  &m.inRalphShowProgressLog,
-		"ralphshowguardrails":   &m.inRalphShowGuardrails,
-		"ralphguttertimeout":    &m.inRalphGutterTimeout,
-		"ralphgutternoprogress": &m.inRalphGutterNoProgress,
+		"ralphenabled":           &m.inRalphEnabled,
+		"ralphcontextrotate":     &m.inRalphContextRotate,
+		"ralphmaxconsecutive":    &m.inRalphMaxConsecutive,
+		"ralphautoaddsigns":      &m.inRalphAutoAddSigns,
+		"ralphshowprogresslog":   &m.inRalphShowProgressLog,
+		"ralphshowguardrails":    &m.inRalphShowGuardrails,
+		"ralphguttertimeout":     &m.inRalphGutterTimeout,
+		"ralphgutternoprogress":  &m.inRalphGutterNoProgress,
+		"ralphenablereviewround": &m.inRalphEnableReviewRound,
+		"ralphreviewmodel":       &m.inRalphReviewModel,
+		"ralphreviewtimeout":     &m.inRalphReviewTimeout,
 
 		// Security settings
 		"safescriptdirs":    &m.inSafeScriptDirs,

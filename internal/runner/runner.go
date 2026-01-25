@@ -599,6 +599,10 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		config.EnvAllowUnsafeExecution,
 		config.EnvCodexTimeoutSeconds,
 		config.EnvClaudeTimeoutSeconds,
+		config.EnvRalphEnabled,
+		config.EnvRalphEnableReviewRound,
+		config.EnvRalphReviewModel,
+		config.EnvRalphReviewTimeout,
 		"CI",
 	)
 
@@ -633,6 +637,20 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 	}
 	if cfg.Timings.ClaudeTimeoutSeconds != nil && *cfg.Timings.ClaudeTimeoutSeconds > 0 {
 		executorVars[config.EnvClaudeTimeoutSeconds] = fmt.Sprint(*cfg.Timings.ClaudeTimeoutSeconds)
+	}
+
+	// Set Ralph environment variables
+	if cfg.Ralph.Enabled {
+		executorVars[config.EnvRalphEnabled] = "1"
+		if cfg.Ralph.EnableReviewRound {
+			executorVars[config.EnvRalphEnableReviewRound] = "1"
+		}
+		if cfg.Ralph.ReviewRoundModel != "" {
+			executorVars[config.EnvRalphReviewModel] = cfg.Ralph.ReviewRoundModel
+		}
+		if cfg.Ralph.ReviewRoundTimeout != nil && *cfg.Ralph.ReviewRoundTimeout > 0 {
+			executorVars[config.EnvRalphReviewTimeout] = fmt.Sprint(*cfg.Ralph.ReviewRoundTimeout)
+		}
 	}
 
 	env = setExecutorEnv(env, executorVars)

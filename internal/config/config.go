@@ -15,15 +15,19 @@ import (
 
 // Environment variable constants for executor configuration
 const (
-	EnvExecutorPolicy       = "AUTO_PRD_EXECUTOR_POLICY"
-	EnvExecutorImplement    = "AUTO_PRD_EXECUTOR_IMPLEMENT"
-	EnvExecutorFix          = "AUTO_PRD_EXECUTOR_FIX"
-	EnvExecutorPR           = "AUTO_PRD_EXECUTOR_PR"
-	EnvExecutorReviewFix    = "AUTO_PRD_EXECUTOR_REVIEW_FIX"
-	EnvAllowUnsafeExecution = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
-	EnvCodexTimeoutSeconds  = "AUTO_PRD_CODEX_TIMEOUT_SECONDS"
-	EnvClaudeTimeoutSeconds = "AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"
-	EnvStrict               = "AUTO_PRD_STRICT"
+	EnvExecutorPolicy         = "AUTO_PRD_EXECUTOR_POLICY"
+	EnvExecutorImplement      = "AUTO_PRD_EXECUTOR_IMPLEMENT"
+	EnvExecutorFix            = "AUTO_PRD_EXECUTOR_FIX"
+	EnvExecutorPR             = "AUTO_PRD_EXECUTOR_PR"
+	EnvExecutorReviewFix      = "AUTO_PRD_EXECUTOR_REVIEW_FIX"
+	EnvAllowUnsafeExecution   = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
+	EnvCodexTimeoutSeconds    = "AUTO_PRD_CODEX_TIMEOUT_SECONDS"
+	EnvClaudeTimeoutSeconds   = "AUTO_PRD_CLAUDE_TIMEOUT_SECONDS"
+	EnvStrict                 = "AUTO_PRD_STRICT"
+	EnvRalphEnabled           = "AUTO_PRD_RALPH_ENABLED"
+	EnvRalphEnableReviewRound = "AUTO_PRD_RALPH_ENABLE_REVIEW_ROUND"
+	EnvRalphReviewModel       = "AUTO_PRD_RALPH_REVIEW_MODEL"
+	EnvRalphReviewTimeout     = "AUTO_PRD_RALPH_REVIEW_TIMEOUT"
 )
 
 // Default configuration values
@@ -96,14 +100,17 @@ type Phases struct {
 // desired values, or they will default to false. This is a known limitation of using
 // non-pointer booleans in YAML config parsing.
 type Ralph struct {
-	Enabled                bool `yaml:"enabled"`                   // Enable all Ralph features
-	ContextRotateEvery     *int `yaml:"context_rotate_every"`      // Rotate context every N iterations (0 = disabled)
-	MaxConsecutiveFailures *int `yaml:"max_consecutive_failures"`  // Gutter detection threshold (default: 3)
-	AutoAddSigns           bool `yaml:"auto_add_signs"`            // Automatically add signs on failures
-	ShowProgressLog        bool `yaml:"show_progress_log"`         // Print progress summary at end
-	ShowGuardrails         bool `yaml:"show_guardrails"`           // Show active guardrails on startup
-	GutterOutputTimeoutSec *int `yaml:"gutter_output_timeout_sec"` // Seconds without output before stall (default: 180)
-	GutterNoProgressIters  *int `yaml:"gutter_no_progress_iters"`  // Iterations without progress before stall (default: 3)
+	Enabled                bool   `yaml:"enabled"`                   // Enable all Ralph features
+	ContextRotateEvery     *int   `yaml:"context_rotate_every"`      // Rotate context every N iterations (0 = disabled)
+	MaxConsecutiveFailures *int   `yaml:"max_consecutive_failures"`  // Gutter detection threshold (default: 3)
+	AutoAddSigns           bool   `yaml:"auto_add_signs"`            // Automatically add signs on failures
+	ShowProgressLog        bool   `yaml:"show_progress_log"`         // Print progress summary at end
+	ShowGuardrails         bool   `yaml:"show_guardrails"`           // Show active guardrails on startup
+	GutterOutputTimeoutSec *int   `yaml:"gutter_output_timeout_sec"` // Seconds without output before stall (default: 180)
+	GutterNoProgressIters  *int   `yaml:"gutter_no_progress_iters"`  // Iterations without progress before stall (default: 3)
+	EnableReviewRound      bool   `yaml:"enable_review_round"`       // Enable review round after implementation
+	ReviewRoundModel       string `yaml:"review_round_model"`        // Model to use for review round
+	ReviewRoundTimeout     *int   `yaml:"review_round_timeout"`      // Review round timeout in seconds (default: 300)
 }
 
 type Config struct {
@@ -167,7 +174,7 @@ func Defaults() Config {
 		PhaseExecutors: PhaseExec{},
 		RunPhases:      Phases{Local: true, PR: true, ReviewFix: true},
 		Ralph: Ralph{
-			Enabled:                false,
+			Enabled:                false,       // Disabled by default
 			ContextRotateEvery:     intPtr(0),   // 0 = disabled
 			MaxConsecutiveFailures: intPtr(3),   // Default gutter threshold
 			AutoAddSigns:           true,        // Auto-add signs on failures
@@ -175,6 +182,9 @@ func Defaults() Config {
 			ShowGuardrails:         false,       // Don't show guardrails by default
 			GutterOutputTimeoutSec: intPtr(180), // 3 minutes default
 			GutterNoProgressIters:  intPtr(3),   // 3 iterations default
+			EnableReviewRound:      true,        // Enable review round by default when Ralph is enabled
+			ReviewRoundModel:       "claude-sonnet-4-5-20250514",
+			ReviewRoundTimeout:     intPtr(300), // 5 minutes default
 		},
 		AllowedPythonDirs: []string{},
 		SafeScriptDirs:    []string{}, // Whitelisted directories for automation scripts
@@ -397,7 +407,8 @@ func LoadWithWarnings() LoadResult {
 	ralphAllPointersNil := c.Ralph.ContextRotateEvery == nil &&
 		c.Ralph.MaxConsecutiveFailures == nil &&
 		c.Ralph.GutterOutputTimeoutSec == nil &&
-		c.Ralph.GutterNoProgressIters == nil
+		c.Ralph.GutterNoProgressIters == nil &&
+		c.Ralph.ReviewRoundTimeout == nil
 
 	if c.Ralph.ContextRotateEvery == nil {
 		c.Ralph.ContextRotateEvery = intPtr(*defaults.Ralph.ContextRotateEvery)
@@ -411,6 +422,14 @@ func LoadWithWarnings() LoadResult {
 	if c.Ralph.GutterNoProgressIters == nil {
 		c.Ralph.GutterNoProgressIters = intPtr(*defaults.Ralph.GutterNoProgressIters)
 	}
+	if c.Ralph.ReviewRoundTimeout == nil {
+		c.Ralph.ReviewRoundTimeout = intPtr(*defaults.Ralph.ReviewRoundTimeout)
+	}
+
+	// Apply defaults for string fields
+	if c.Ralph.ReviewRoundModel == "" {
+		c.Ralph.ReviewRoundModel = defaults.Ralph.ReviewRoundModel
+	}
 
 	// Apply Ralph config defaults for boolean fields only when the entire Ralph section is absent
 	// (all pointer fields were nil). This prevents overwriting user-specified boolean values.
@@ -419,6 +438,7 @@ func LoadWithWarnings() LoadResult {
 		c.Ralph.AutoAddSigns = defaults.Ralph.AutoAddSigns
 		c.Ralph.ShowProgressLog = defaults.Ralph.ShowProgressLog
 		c.Ralph.ShowGuardrails = defaults.Ralph.ShowGuardrails
+		c.Ralph.EnableReviewRound = defaults.Ralph.EnableReviewRound
 	}
 
 	// Initialize slices/maps if nil
@@ -570,6 +590,9 @@ func (c Config) Clone() Config {
 	if c.Ralph.GutterNoProgressIters != nil {
 		copyCfg.Ralph.GutterNoProgressIters = intPtr(*c.Ralph.GutterNoProgressIters)
 	}
+	if c.Ralph.ReviewRoundTimeout != nil {
+		copyCfg.Ralph.ReviewRoundTimeout = intPtr(*c.Ralph.ReviewRoundTimeout)
+	}
 
 	if c.PRDs != nil {
 		clone := make(map[string]PRDMeta, len(c.PRDs))
@@ -640,14 +663,20 @@ func (c Config) Equal(other Config) bool {
 	if !equalIntPointers(c.Ralph.ContextRotateEvery, other.Ralph.ContextRotateEvery) ||
 		!equalIntPointers(c.Ralph.MaxConsecutiveFailures, other.Ralph.MaxConsecutiveFailures) ||
 		!equalIntPointers(c.Ralph.GutterOutputTimeoutSec, other.Ralph.GutterOutputTimeoutSec) ||
-		!equalIntPointers(c.Ralph.GutterNoProgressIters, other.Ralph.GutterNoProgressIters) {
+		!equalIntPointers(c.Ralph.GutterNoProgressIters, other.Ralph.GutterNoProgressIters) ||
+		!equalIntPointers(c.Ralph.ReviewRoundTimeout, other.Ralph.ReviewRoundTimeout) {
 		return false
 	}
 	// Compare Ralph boolean fields
 	if c.Ralph.Enabled != other.Ralph.Enabled ||
 		c.Ralph.AutoAddSigns != other.Ralph.AutoAddSigns ||
 		c.Ralph.ShowProgressLog != other.Ralph.ShowProgressLog ||
-		c.Ralph.ShowGuardrails != other.Ralph.ShowGuardrails {
+		c.Ralph.ShowGuardrails != other.Ralph.ShowGuardrails ||
+		c.Ralph.EnableReviewRound != other.Ralph.EnableReviewRound {
+		return false
+	}
+	// Compare Ralph string fields
+	if c.Ralph.ReviewRoundModel != other.Ralph.ReviewRoundModel {
 		return false
 	}
 	if c.PhaseExecutors != other.PhaseExecutors {
