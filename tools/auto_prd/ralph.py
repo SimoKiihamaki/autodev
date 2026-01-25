@@ -53,13 +53,20 @@ class RalphSettings:
                 return False
             return default
 
+        # Safe parse for timeout to handle malformed values gracefully
+        timeout_str = os.environ.get(ENV_RALPH_REVIEW_TIMEOUT, "300")
+        try:
+            timeout = int(timeout_str)
+        except (TypeError, ValueError):
+            timeout = 300
+
         return cls(
             enabled=_bool_env(ENV_RALPH_ENABLED),
             enable_review_round=_bool_env(ENV_RALPH_ENABLE_REVIEW_ROUND, default=True),
             review_round_model=os.environ.get(
                 ENV_RALPH_REVIEW_MODEL, DEFAULT_REVIEW_MODEL
             ),
-            review_round_timeout=int(os.environ.get(ENV_RALPH_REVIEW_TIMEOUT, "300")),
+            review_round_timeout=timeout,
         )
 
     def normalized(self) -> RalphSettings:

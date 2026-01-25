@@ -119,7 +119,8 @@
           },
           "description": "Recurring issues identified across review rounds"
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

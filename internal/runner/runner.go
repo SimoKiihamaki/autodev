@@ -600,7 +600,9 @@ func BuildArgs(input BuildArgsInput) (Args, error) {
 		config.EnvCodexTimeoutSeconds,
 		config.EnvClaudeTimeoutSeconds,
 		config.EnvRalphEnabled,
-		// NOTE: AUTO_PRD_RALPH_* review-round env vars intentionally omitted; see comments below.
+		config.EnvRalphEnableReviewRound,
+		config.EnvRalphReviewModel,
+		config.EnvRalphReviewTimeout,
 		"CI",
 	)
 

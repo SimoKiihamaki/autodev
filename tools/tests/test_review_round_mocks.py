@@ -49,7 +49,7 @@ class TestReviewConfig:
         config = ReviewConfig()
         assert config.enabled is True
         assert config.executor == "claude"
-        assert config.model == "claude-sonnet-4-20250514"
+        assert config.model == "claude-sonnet-4-5-20250514"
         assert config.max_review_time == 300
 
     def test_custom_values(self) -> None:

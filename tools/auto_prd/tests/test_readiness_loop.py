@@ -230,7 +230,7 @@ COLLECT_REVIEW_STATS_CASES = [
     # Case 9: ValueError handling (invalid session_id)
     {
         "name": "value_error_handling",
-        "progress_files": ["../escape.jsonl"],
+        "progress_files": ["escape..jsonl"],
         "history_return": _make_mock_history([]),
         "expected_total": 0,
         "expected_passed": 0,

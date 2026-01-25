@@ -362,6 +362,11 @@ class ReviewRound:
                 "Codex executor selected for review round, but Codex does not "
                 "support safe read-only execution; falling back to Claude."
             )
+            # Since we're falling back to Claude, update the configured executor so that
+            # any persisted metadata (e.g., ReviewResult.reviewer) reflects the actual
+            # reviewer used rather than the original Codex configuration.
+            self.config.executor = "claude"
+            executor = "claude"
             # Clear the model to use Claude's default model, since a configured
             # Codex model (e.g., gpt-5-codex) will fail when passed to Claude.
             model = None
@@ -539,30 +544,29 @@ class ReviewRound:
                             new_status,
                         )
 
-            # Add review history to feature if updated
-            if feature_updated:
-                if "review_history" not in feature:
-                    feature["review_history"] = []
+            # Add review history to feature (even if no task statuses changed)
+            # This ensures successful reviews that confirm statuses (or only add insights)
+            # are still recorded in feature-level history.
+            if "review_history" not in feature:
+                feature["review_history"] = []
 
-                feature["review_history"].append(
-                    {
-                        "iteration": result.iteration,
-                        "reviewer": result.reviewer,
-                        "overall_assessment": result.overall_status,
-                        "tasks_reviewed": result.tasks_reviewed,
-                        "tasks_confirmed": sum(
-                            1
-                            for s in result.statuses_updated.values()
-                            if s == "completed"
-                        ),
-                        "tasks_reverted": sum(
-                            1
-                            for s in result.statuses_updated.values()
-                            if s in ("pending", "in_progress")
-                        ),
-                        "findings": result.insights.get("negative", [])[:3],
-                    }
-                )
+            feature["review_history"].append(
+                {
+                    "iteration": result.iteration,
+                    "reviewer": result.reviewer,
+                    "overall_assessment": result.overall_status,
+                    "tasks_reviewed": result.tasks_reviewed,
+                    "tasks_confirmed": sum(
+                        1 for s in result.statuses_updated.values() if s == "completed"
+                    ),
+                    "tasks_reverted": sum(
+                        1
+                        for s in result.statuses_updated.values()
+                        if s in ("pending", "in_progress")
+                    ),
+                    "findings": result.insights.get("negative", [])[:3],
+                }
+            )
 
         # Add top-level review insights
         if "review_insights" not in tracker:
