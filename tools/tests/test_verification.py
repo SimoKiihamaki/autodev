@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from auto_prd.command import CommandResult
 from auto_prd.verification import (
     QualityGateResult,
     TestResult,
@@ -217,7 +218,9 @@ class TestVerificationProtocol:
     ) -> None:
         """Test that verify_feature runs quality gates."""
         # Mock successful command execution
-        mock_run_cmd.return_value = ("Success", "", 0)
+        mock_run_cmd.return_value = CommandResult(
+            stdout="Success", stderr="", exit_code=0
+        )
 
         protocol = VerificationProtocol(repo_root=temp_repo, timeout_seconds=10)
         result, _ = protocol.verify_feature(sample_feature)

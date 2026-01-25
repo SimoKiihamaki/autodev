@@ -19,7 +19,7 @@
       "description": "Create the review_round.py module with ReviewConfig, ReviewResult, and ReviewRound classes to orchestrate independent review of implementation rounds",
       "priority": "critical",
       "complexity": "L",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "goals": {
         "primary": "Create a self-contained review module that can validate implementation work against tracker requirements",
@@ -101,43 +101,43 @@
         "unit_tests": [
           {
             "description": "Test ReviewConfig dataclass initialization with default and custom values",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test ReviewResult dataclass initialization and field validation",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test ReviewRound.execute_review with mocked git diff and agent response",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test build_review_prompt generates expected template structure",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test parse_review_result with various JSON formats (pure, markdown-wrapped, with prefix text)",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test apply_review_updates updates task statuses correctly",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test apply_review_updates adds review_insights to task objects",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test apply_review_updates adds review_history to feature objects",
-            "file_path": "tests/test_review_round.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           }
         ],
         "integration_tests": [],
@@ -155,7 +155,7 @@
       "files": {
         "to_create": [
           "tools/auto_prd/review_round.py",
-          "tests/test_review_round.py"
+          "tools/tests/test_review_round_mocks.py"
         ],
         "to_modify": []
       },
@@ -168,7 +168,7 @@
       "description": "Update tracker schema version to 2.1.0 and add review_insights fields to tasks, features, and top-level structure",
       "priority": "critical",
       "complexity": "M",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "F001"
       ],
@@ -253,23 +253,23 @@
         "unit_tests": [
           {
             "description": "Test tracker version 2.1.0 validation accepts valid format",
-            "file_path": "tests/test_tracker_schema.py",
-            "status": "pending"
+            "file_path": "tools/auto_prd/tests/test_tracker_generator.py",
+            "status": "completed"
           },
           {
             "description": "Test review_insights field validation on task objects",
-            "file_path": "tests/test_tracker_schema.py",
-            "status": "pending"
+            "file_path": "tools/auto_prd/tests/test_tracker_generator.py",
+            "status": "completed"
           },
           {
             "description": "Test review_history field validation on feature objects",
-            "file_path": "tests/test_tracker_schema.py",
-            "status": "pending"
+            "file_path": "tools/auto_prd/tests/test_tracker_generator.py",
+            "status": "completed"
           },
           {
             "description": "Test top-level review_insights validation",
-            "file_path": "tests/test_tracker_schema.py",
-            "status": "pending"
+            "file_path": "tools/auto_prd/tests/test_tracker_generator.py",
+            "status": "completed"
           }
         ],
         "integration_tests": [
@@ -279,7 +279,7 @@
               "tracker_loader",
               "review_round"
             ],
-            "status": "pending"
+            "status": "completed"
           }
         ],
         "e2e_tests": []
@@ -310,7 +310,7 @@
       "description": "Integrate review round into local_loop.py after fix pass completion with configuration and status handling",
       "priority": "critical",
       "complexity": "M",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "F001",
         "F002"
@@ -402,13 +402,13 @@
         "unit_tests": [
           {
             "description": "Test status revert calculation adds correct amount to tasks_left",
-            "file_path": "tests/test_local_loop_review.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           },
           {
             "description": "Test iteration summary includes review results when review runs",
-            "file_path": "tests/test_local_loop_review.py",
-            "status": "pending"
+            "file_path": "tools/tests/test_review_round_mocks.py",
+            "status": "completed"
           }
         ],
         "integration_tests": [
@@ -419,7 +419,7 @@
               "review_round",
               "tracker"
             ],
-            "status": "pending"
+            "status": "completed"
           },
           {
             "description": "Test review round skip when no git changes detected",
@@ -427,7 +427,7 @@
               "local_loop",
               "review_round"
             ],
-            "status": "pending"
+            "status": "completed"
           }
         ],
         "e2e_tests": []
@@ -449,7 +449,7 @@
       },
       "files": {
         "to_create": [
-          "tests/test_local_loop_review.py"
+          "tools/tests/test_review_round_mocks.py"
         ],
         "to_modify": [
           "tools/auto_prd/ralph.py",
@@ -465,7 +465,7 @@
       "description": "Add review statistics and insights to readiness loop for outer loop context and evaluation phase",
       "priority": "medium",
       "complexity": "M",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "F003"
       ],
@@ -527,8 +527,8 @@
         "unit_tests": [
           {
             "description": "Test ReadinessStats review counter initialization and increment",
-            "file_path": "tests/test_readiness_loop.py",
-            "status": "pending"
+            "file_path": "tools/auto_prd/tests/test_readiness_loop.py",
+            "status": "completed"
           }
         ],
         "integration_tests": [
@@ -539,7 +539,7 @@
               "local_loop",
               "review_round"
             ],
-            "status": "pending"
+            "status": "completed"
           }
         ],
         "e2e_tests": []
@@ -563,7 +563,7 @@
       "description": "Add review round settings to TUI Settings and Env tabs for runtime configuration",
       "priority": "medium",
       "complexity": "M",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "goals": {
         "primary": "Expose review round configuration in TUI for interactive control of Ralph review features",
@@ -646,12 +646,12 @@
           {
             "description": "Test RalphConfig default values for new review round fields",
             "file_path": "internal/config/config_test.go",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "description": "Test YAML load/save with review round settings",
             "file_path": "internal/config/config_test.go",
-            "status": "pending"
+            "status": "completed"
           }
         ],
         "integration_tests": [],
@@ -844,7 +844,7 @@
       "files": {
         "to_create": [],
         "to_modify": [
-          "tools/tests/test_review_round.py"
+          "tools/tests/test_review_round_mocks.py"
         ]
       },
       "commits": [],
