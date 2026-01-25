@@ -197,15 +197,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--ralph-review-round-model",
         "--review-round-model",
         dest="ralph_review_round_model",
-        default="claude-sonnet-4-20250514",
-        help="Model to use for review round (default: claude-sonnet-4-20250514).",
+        default=None,
+        help="Model to use for review round (default: claude-sonnet-4-5-20250514).",
     )
     ralph.add_argument(
         "--ralph-review-round-timeout",
         "--review-round-timeout",
         dest="ralph_review_round_timeout",
         type=non_negative,
-        default=300,
+        default=None,
         help="Review round timeout in seconds (default: 300).",
     )
 

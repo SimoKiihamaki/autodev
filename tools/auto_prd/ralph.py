@@ -14,6 +14,9 @@ ENV_RALPH_ENABLE_REVIEW_ROUND = "AUTO_PRD_RALPH_ENABLE_REVIEW_ROUND"
 ENV_RALPH_REVIEW_MODEL = "AUTO_PRD_RALPH_REVIEW_MODEL"
 ENV_RALPH_REVIEW_TIMEOUT = "AUTO_PRD_RALPH_REVIEW_TIMEOUT"
 
+# Canonical default model for review rounds - must match ReviewConfig, Go config, CLI
+DEFAULT_REVIEW_MODEL = "claude-sonnet-4-5-20250514"
+
 
 @dataclass
 class RalphSettings:
@@ -30,7 +33,7 @@ class RalphSettings:
 
     # Review round settings
     enable_review_round: bool = True
-    review_round_model: str = "claude-sonnet-4-20250514"
+    review_round_model: str = DEFAULT_REVIEW_MODEL
     review_round_timeout: int = 300
 
     @classmethod
@@ -54,7 +57,7 @@ class RalphSettings:
             enabled=_bool_env(ENV_RALPH_ENABLED),
             enable_review_round=_bool_env(ENV_RALPH_ENABLE_REVIEW_ROUND, default=True),
             review_round_model=os.environ.get(
-                ENV_RALPH_REVIEW_MODEL, "claude-sonnet-4-20250514"
+                ENV_RALPH_REVIEW_MODEL, DEFAULT_REVIEW_MODEL
             ),
             review_round_timeout=int(os.environ.get(ENV_RALPH_REVIEW_TIMEOUT, "300")),
         )
@@ -71,9 +74,7 @@ class RalphSettings:
             gutter_output_timeout_sec=max(0, int(self.gutter_output_timeout_sec or 0)),
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
             enable_review_round=bool(self.enable_review_round),
-            review_round_model=str(
-                self.review_round_model or "claude-sonnet-4-20250514"
-            ),
+            review_round_model=str(self.review_round_model or DEFAULT_REVIEW_MODEL),
             review_round_timeout=max(30, int(self.review_round_timeout or 300)),
         )
 

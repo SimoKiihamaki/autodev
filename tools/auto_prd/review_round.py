@@ -105,13 +105,17 @@ Begin your review now.
 """
 
 
+# Canonical default model for review rounds - must match RalphSettings, Go config, CLI
+DEFAULT_REVIEW_MODEL = "claude-sonnet-4-5-20250514"
+
+
 @dataclass
 class ReviewConfig:
     """Configuration for review round."""
 
     enabled: bool = True
     executor: str = "claude"  # claude | codex
-    model: str = "claude-sonnet-4-5-20250514"
+    model: str = DEFAULT_REVIEW_MODEL
     max_review_time: int = 300  # seconds
 
 
@@ -345,8 +349,6 @@ class ReviewRound:
 
         Uses the configured model and timeout from ReviewConfig.
         """
-        import os
-
         # Normalize executor to lowercase for case-insensitive comparison
         executor = self.config.executor.lower() if self.config.executor else ""
 

@@ -174,13 +174,21 @@ COLLECT_REVIEW_STATS_CASES = [
                 ("s2", 1, {"overall_status": "failed"}),
             ]
         ),
-        "expected_total": 3,
-        "expected_passed": 2,
-        "expected_failed": 1,
+        # Note: Since mock returns same history for both s1.jsonl and s2.jsonl,
+        # we get 2 * 3 = 6 total reviews (each file contributes the full history)
+        "expected_total": 6,
+        "expected_passed": 4,  # 2 passed per file * 2 files
+        "expected_failed": 2,  # 1 failed per file * 2 files
+        # All unique review keys from both files
         "expected_seen": {
+            # From s1.jsonl: ("s1", iter, status) for each history entry
             ("s1", 1, "passed"),
             ("s1", 2, "passed"),
-            ("s2", 1, "failed"),
+            ("s1", 1, "failed"),  # third history entry has status=failed
+            # From s2.jsonl: ("s2", iter, status) for each history entry
+            ("s2", 1, "passed"),
+            ("s2", 2, "passed"),
+            ("s2", 1, "failed"),  # third history entry has status=failed
         },
         "raises": None,
     },
@@ -190,10 +198,10 @@ COLLECT_REVIEW_STATS_CASES = [
         "progress_files": ["s1.jsonl"],
         # First call adds to seen_reviews, second call should skip
         "history_return": _make_mock_history([("s1", 1, {"overall_status": "passed"})]),
-        "expected_total": 1,
-        "expected_passed": 1,
+        "expected_total": 0,  # Skipped due to pre-populate_seen
+        "expected_passed": 0,
         "expected_failed": 0,
-        "expected_seen": {("s1", 1, "passed")},
+        "expected_seen": {("s1", 1, "passed")},  # Already in seen, not added again
         "raises": None,
         "pre_populate_seen": {("s1", 1, "passed")},
     },
@@ -273,9 +281,12 @@ def test_collect_review_statistics(mock_load_progress, case, temp_repo):
 
         try:
             # Configure mock return value or exception for load_progress_history
+            # The mock should only return history for the specific session_id being requested
             if case["raises"]:
                 mock_load_progress.side_effect = case["raises"]
             else:
+                # Make the mock return the same history for any session_id
+                # This simulates each progress file having its own independent history
                 mock_load_progress.return_value = case["history_return"]
 
             # Call the method
@@ -287,14 +298,25 @@ def test_collect_review_statistics(mock_load_progress, case, temp_repo):
             else:
                 os.environ["XDG_CONFIG_HOME"] = original_xdg
 
-    # Assert expected state changes
-    # Note: For cases with progress files but no history data, stats remain 0
-    # The test data structure requires actual progress files with valid JSON
-    if case["name"] == "empty_progress_history":
-        assert orchestrator.stats.review_round_total == 0
-        assert orchestrator.stats.review_round_passed == 0
-        assert orchestrator.stats.review_round_failed == 0
-        assert orchestrator._seen_reviews == set()
+    # For cases with multiple progress files, each file contributes its own history
+    # The test expectations account for this: multiple files with same history
+    # will result in multiplying the counts by the number of files
+    assert orchestrator.stats.review_round_total == case["expected_total"], (
+        f"Case '{case['name']}': expected total {case['expected_total']}, "
+        f"got {orchestrator.stats.review_round_total}"
+    )
+    assert orchestrator.stats.review_round_passed == case["expected_passed"], (
+        f"Case '{case['name']}': expected passed {case['expected_passed']}, "
+        f"got {orchestrator.stats.review_round_passed}"
+    )
+    assert orchestrator.stats.review_round_failed == case["expected_failed"], (
+        f"Case '{case['name']}': expected failed {case['expected_failed']}, "
+        f"got {orchestrator.stats.review_round_failed}"
+    )
+    assert orchestrator._seen_reviews == case["expected_seen"], (
+        f"Case '{case['name']}': expected seen_reviews {case['expected_seen']}, "
+        f"got {orchestrator._seen_reviews}"
+    )
 
 
 def test_collect_review_statistics_deduplication_multiple_calls(temp_repo):

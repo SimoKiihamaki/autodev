@@ -504,7 +504,7 @@ def _is_compatible_version(version: str) -> bool:
     Returns:
         True if version is compatible (2.0.x or 2.1.x)
     """
-    if not version:
+    if not version or not isinstance(version, str):
         return False
     # Accept 2.0.x or 2.1.x (including multi-digit patch versions)
     return bool(re.match(r"^2\.(?:0|1)\.\d+$", version))
