@@ -52,7 +52,11 @@ CLI_ARG_REPLACEMENTS = {
 STDIN_MAX_BYTES = 200_000
 SAFE_STDIN_ALLOWED_CTRL = {9, 10, 13}
 SAFE_ENV_VAR = "AUTO_PRD_ALLOW_UNSAFE_EXECUTION"
-SAFE_CWD_ROOTS: set[Path] = {Path(__file__).resolve().parent}
+# Include both the tools/auto_prd directory and the repo root (2 levels up)
+# to support Ralph mode which runs from the repository root.
+_AUTO_PRD_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _AUTO_PRD_DIR.parents[1]  # tools/auto_prd -> tools -> repo_root
+SAFE_CWD_ROOTS: set[Path] = {_AUTO_PRD_DIR, _REPO_ROOT}
 # Valid phase names for the --phases CLI argument.
 # These are the authoritative phase identifiers used in CLI args and checkpoints.
 #
