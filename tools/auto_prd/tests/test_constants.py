@@ -69,6 +69,20 @@ class GetToolAllowlistTests(unittest.TestCase):
         self.assertIn("git:", bash_tool[0])
         self.assertIn("gh:", bash_tool[0])
 
+    def test_review_round_phase_returns_correct_tools(self):
+        """Test get_tool_allowlist returns correct tools for 'review_round' phase."""
+        tools = get_tool_allowlist("review_round")
+        self.assertIsInstance(tools, list)
+        self.assertIn("Read", tools)
+        self.assertIn("Glob", tools)
+        self.assertIn("Grep", tools)
+        # Should NOT have Bash (read-only phase, diff already collected)
+        bash_tool = [t for t in tools if t.startswith("Bash(")]
+        self.assertEqual(len(bash_tool), 0)
+        # Should NOT have edit/write capabilities
+        self.assertNotIn("Edit", tools)
+        self.assertNotIn("Write", tools)
+
     def test_invalid_phase_raises_value_error(self):
         """Test get_tool_allowlist raises ValueError for invalid phase names."""
         with self.assertRaises(ValueError) as ctx:
@@ -88,6 +102,7 @@ class GetToolAllowlistTests(unittest.TestCase):
         self.assertIn("fix", error_msg)
         self.assertIn("pr", error_msg)
         self.assertIn("review_fix", error_msg)
+        self.assertIn("review_round", error_msg)
 
     def test_cli_phase_local_raises_value_error(self):
         """Test that 'local' (CLI phase name) raises ValueError - must use 'implement'."""

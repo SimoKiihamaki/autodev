@@ -8,4 +8,11 @@
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
 | #119 | 8:29 PM | 🔵 | Deep codebase analysis initiated on autodev project | ~289 |
+
+### Jan 25, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #141 | 10:39 PM | 🔵 | Tracker schema contains review_insights field | ~143 |
+
 </claude-mem-context>

@@ -79,6 +79,7 @@ PHASES_WITH_COMMIT_RISK = {"local", "pr"}
 #   - "fix" (here only) - CodeRabbit fix phase, not exposed in CLI
 #   - "pr" (same) - Pull request creation phase
 #   - "review_fix" (same) - Review and fix phase
+#   - "review_round" (here only) - Review round phase (read-only analysis)
 #
 # When calling get_tool_allowlist(), use the internal names from this mapping,
 # not the CLI names. For example:
@@ -124,6 +125,14 @@ _HEADLESS_TOOL_ALLOWLISTS_INTERNAL: dict[str, tuple[str, ...]] = {
         "Read",
         "Edit",
         "Write",
+    ),
+    # Review round phase: read-only analysis of code. The diff is already collected
+    # by the Python code and provided via context, so only read tools are needed.
+    # Bash is intentionally excluded to prevent accidental mutations (reset/checkout/clean).
+    "review_round": (
+        "Read",  # Read files for analysis
+        "Glob",  # Find files by pattern
+        "Grep",  # Search code
     ),
 }
 

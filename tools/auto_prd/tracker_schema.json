@@ -8,8 +8,8 @@
   "properties": {
     "version": {
       "type": "string",
-      "const": "2.0.0",
-      "description": "Schema version for migration support"
+      "pattern": "^2\\.(?:0|1)\\.\\d+$",
+      "description": "Schema version for migration support (2.0.x or 2.1.x)"
     },
     "metadata": {
       "type": "object",
@@ -93,6 +93,31 @@
             "pattern": "^F[0-9]{3}$"
           },
           "description": "Feature IDs that form the critical dependency path"
+        }
+      },
+      "additionalProperties": false
+    },
+    "review_insights": {
+      "type": "object",
+      "description": "Top-level review insights across all iterations",
+      "properties": {
+        "last_review_iteration": {
+          "type": "integer",
+          "description": "Last iteration number that was reviewed"
+        },
+        "common_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Positive patterns to reinforce across iterations"
+        },
+        "recurring_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Recurring issues identified across review rounds"
         }
       },
       "additionalProperties": false
@@ -306,6 +331,13 @@
             }
           },
           "additionalProperties": false
+        },
+        "review_history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/review_record"
+          },
+          "description": "Review round history for this feature"
         }
       },
       "additionalProperties": false
@@ -344,6 +376,81 @@
           "type": "string",
           "format": "date-time",
           "description": "When task was completed"
+        },
+        "review_insights": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/task_review_insight"
+          },
+          "description": "Review insights for this task"
+        }
+      },
+      "additionalProperties": false
+    },
+    "task_review_insight": {
+      "type": "object",
+      "properties": {
+        "iteration": {
+          "type": "integer",
+          "description": "Iteration number when review occurred"
+        },
+        "reviewer": {
+          "type": "string",
+          "description": "Which agent performed the review"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["confirmed", "reverted", "partial"],
+          "description": "Review outcome for this task"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Review notes about this task"
+        },
+        "next_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Recommended next steps"
+        }
+      },
+      "additionalProperties": false
+    },
+    "review_record": {
+      "type": "object",
+      "properties": {
+        "iteration": {
+          "type": "integer",
+          "description": "Iteration number when review occurred"
+        },
+        "reviewer": {
+          "type": "string",
+          "description": "Which agent performed the review"
+        },
+        "overall_assessment": {
+          "type": "string",
+          "enum": ["passed", "partial", "failed"],
+          "description": "Overall assessment from review"
+        },
+        "tasks_reviewed": {
+          "type": "integer",
+          "description": "Number of tasks reviewed"
+        },
+        "tasks_confirmed": {
+          "type": "integer",
+          "description": "Number of tasks confirmed complete"
+        },
+        "tasks_reverted": {
+          "type": "integer",
+          "description": "Number of tasks reverted to in_progress/pending"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Findings from this review"
         }
       },
       "additionalProperties": false

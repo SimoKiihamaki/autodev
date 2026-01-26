@@ -105,14 +105,20 @@ func renderRalphGroup(b *strings.Builder, m model) {
 	)
 	ralphRow3 := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.inRalphGutterTimeout.View()+"  ",
-		m.inRalphGutterNoProgress.View(),
+		m.inRalphGutterNoProgress.View()+"  ",
+		m.inRalphEnableReviewRound.View(),
 	)
-	ralphContent := lipgloss.JoinVertical(lipgloss.Left, ralphRow1, ralphRow2, ralphRow3)
+	ralphRow4 := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.inRalphReviewModel.View()+"  ",
+		m.inRalphReviewTimeout.View(),
+	)
+	ralphContent := lipgloss.JoinVertical(lipgloss.Left, ralphRow1, ralphRow2, ralphRow3, ralphRow4)
 	ralphBox := NewBorderedBox("Ralph (Autonomous Mode)", ralphContent)
 	ralphBox.Focused = isInSettingsGroup(m.focusedInput, []string{
 		"ralphenabled", "ralphcontextrotate", "ralphmaxconsecutive",
 		"ralphautoaddsigns", "ralphshowprogresslog", "ralphshowguardrails",
-		"ralphguttertimeout", "ralphgutternoprogress",
+		"ralphguttertimeout", "ralphgutternoprogress", "ralphenablereviewround",
+		"ralphreviewmodel", "ralphreviewtimeout",
 	})
 	b.WriteString(ralphBox.Render() + "\n")
 }

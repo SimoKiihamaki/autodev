@@ -223,7 +223,20 @@ def orchestrate_local_loop(
     previous_status = git_status_snapshot(repo_root)
     previous_head = git_head_sha(repo_root)
 
-    ralph = (ralph_settings or RalphSettings()).normalized()
+    # Merge Ralph settings from CLI args with environment variables (for Go TUI integration)
+    # Env vars provide defaults that can be overridden by explicitly passed settings
+    env_ralph = RalphSettings.from_env()
+    if ralph_settings:
+        # Start with env defaults and override with explicitly passed settings
+        from dataclasses import replace
+
+        ralph = replace(
+            env_ralph,
+            **{k: v for k, v in ralph_settings.__dict__.items() if v is not None},
+        )
+    else:
+        ralph = env_ralph
+    ralph = ralph.normalized()
 
     # Load guardrails for Ralph-style mistake prevention
     # Signs from previous iterations are injected into the agent context
@@ -604,6 +617,70 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 print("No CodeRabbit findings detected in this pass.")
                 print(f"CodeRabbit no-findings streak: {no_findings_streak}")
 
+        # Review Round: Run after fix pass if enabled
+        # Note: execute_review() internally skips if no git changes detected
+        review_result = None
+        if ralph.enabled and ralph.enable_review_round and not dry_run:
+            from .review_round import ReviewConfig, ReviewRound
+
+            print("\n=== Review Round: Validating implementation ===", flush=True)
+            # Map policy_runner display names to ReviewConfig executor keys
+            executor_key = {
+                "Codex": "codex",
+                "Claude": "claude",
+            }.get(runner_name, runner_name.lower())
+            review_config = ReviewConfig(
+                executor=executor_key,
+                model=ralph.review_round_model,
+                max_review_time=ralph.review_round_timeout,
+            )
+            review_round = ReviewRound(repo_root, review_config)
+
+            review_result = review_round.execute_review(
+                iteration=i,
+                tracker=tracker,
+                base_branch=base_branch,
+            )
+
+            if review_result.overall_status == "skipped":
+                print("  Review skipped: no git changes detected")
+            elif review_result.overall_status == "failed":
+                print(f"  ⚠️  Review failed: {review_result.summary}")
+            else:
+                print(f"  Review result: {review_result.overall_status}")
+                print(f"  Tasks reviewed: {review_result.tasks_reviewed}")
+                print(f"  Statuses updated: {len(review_result.statuses_updated)}")
+
+                # Handle status changes - adjust tasks_left for both reverts and promotions
+                if review_result.statuses_updated:
+                    reverted_count = sum(
+                        1
+                        for s in review_result.statuses_updated.values()
+                        if s in ("pending", "in_progress")
+                    )
+                    promoted_count = sum(
+                        1
+                        for s in review_result.statuses_updated.values()
+                        if s == "completed"
+                    )
+                    if tasks_left is not None:
+                        if reverted_count > 0:
+                            tasks_left += reverted_count
+                            print(
+                                f"  ⚠️  {reverted_count} tasks reverted to incomplete status"
+                            )
+                        if promoted_count > 0:
+                            tasks_left -= promoted_count
+                            print(f"  ✓ {promoted_count} tasks promoted to completed")
+
+            # Reload tracker after review updates to ensure fresh state
+            tracker = load_tracker(repo_root)
+
+            # Reload git state after potential tracker changes
+            if not dry_run:
+                status_after_iteration = git_status_snapshot(repo_root)
+                head_after_iteration = git_head_sha(repo_root)
+
         repo_changed_after_actions = (
             status_after_iteration != before_status
             or head_after_iteration != before_head
@@ -652,6 +729,23 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 iteration_summary.issues_found.append(
                     "Fix pass failed during this iteration"
                 )
+            # Add review round results if available (including failed for stats/history)
+            if review_result and review_result.overall_status != "skipped":
+                summary = review_result.summary
+                if not summary and review_result.overall_status == "failed":
+                    summary = "Review round failed; see logs for details."
+                iteration_summary.review_round = {
+                    "overall_status": review_result.overall_status,
+                    "tasks_reviewed": review_result.tasks_reviewed,
+                    "statuses_updated": len(review_result.statuses_updated),
+                    "summary": summary,
+                }
+                # Add positive insights to learnings
+                for insight in review_result.insights.get("positive", []):
+                    iteration_summary.learnings.append(f"Review: {insight}")
+                # Add negative insights to issues
+                for insight in review_result.insights.get("negative", []):
+                    iteration_summary.issues_found.append(f"Review: {insight}")
 
             save_iteration_summary(
                 f"local-{sanitize_session_id(prd_path.stem)}", iteration_summary

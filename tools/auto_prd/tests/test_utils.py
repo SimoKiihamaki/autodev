@@ -11,7 +11,9 @@ CLI_ARG_REPLACEMENTS = safe_import(
 UNSAFE_ARG_CHARS = safe_import(
     "tools.auto_prd.constants", "auto_prd.constants", "UNSAFE_ARG_CHARS"
 )
-compute_file_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "compute_file_hash")
+compute_file_hash = safe_import(
+    "tools.auto_prd.utils", "auto_prd.utils", "compute_file_hash"
+)
 extract_called_process_error_details = safe_import(
     "tools.auto_prd.utils", "auto_prd.utils", "extract_called_process_error_details"
 )
@@ -20,9 +22,15 @@ extract_http_status = safe_import(
 )
 get_prd_hash = safe_import("tools.auto_prd.utils", "auto_prd.utils", "get_prd_hash")
 is_valid_int = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_int")
-is_valid_numeric = safe_import("tools.auto_prd.utils", "auto_prd.utils", "is_valid_numeric")
-parse_tasks_left = safe_import("tools.auto_prd.utils", "auto_prd.utils", "parse_tasks_left")
-sanitize_for_cli = safe_import("tools.auto_prd.utils", "auto_prd.utils", "sanitize_for_cli")
+is_valid_numeric = safe_import(
+    "tools.auto_prd.utils", "auto_prd.utils", "is_valid_numeric"
+)
+parse_tasks_left = safe_import(
+    "tools.auto_prd.utils", "auto_prd.utils", "parse_tasks_left"
+)
+sanitize_for_cli = safe_import(
+    "tools.auto_prd.utils", "auto_prd.utils", "sanitize_for_cli"
+)
 scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
 
 
@@ -443,7 +451,9 @@ class CheckboxStatsEdgeCaseTests(unittest.TestCase):
 
     def test_missing_markdown_file_returns_zeros(self) -> None:
         """Verify missing markdown file returns 0, 0."""
-        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        checkbox_stats = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats"
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             md_path = Path(tmpdir) / "nonexistent.md"
             unchecked, total = checkbox_stats(md_path)
@@ -452,7 +462,9 @@ class CheckboxStatsEdgeCaseTests(unittest.TestCase):
 
     def test_empty_markdown_file_returns_zeros(self) -> None:
         """Verify empty markdown file returns 0, 0."""
-        checkbox_stats = safe_import("tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats")
+        checkbox_stats = safe_import(
+            "tools.auto_prd.utils", "auto_prd.utils", "checkbox_stats"
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             md_path = Path(tmpdir) / "empty.md"
             md_path.write_text("")

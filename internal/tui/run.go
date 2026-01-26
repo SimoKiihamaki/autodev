@@ -351,6 +351,16 @@ func (m *model) populateConfigFromInputs(dst *config.Config) ([]string, []numeri
 	setBool(m.inRalphAutoAddSigns.Value(), "Auto add signs", func(v bool) { dst.Ralph.AutoAddSigns = v })
 	setBool(m.inRalphShowProgressLog.Value(), "Show progress log", func(v bool) { dst.Ralph.ShowProgressLog = v })
 	setBool(m.inRalphShowGuardrails.Value(), "Show guardrails", func(v bool) { dst.Ralph.ShowGuardrails = v })
+	setBool(m.inRalphEnableReviewRound.Value(), "Enable review round", func(v bool) { dst.Ralph.EnableReviewRound = v })
+
+	// Review round settings
+	dst.Ralph.ReviewRoundModel = strings.TrimSpace(m.inRalphReviewModel.Value())
+	setNumeric(m.inRalphReviewTimeout.Value(), "Review round timeout", func(v int) {
+		if v < 0 {
+			v = 0
+		}
+		dst.Ralph.ReviewRoundTimeout = &v
+	})
 
 	// Security settings parsing
 	dst.SafeScriptDirs = parsePathList(m.inSafeScriptDirs.Value())

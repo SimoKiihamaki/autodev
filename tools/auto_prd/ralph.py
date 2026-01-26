@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 # Use float('inf') to represent a disabled threshold (effectively infinite)
 THRESHOLD_DISABLED = float("inf")
+
+# Environment variable names for Ralph configuration (must match Go runner)
+ENV_RALPH_ENABLED = "AUTO_PRD_RALPH_ENABLED"
+ENV_RALPH_ENABLE_REVIEW_ROUND = "AUTO_PRD_RALPH_ENABLE_REVIEW_ROUND"
+ENV_RALPH_REVIEW_MODEL = "AUTO_PRD_RALPH_REVIEW_MODEL"
+ENV_RALPH_REVIEW_TIMEOUT = "AUTO_PRD_RALPH_REVIEW_TIMEOUT"
+
+# Canonical default model for review rounds - must match ReviewConfig, Go config, CLI
+DEFAULT_REVIEW_MODEL = "claude-sonnet-4-5-20250514"
 
 
 @dataclass
@@ -21,6 +31,44 @@ class RalphSettings:
     gutter_output_timeout_sec: int = 180
     gutter_no_progress_iters: int = 3
 
+    # Review round settings
+    enable_review_round: bool = True
+    review_round_model: str = DEFAULT_REVIEW_MODEL
+    review_round_timeout: int = 300
+
+    @classmethod
+    def from_env(cls) -> RalphSettings:
+        """Create RalphSettings from environment variables (for Go TUI integration).
+
+        This reads settings from AUTO_PRD_RALPH_* environment variables which are
+        set by the Go runner. It provides a fallback path for configuration when
+        the Python CLI is not used directly.
+        """
+
+        def _bool_env(key: str, default: bool = False) -> bool:
+            val = os.environ.get(key, "").lower()
+            if val in ("1", "true", "yes", "on"):
+                return True
+            if val in ("0", "false", "no", "off"):
+                return False
+            return default
+
+        # Safe parse for timeout to handle malformed values gracefully
+        timeout_str = os.environ.get(ENV_RALPH_REVIEW_TIMEOUT, "300")
+        try:
+            timeout = int(timeout_str)
+        except (TypeError, ValueError):
+            timeout = 300
+
+        return cls(
+            enabled=_bool_env(ENV_RALPH_ENABLED),
+            enable_review_round=_bool_env(ENV_RALPH_ENABLE_REVIEW_ROUND, default=True),
+            review_round_model=os.environ.get(
+                ENV_RALPH_REVIEW_MODEL, DEFAULT_REVIEW_MODEL
+            ),
+            review_round_timeout=timeout,
+        )
+
     def normalized(self) -> RalphSettings:
         """Return a normalized copy with safe minimums."""
         return RalphSettings(
@@ -32,6 +80,16 @@ class RalphSettings:
             show_guardrails=bool(self.show_guardrails),
             gutter_output_timeout_sec=max(0, int(self.gutter_output_timeout_sec or 0)),
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
+            enable_review_round=bool(self.enable_review_round),
+            review_round_model=str(self.review_round_model or DEFAULT_REVIEW_MODEL),
+            review_round_timeout=max(
+                30,
+                int(
+                    self.review_round_timeout
+                    if self.review_round_timeout is not None
+                    else 300
+                ),
+            ),
         )
 
     def stall_thresholds(self) -> tuple[float, int] | None:

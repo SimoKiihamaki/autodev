@@ -20,7 +20,9 @@ from .test_helpers import safe_import
 # Import CLI functions
 build_parser = safe_import("auto_prd.cli", "auto_prd.cli", "build_parser")
 main = safe_import("auto_prd.cli", "auto_prd.cli", "main")
-handle_list_sessions = safe_import("auto_prd.cli", "auto_prd.cli", "handle_list_sessions")
+handle_list_sessions = safe_import(
+    "auto_prd.cli", "auto_prd.cli", "handle_list_sessions"
+)
 resolve_checkpoint = safe_import("auto_prd.cli", "auto_prd.cli", "resolve_checkpoint")
 
 
@@ -49,28 +51,19 @@ class BuildParserTests(unittest.TestCase):
     def test_repo_argument(self) -> None:
         """Verify --repo argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--repo", "/path/to/repo"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--repo", "/path/to/repo"])
         self.assertEqual(args.repo, "/path/to/repo")
 
     def test_repo_slug_argument(self) -> None:
         """Verify --repo-slug argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--repo-slug", "owner/repo"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--repo-slug", "owner/repo"])
         self.assertEqual(args.repo_slug, "owner/repo")
 
     def test_log_file_argument(self) -> None:
         """Verify --log-file argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--log-file", "/path/to/log.txt"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--log-file", "/path/to/log.txt"])
         self.assertEqual(args.log_file, "/path/to/log.txt")
 
     def test_log_level_argument(self) -> None:
@@ -78,10 +71,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test uppercase conversion
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--log-level", "debug"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--log-level", "debug"])
         self.assertEqual(args.log_level, "DEBUG")
 
         # Test default
@@ -92,36 +82,24 @@ class BuildParserTests(unittest.TestCase):
         """Verify --log-level rejects invalid values."""
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args([
-                "--prd", "test.md",
-                "--log-level", "INVALID"
-            ])
+            parser.parse_args(["--prd", "test.md", "--log-level", "INVALID"])
 
     def test_base_argument(self) -> None:
         """Verify --base argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--base", "main"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--base", "main"])
         self.assertEqual(args.base, "main")
 
     def test_branch_argument(self) -> None:
         """Verify --branch argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--branch", "feature-branch"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--branch", "feature-branch"])
         self.assertEqual(args.branch, "feature-branch")
 
     def test_codex_model_argument(self) -> None:
         """Verify --codex-model argument parsing."""
         parser = build_parser()
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--codex-model", "gpt-4-codex"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--codex-model", "gpt-4-codex"])
         self.assertEqual(args.codex_model, "gpt-4-codex")
 
     def test_wait_minutes_argument(self) -> None:
@@ -129,10 +107,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test valid value
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--wait-minutes", "5"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--wait-minutes", "5"])
         self.assertEqual(args.wait_minutes, 5)
 
         # Test default
@@ -143,20 +118,14 @@ class BuildParserTests(unittest.TestCase):
         """Verify --wait-minutes rejects negative values."""
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args([
-                "--prd", "test.md",
-                "--wait-minutes", "-1"
-            ])
+            parser.parse_args(["--prd", "test.md", "--wait-minutes", "-1"])
 
     def test_review_poll_seconds_argument(self) -> None:
         """Verify --review-poll-seconds argument parsing."""
         parser = build_parser()
 
         # Test custom value
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--review-poll-seconds", "60"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--review-poll-seconds", "60"])
         self.assertEqual(args.review_poll_seconds, 60)
 
         # Test default
@@ -168,10 +137,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test custom value
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--idle-grace-minutes", "15"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--idle-grace-minutes", "15"])
         self.assertEqual(args.idle_grace_minutes, 15)
 
         # Test default
@@ -183,10 +149,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test custom value
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--max-local-iters", "100"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--max-local-iters", "100"])
         self.assertEqual(args.max_local_iters, 100)
 
         # Test default
@@ -198,10 +161,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--infinite-reviews"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--infinite-reviews"])
         self.assertTrue(args.infinite_reviews)
 
         # Test flag not set
@@ -213,10 +173,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--support-mode"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--support-mode"])
         self.assertTrue(args.support_mode)
 
         # Test flag not set
@@ -228,10 +185,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--sync-git"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--sync-git"])
         self.assertTrue(args.sync_git)
 
         # Test flag not set
@@ -243,10 +197,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--allow-unsafe-execution"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--allow-unsafe-execution"])
         self.assertTrue(args.allow_unsafe_execution)
 
         # Test flag not set
@@ -258,10 +209,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--dry-run"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--dry-run"])
         self.assertTrue(args.dry_run)
 
         # Test flag not set
@@ -275,10 +223,7 @@ class BuildParserTests(unittest.TestCase):
         # Test valid choices (hardcoded since EXECUTOR_CHOICES is in policy module)
         valid_choices = ["codex-first", "codex-only", "claude-only"]
         for choice in valid_choices:
-            args = parser.parse_args([
-                "--prd", "test.md",
-                "--executor-policy", choice
-            ])
+            args = parser.parse_args(["--prd", "test.md", "--executor-policy", choice])
             self.assertEqual(args.executor_policy, choice)
 
         # Test default (None)
@@ -290,10 +235,9 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test comma-separated phases
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--phases", "local,pr,review_fix"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--phases", "local,pr,review_fix"]
+        )
         self.assertEqual(args.phases, "local,pr,review_fix")
 
         # Test default (None)
@@ -305,17 +249,11 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test long form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-mode"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--ralph-mode"])
         self.assertTrue(args.ralph_mode)
 
         # Test short form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-ready-loop"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--ralph-ready-loop"])
         self.assertTrue(args.ralph_mode)
 
         # Test flag not set
@@ -327,17 +265,13 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test long form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-context-rotate-every", "10"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--ralph-context-rotate-every", "10"]
+        )
         self.assertEqual(args.ralph_context_rotate_every, 10)
 
         # Test short form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--context-rotate-every", "5"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--context-rotate-every", "5"])
         self.assertEqual(args.ralph_context_rotate_every, 5)
 
         # Test default
@@ -349,17 +283,15 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test long form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-max-consecutive-failures", "5"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--ralph-max-consecutive-failures", "5"]
+        )
         self.assertEqual(args.ralph_max_consecutive_failures, 5)
 
         # Test short form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--max-consecutive-failures", "10"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--max-consecutive-failures", "10"]
+        )
         self.assertEqual(args.ralph_max_consecutive_failures, 10)
 
         # Test default
@@ -371,17 +303,11 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test --auto-add-signs
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--auto-add-signs"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--auto-add-signs"])
         self.assertTrue(args.ralph_auto_add_signs)
 
         # Test --no-auto-add-signs
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--no-auto-add-signs"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--no-auto-add-signs"])
         self.assertFalse(args.ralph_auto_add_signs)
 
         # Test default (True)
@@ -393,17 +319,11 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test --show-progress-log
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--show-progress-log"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--show-progress-log"])
         self.assertTrue(args.ralph_show_progress_log)
 
         # Test --no-show-progress-log
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--no-show-progress-log"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--no-show-progress-log"])
         self.assertFalse(args.ralph_show_progress_log)
 
         # Test default (False)
@@ -415,17 +335,11 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test --show-guardrails
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--show-guardrails"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--show-guardrails"])
         self.assertTrue(args.ralph_show_guardrails)
 
         # Test --no-show-guardrails
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--no-show-guardrails"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--no-show-guardrails"])
         self.assertFalse(args.ralph_show_guardrails)
 
         # Test default (False)
@@ -437,17 +351,15 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test long form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-gutter-output-timeout-sec", "120"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--ralph-gutter-output-timeout-sec", "120"]
+        )
         self.assertEqual(args.ralph_gutter_output_timeout_sec, 120)
 
         # Test short form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--gutter-output-timeout-sec", "60"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--gutter-output-timeout-sec", "60"]
+        )
         self.assertEqual(args.ralph_gutter_output_timeout_sec, 60)
 
         # Test default
@@ -459,17 +371,15 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test long form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--ralph-gutter-no-progress-iters", "5"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--ralph-gutter-no-progress-iters", "5"]
+        )
         self.assertEqual(args.ralph_gutter_no_progress_iters, 5)
 
         # Test short form
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--gutter-no-progress-iters", "10"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--gutter-no-progress-iters", "10"]
+        )
         self.assertEqual(args.ralph_gutter_no_progress_iters, 10)
 
         # Test default
@@ -481,10 +391,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--resume"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--resume"])
         self.assertTrue(args.resume)
 
         # Test flag not set
@@ -495,10 +402,9 @@ class BuildParserTests(unittest.TestCase):
         """Verify --resume-session argument parsing."""
         parser = build_parser()
 
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--resume-session", "session-id-123"
-        ])
+        args = parser.parse_args(
+            ["--prd", "test.md", "--resume-session", "session-id-123"]
+        )
         self.assertEqual(args.resume_session, "session-id-123")
 
     def test_list_sessions_flag(self) -> None:
@@ -506,10 +412,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--list-sessions"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--list-sessions"])
         self.assertTrue(args.list_sessions)
 
         # Test flag not set
@@ -521,10 +424,7 @@ class BuildParserTests(unittest.TestCase):
         parser = build_parser()
 
         # Test flag set
-        args = parser.parse_args([
-            "--prd", "test.md",
-            "--force-new"
-        ])
+        args = parser.parse_args(["--prd", "test.md", "--force-new"])
         self.assertTrue(args.force_new)
 
         # Test flag not set
@@ -553,7 +453,7 @@ class HandleListSessionsTests(unittest.TestCase):
                 "session_id": "test-session-id-123",
                 "status": "in_progress",
                 "current_phase": "local",
-                "updated_at": "2026-01-19T12:34:56.789Z"
+                "updated_at": "2026-01-19T12:34:56.789Z",
             }
         ]
 
@@ -580,7 +480,9 @@ class ResolveCheckpointTests(unittest.TestCase):
         mock_git_root.assert_not_called()
 
     @patch("auto_prd.cli.load_checkpoint")
-    def test_resolve_checkpoint_resume_session(self, mock_load_checkpoint: Mock) -> None:
+    def test_resolve_checkpoint_resume_session(
+        self, mock_load_checkpoint: Mock
+    ) -> None:
         """Verify --resume-session loads specific session."""
         mock_checkpoint = {"session_id": "test-session"}
         mock_load_checkpoint.return_value = mock_checkpoint
@@ -597,7 +499,9 @@ class ResolveCheckpointTests(unittest.TestCase):
         mock_load_checkpoint.assert_called_once_with("test-session")
 
     @patch("auto_prd.cli.load_checkpoint")
-    def test_resolve_checkpoint_session_not_found(self, mock_load_checkpoint: Mock) -> None:
+    def test_resolve_checkpoint_session_not_found(
+        self, mock_load_checkpoint: Mock
+    ) -> None:
         """Verify --resume-session with non-existent session raises SystemExit."""
         mock_load_checkpoint.return_value = None
 
@@ -614,9 +518,7 @@ class ResolveCheckpointTests(unittest.TestCase):
     @patch("auto_prd.cli.find_resumable_session")
     @patch("auto_prd.git_ops.git_root")
     def test_resolve_checkpoint_resume_no_session(
-        self,
-        mock_git_root: Mock,
-        mock_find_resumable_session: Mock
+        self, mock_git_root: Mock, mock_find_resumable_session: Mock
     ) -> None:
         """Verify --resume with no resumable session returns None."""
         mock_git_root.return_value = Path("/repo")
@@ -642,17 +544,14 @@ class ResolveCheckpointTests(unittest.TestCase):
         mock_resolve: Mock,
         mock_git_root: Mock,
         mock_find_resumable_session: Mock,
-        mock_prd_changed: Mock
+        mock_prd_changed: Mock,
     ) -> None:
         """Verify --resume returns checkpoint when session exists."""
         # Mock Path.resolve() to return a fixed Path object
         mock_resolve.return_value = Path("/path/to/prd.md")
 
         mock_git_root.return_value = Path("/repo")
-        mock_checkpoint = {
-            "session_id": "test-session",
-            "current_phase": "local"
-        }
+        mock_checkpoint = {"session_id": "test-session", "current_phase": "local"}
         mock_find_resumable_session.return_value = mock_checkpoint
         mock_prd_changed.return_value = False
 
@@ -675,12 +574,12 @@ class MainTests(unittest.TestCase):
     @patch("auto_prd.cli.handle_list_sessions")
     @patch("auto_prd.cli.initialize_output_buffering")
     def test_main_with_list_sessions(
-        self,
-        mock_init: Mock,
-        mock_handle_list: Mock
+        self, mock_init: Mock, mock_handle_list: Mock
     ) -> None:
         """Verify main() handles --list-sessions flag."""
-        with patch.object(sys, "argv", ["auto_prd", "--prd", "test.md", "--list-sessions"]):
+        with patch.object(
+            sys, "argv", ["auto_prd", "--prd", "test.md", "--list-sessions"]
+        ):
             with self.assertRaises(SystemExit) as cm:
                 main()
             self.assertEqual(cm.exception.code, 0)
@@ -691,10 +590,7 @@ class MainTests(unittest.TestCase):
     @patch("auto_prd.cli.resolve_checkpoint")
     @patch("auto_prd.cli.initialize_output_buffering")
     def test_main_successful_execution(
-        self,
-        mock_init: Mock,
-        mock_resolve: Mock,
-        mock_run: Mock
+        self, mock_init: Mock, mock_resolve: Mock, mock_run: Mock
     ) -> None:
         """Verify main() calls run() with correct arguments."""
         mock_resolve.return_value = None
@@ -708,10 +604,7 @@ class MainTests(unittest.TestCase):
     @patch("auto_prd.cli.resolve_checkpoint")
     @patch("auto_prd.cli.initialize_output_buffering")
     def test_main_keyboard_interrupt(
-        self,
-        mock_init: Mock,
-        mock_resolve: Mock,
-        mock_run: Mock
+        self, mock_init: Mock, mock_resolve: Mock, mock_run: Mock
     ) -> None:
         """Verify main() handles KeyboardInterrupt gracefully."""
         mock_resolve.return_value = None
@@ -725,10 +618,7 @@ class MainTests(unittest.TestCase):
     @patch("auto_prd.cli.resolve_checkpoint")
     @patch("auto_prd.cli.initialize_output_buffering")
     def test_main_auto_prd_error(
-        self,
-        mock_init: Mock,
-        mock_resolve: Mock,
-        mock_run: Mock
+        self, mock_init: Mock, mock_resolve: Mock, mock_run: Mock
     ) -> None:
         """Verify main() handles AutoPrdError with SystemExit."""
         from auto_prd.executor import AutoPrdError
@@ -759,13 +649,15 @@ class MainTests(unittest.TestCase):
         mock_init: Mock,
         mock_resolve: Mock,
         mock_git_root: Mock,
-        mock_ralph_loop: Mock
+        mock_ralph_loop: Mock,
     ) -> None:
         """Verify main() uses Ralph loop when --ralph-mode is set."""
         mock_resolve.return_value = None
         mock_git_root.return_value = Path("/repo")
 
-        with patch.object(sys, "argv", ["auto_prd", "--prd", "test.md", "--ralph-mode"]):
+        with patch.object(
+            sys, "argv", ["auto_prd", "--prd", "test.md", "--ralph-mode"]
+        ):
             main()
 
         # Verify Ralph loop was called
@@ -773,16 +665,14 @@ class MainTests(unittest.TestCase):
 
     @patch("auto_prd.cli.initialize_output_buffering")
     def test_main_ralph_mode_with_support_mode_raises_error(
-        self,
-        mock_init: Mock
+        self, mock_init: Mock
     ) -> None:
         """Verify main() raises SystemExit when --ralph-mode and --support-mode are combined."""
-        with patch.object(sys, "argv", [
-            "auto_prd",
-            "--prd", "test.md",
-            "--ralph-mode",
-            "--support-mode"
-        ]):
+        with patch.object(
+            sys,
+            "argv",
+            ["auto_prd", "--prd", "test.md", "--ralph-mode", "--support-mode"],
+        ):
             with self.assertRaises(SystemExit) as cm:
                 main()
             # Check for the exact error message

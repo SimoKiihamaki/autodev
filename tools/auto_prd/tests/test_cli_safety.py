@@ -30,9 +30,13 @@ validate_cwd = safe_import("tools.auto_prd.command", "auto_prd.command", "valida
 register_safe_cwd = safe_import(
     "tools.auto_prd.command", "auto_prd.command", "register_safe_cwd"
 )
-popen_streaming = safe_import("tools.auto_prd.command", "auto_prd.command", "popen_streaming")
+popen_streaming = safe_import(
+    "tools.auto_prd.command", "auto_prd.command", "popen_streaming"
+)
 scrub_cli_text = safe_import("tools.auto_prd.utils", "auto_prd.utils", "scrub_cli_text")
-open_or_get_pr = safe_import("tools.auto_prd.pr_flow", "auto_prd.pr_flow", "open_or_get_pr")
+open_or_get_pr = safe_import(
+    "tools.auto_prd.pr_flow", "auto_prd.pr_flow", "open_or_get_pr"
+)
 
 
 class ScrubCliTextTests(TestCase):

@@ -9,6 +9,12 @@ from pathlib import Path
 import pytest
 
 
+# Get the path to the generate_tracker.py script
+# Tests run from tools/ directory, script is in tools/
+# Use absolute path to ensure resolution regardless of CWD
+_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "generate_tracker.py"
+
+
 class TestGenerateTrackerIntegration:
     """Integration tests for the generate_tracker.py script."""
 
@@ -21,7 +27,7 @@ class TestGenerateTrackerIntegration:
 """
         # Run the script with stdin input
         result = subprocess.run(
-            [sys.executable, "tools/generate_tracker.py", "--stdin", "--dry-run"],
+            [sys.executable, str(_SCRIPT_PATH), "--stdin", "--dry-run"],
             input=test_prd,
             capture_output=True,
             text=True,
@@ -37,7 +43,9 @@ class TestGenerateTrackerIntegration:
         # Our temp file should be cleaned up
         # Note: This might have false positives if other processes are running
         # so we just check that files aren't accumulating
-        assert len(remaining_files) < 10, "Too many temp files remaining - possible leak"
+        assert (
+            len(remaining_files) < 10
+        ), "Too many temp files remaining - possible leak"
 
     def test_stdin_mode_with_invalid_executor(self):
         """Test error handling with invalid executor argument."""
@@ -46,7 +54,7 @@ class TestGenerateTrackerIntegration:
         result = subprocess.run(
             [
                 sys.executable,
-                "tools/generate_tracker.py",
+                str(_SCRIPT_PATH),
                 "--stdin",
                 "--executor",
                 "invalid",
@@ -74,7 +82,7 @@ class TestGenerateTrackerIntegration:
     def test_stdin_mode_with_empty_input(self):
         """Test that empty input is properly handled."""
         result = subprocess.run(
-            [sys.executable, "tools/generate_tracker.py", "--stdin"],
+            [sys.executable, str(_SCRIPT_PATH), "--stdin"],
             input="",
             capture_output=True,
             text=True,
@@ -107,7 +115,7 @@ class TestGenerateTrackerIntegration:
         result = subprocess.run(
             [
                 sys.executable,
-                "tools/generate_tracker.py",
+                str(_SCRIPT_PATH),
                 "--stdin",
                 "--dry-run",
             ],
@@ -134,7 +142,7 @@ class TestGenerateTrackerIntegration:
         invalid_prd = "This is not valid markdown and will cause issues"
 
         result = subprocess.run(
-            [sys.executable, "tools/generate_tracker.py", "--stdin", "--dry-run"],
+            [sys.executable, str(_SCRIPT_PATH), "--stdin", "--dry-run"],
             input=invalid_prd,
             capture_output=True,
             text=True,
@@ -154,7 +162,7 @@ class TestGenerateTrackerIntegration:
         # Run the script multiple times
         for _ in range(5):
             result = subprocess.run(
-                [sys.executable, "tools/generate_tracker.py", "--stdin", "--dry-run"],
+                [sys.executable, str(_SCRIPT_PATH), "--stdin", "--dry-run"],
                 input=test_prd,
                 capture_output=True,
                 text=True,
@@ -167,4 +175,6 @@ class TestGenerateTrackerIntegration:
         temp_dir = Path(tempfile.gettempdir())
         temp_files = list(temp_dir.glob("stdin_*.md"))
         # Should be very few files (cleanup is working)
-        assert len(temp_files) < 10, f"Too many temp files accumulated: {len(temp_files)}"
+        assert (
+            len(temp_files) < 10
+        ), f"Too many temp files accumulated: {len(temp_files)}"

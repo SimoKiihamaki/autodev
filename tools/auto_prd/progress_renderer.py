@@ -37,6 +37,7 @@ class IterationSummary:
         tasks_remaining: Total tasks remaining after this iteration.
         phase: Phase where this iteration occurred (local, pr, review_fix).
         commits_made: Number of commits made during this iteration.
+        review_round: Review round results if review was run.
     """
 
     iteration: int
@@ -51,6 +52,7 @@ class IterationSummary:
     tasks_remaining: int = 0
     phase: str = "local"
     commits_made: int = 0
+    review_round: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -69,6 +71,7 @@ class IterationSummary:
             "tasks_remaining": self.tasks_remaining,
             "phase": self.phase,
             "commits_made": self.commits_made,
+            "review_round": self.review_round,
         }
 
     @classmethod
@@ -92,6 +95,7 @@ class IterationSummary:
             tasks_remaining=data.get("tasks_remaining", 0),
             phase=data.get("phase", "local"),
             commits_made=data.get("commits_made", 0),
+            review_round=data.get("review_round", {}),
         )
 
     def to_markdown(self) -> str:

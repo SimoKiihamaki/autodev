@@ -20,7 +20,9 @@ validate_command_args = safe_import(
     "tools.auto_prd.command", "auto_prd.command", "validate_command_args"
 )
 validate_cwd = safe_import("tools.auto_prd.command", "auto_prd.command", "validate_cwd")
-validate_stdin = safe_import("tools.auto_prd.command", "auto_prd.command", "validate_stdin")
+validate_stdin = safe_import(
+    "tools.auto_prd.command", "auto_prd.command", "validate_stdin"
+)
 validate_extra_env = safe_import(
     "tools.auto_prd.command", "auto_prd.command", "validate_extra_env"
 )

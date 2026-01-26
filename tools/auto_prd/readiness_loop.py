@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -9,6 +10,7 @@ from typing import Any
 
 from .command import CalledProcessError, run_cmd
 from .context import StallDetector
+from .progress_renderer import load_progress_history
 from .scope_reviewer import ScopeChange, ScopeReviewer, ScopeReviewResult, TriggerType
 from .utils import get_prd_hash
 from .verification import run_verification_gates
@@ -53,6 +55,9 @@ class ReadinessStats:
     guardrail_signs_added: int = 0
     features_verified: int = 0
     features_total: int = 0
+    review_round_passed: int = 0
+    review_round_failed: int = 0
+    review_round_total: int = 0
 
 
 class ReadinessOrchestrator:
@@ -84,6 +89,7 @@ class ReadinessOrchestrator:
         self.verification_persistence = VerificationPersistence(self.repo_root)
         self.stall_detector = StallDetector()
         self._execution_runner = None
+        self._seen_reviews: set[tuple[str, int, str]] = set()
 
     def set_execution_runner(self, runner: Callable[[], None]) -> None:
         """Override the default execution runner used during the loop."""
@@ -199,6 +205,9 @@ class ReadinessOrchestrator:
                 self.state = ReadinessState.STALLED
                 raise
 
+        # Collect review round statistics from iteration summaries
+        self._collect_review_statistics()
+
     def _handle_verification(self) -> VerificationRun:
         """Handle verification phase."""
         print(f"\n🧪 Verification Phase: Iteration {self.stats.iteration}")
@@ -245,6 +254,9 @@ class ReadinessOrchestrator:
             )
             print(f"   Scope reviews: {self.stats.scope_reviews}")
             print(f"   Verification runs: {self.stats.verification_runs}")
+            print(
+                f"   Review rounds: {self.stats.review_round_passed} passed, {self.stats.review_round_failed} failed"
+            )
             print(f"   Guardrail signs added: {self.stats.guardrail_signs_added}")
         else:
             self.state = ReadinessState.EVALUATING
@@ -463,6 +475,106 @@ class ReadinessOrchestrator:
 
         return counts
 
+    def _collect_review_statistics(self) -> None:
+        """Collect review round statistics from iteration summaries.
+
+        Reads progress history from the config progress directory (~/.config/aprd/progress/)
+        and aggregates review round results to update readiness statistics.
+
+        Only counts reviews from the current session (derived from the tracker's PRD source)
+        to avoid inflating statistics with progress logs from other repos/PRDs.
+
+        Uses instance-level _seen_reviews set to avoid double-counting reviews
+        across multiple iterations of the readiness loop.
+
+        Uses instance-level _progress_history_cache to avoid re-reading unchanged
+        progress files on each iteration, keeping per-iteration cost bounded.
+        """
+        import re
+
+        # Get the correct progress directory from get_progress_path
+        # This ensures we read from the same location where save_iteration_summary writes
+        xdg_config = os.getenv("XDG_CONFIG_HOME", None)
+        if xdg_config and xdg_config.strip():
+            base_config = Path(xdg_config).expanduser()
+        else:
+            base_config = Path.home() / ".config"
+        progress_dir = (base_config / "aprd" / "progress").resolve()
+
+        if not progress_dir.exists():
+            return
+
+        # Derive the expected session_id prefix from the tracker's PRD source.
+        # The local_loop constructs session_id as "local-{sanitized_prd_stem}",
+        # so we filter progress files to only count reviews from this session.
+        tracker = self._load_tracker()
+        prd_source = tracker.get("metadata", {}).get("prd_source", "")
+        if prd_source:
+            prd_stem = Path(prd_source).stem
+            # Sanitize the same way local_loop does
+            sanitized_stem = re.sub(r"[^\w\-]", "-", prd_stem)
+            expected_session_prefix = f"local-{sanitized_stem}"
+        else:
+            # Fallback: no filtering if PRD source is not available
+            expected_session_prefix = ""
+
+        # Lazily initialize a cache of loaded progress histories keyed by session_id.
+        # Each entry stores (mtime_ns, history) so we only reload when the file changes.
+        if not hasattr(self, "_progress_history_cache"):
+            self._progress_history_cache: dict[str, tuple[int, Any]] = {}
+
+        # Iterate over all progress files
+        for progress_file in progress_dir.glob("*.jsonl"):
+            session_id = progress_file.stem
+
+            # Only count reviews from the current session to avoid cross-contamination
+            if expected_session_prefix and not session_id.startswith(
+                expected_session_prefix
+            ):
+                continue
+
+            try:
+                mtime_ns = progress_file.stat().st_mtime_ns
+
+                cached = self._progress_history_cache.get(session_id)
+                if cached is not None and cached[0] == mtime_ns:
+                    # Reuse cached history if the progress file has not changed.
+                    history = cached[1]
+                else:
+                    history = load_progress_history(session_id)
+                    self._progress_history_cache[session_id] = (mtime_ns, history)
+
+                for iteration in history.iterations:
+                    review_round = iteration.review_round
+                    if not review_round:
+                        continue
+
+                    # Create unique key for this review
+                    review_key = (
+                        session_id,
+                        iteration.iteration,
+                        review_round.get("overall_status", ""),
+                    )
+                    if review_key in self._seen_reviews:
+                        continue
+                    self._seen_reviews.add(review_key)
+
+                    # Update statistics
+                    self.stats.review_round_total += 1
+                    overall_status = review_round.get("overall_status", "")
+                    if overall_status == "passed":
+                        self.stats.review_round_passed += 1
+                    elif overall_status == "failed":
+                        self.stats.review_round_failed += 1
+                    # Partial reviews count as neither passed nor failed
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                # Log but continue on individual file errors
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Failed to collect review stats from %s: %s", progress_file, e
+                )
+
     def _get_stall_message(self) -> str:
         """Get detailed stall message."""
         is_stalled, stall_reason = self.stall_detector.check_stall()
@@ -471,6 +583,7 @@ class ReadinessOrchestrator:
             f"Iterations: {self.stats.iteration}, "
             f"Scope reviews: {self.stats.scope_reviews}, "
             f"Verification runs: {self.stats.verification_runs}, "
+            f"Review rounds: {self.stats.review_round_total}, "
             f"Guardrail signs: {self.stats.guardrail_signs_added}"
         )
         return f"{stall_text}\n\n{stats_summary}"
@@ -587,6 +700,7 @@ def run_ralph_wiggum_loop(
     print(f"Total iterations: {result['stats']['iteration']}")
     print(f"Scope reviews: {result['stats']['scope_reviews']}")
     print(f"Verification runs: {result['stats']['verification_runs']}")
+    print(f"Review rounds: {result['stats']['review_round_total']}")
     print(f"Guardrail signs added: {result['stats']['guardrail_signs_added']}")
     print("=" * 70)
 

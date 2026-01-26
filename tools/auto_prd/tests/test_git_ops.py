@@ -71,9 +71,7 @@ class GitRootTests(unittest.TestCase):
 
         self.assertIsInstance(result, Path)
         self.assertEqual(str(result), "/path/to/repo")
-        mock_run_cmd.assert_called_once_with(
-            ["git", "rev-parse", "--show-toplevel"]
-        )
+        mock_run_cmd.assert_called_once_with(["git", "rev-parse", "--show-toplevel"])
 
 
 class ParseOwnerRepoFromGitTests(unittest.TestCase):
@@ -158,9 +156,7 @@ class EnsureGhAliasTests(unittest.TestCase):
 
     @patch("auto_prd.git_ops.run_cmd")
     @patch("auto_prd.git_ops.logger")
-    def test_alias_already_exists(
-        self, mock_logger: Mock, mock_run_cmd: Mock
-    ) -> None:
+    def test_alias_already_exists(self, mock_logger: Mock, mock_run_cmd: Mock) -> None:
         """Verify no action taken when alias already exists."""
         mock_run_cmd.return_value = ("save-me-copilot: some command\n", "", 0)
 
@@ -193,7 +189,7 @@ class EnsureGhAliasTests(unittest.TestCase):
                 "set",
                 "save-me-copilot",
                 (
-                    'api --method POST /repos/$1/pulls/$2/requested_reviewers '
+                    "api --method POST /repos/$1/pulls/$2/requested_reviewers "
                     '-f "reviewers[]=copilot-pull-request-reviewer[bot]"'
                 ),
             ]
@@ -246,9 +242,7 @@ class GitStatusSnapshotTests(unittest.TestCase):
     """Test git_status_snapshot() function."""
 
     @patch("auto_prd.git_ops.run_cmd")
-    def test_status_snapshot_returns_sorted_tuple(
-        self, mock_run_cmd: Mock
-    ) -> None:
+    def test_status_snapshot_returns_sorted_tuple(self, mock_run_cmd: Mock) -> None:
         """Verify status snapshot returns sorted tuple of lines."""
         mock_result = MagicMock()
         mock_result.stdout = "M file.txt\nA new.txt\nD old.txt\n"
@@ -258,9 +252,7 @@ class GitStatusSnapshotTests(unittest.TestCase):
 
         self.assertIsInstance(result, tuple)
         # Should be sorted alphabetically
-        self.assertEqual(
-            result, ("A new.txt", "D old.txt", "M file.txt")
-        )
+        self.assertEqual(result, ("A new.txt", "D old.txt", "M file.txt"))
         mock_run_cmd.assert_called_once_with(
             ["git", "status", "--porcelain"], cwd=Path("/repo")
         )
@@ -472,9 +464,7 @@ class GitStageAllTests(unittest.TestCase):
         """Verify git add -A is called."""
         git_stage_all(Path("/repo"))
 
-        mock_run_cmd.assert_called_once_with(
-            ["git", "add", "-A"], cwd=Path("/repo")
-        )
+        mock_run_cmd.assert_called_once_with(["git", "add", "-A"], cwd=Path("/repo"))
 
 
 class GitAddTests(unittest.TestCase):

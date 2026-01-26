@@ -1048,11 +1048,11 @@ func TestRenderFeatureList(t *testing.T) {
 	tracker := &Tracker{
 		Features: []TrackerFeature{
 			{
-				ID:          "F001",
-				Name:        "Test Feature",
-				Priority:    "high",
-				Complexity:  "M",
-				Status:      "in_progress",
+				ID:         "F001",
+				Name:       "Test Feature",
+				Priority:   "high",
+				Complexity: "M",
+				Status:     "in_progress",
 				Tasks: []struct {
 					ID          string `json:"id"`
 					Description string `json:"description"`
