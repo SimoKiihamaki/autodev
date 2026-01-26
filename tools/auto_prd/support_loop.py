@@ -264,7 +264,7 @@ def run_support_mode(repo_root: Path, prd_path: Path, poll_seconds: int) -> None
                         try:
                             # Try to resolve stored_source relative to repo_root
                             if not Path(stored_source).is_absolute():
-                                resolved = repo_root / stored_source
+                                resolved = (repo_root / stored_source).resolve()
                                 normalized_stored = str(resolved)
                             # Compare both normalized and direct paths (for relative/relative match)
                             if stored_source != str(

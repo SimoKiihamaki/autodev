@@ -181,7 +181,6 @@ class ReviewRound:
         has_verification = bool(feature.get("verification_evidence"))
 
         old_status = feature.get("status", "")
-        new_status = old_status  # Preserve by default
 
         if completed_count == total_count:
             # All tasks completed
@@ -392,7 +391,7 @@ class ReviewRound:
             return staged_diff + unstaged_diff
         except Exception as e:
             logger.warning("Failed to get git diff: %s", e)
-            return f"# Error getting diff: {e}"
+            return ""
 
     def _build_review_prompt(
         self,
