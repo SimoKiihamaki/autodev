@@ -620,7 +620,7 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
         # Review Round: Run after fix pass if enabled
         # Note: execute_review() internally skips if no git changes detected
         review_result = None
-        if ralph.enabled and ralph.enable_review_round:
+        if ralph.enabled and ralph.enable_review_round and not dry_run:
             from .review_round import ReviewConfig, ReviewRound
 
             print("\n=== Review Round: Validating implementation ===", flush=True)
@@ -651,20 +651,27 @@ Apply targeted changes, commit frequently, and re-run QA gates until green.
                 print(f"  Tasks reviewed: {review_result.tasks_reviewed}")
                 print(f"  Statuses updated: {len(review_result.statuses_updated)}")
 
-                # Handle status reverts - adjust tasks_left if tasks were reverted
+                # Handle status changes - adjust tasks_left for both reverts and promotions
                 if review_result.statuses_updated:
                     reverted_count = sum(
                         1
                         for s in review_result.statuses_updated.values()
                         if s in ("pending", "in_progress")
                     )
-                    if reverted_count > 0:
-                        # Adjust tasks_left to reflect reverted tasks
-                        if tasks_left is not None:
+                    promoted_count = sum(
+                        1
+                        for s in review_result.statuses_updated.values()
+                        if s == "completed"
+                    )
+                    if tasks_left is not None:
+                        if reverted_count > 0:
                             tasks_left += reverted_count
                             print(
                                 f"  ⚠️  {reverted_count} tasks reverted to incomplete status"
                             )
+                        if promoted_count > 0:
+                            tasks_left -= promoted_count
+                            print(f"  ✓ {promoted_count} tasks promoted to completed")
 
             # Reload tracker after review updates to ensure fresh state
             tracker = load_tracker(repo_root)

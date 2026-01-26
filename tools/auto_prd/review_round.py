@@ -146,6 +146,66 @@ class ReviewRound:
         self.repo_root = Path(repo_root)
         self.config = config or ReviewConfig()
 
+    def _recompute_feature_status(self, feature: dict[str, Any]) -> None:
+        """Recompute feature status based on its tasks' statuses.
+
+        When a review round changes task statuses (e.g., reverting from completed
+        to in_progress), the feature status must be updated to remain consistent.
+        A feature that remains "completed" or "verified" despite having incomplete
+        tasks can cause readiness/support summaries to incorrectly treat it as done.
+
+        Status computation rules:
+        - verified: All tasks completed AND feature has verification_evidence
+        - completed: All tasks completed but no verification_evidence
+        - in_progress: Some tasks completed, at least one task in progress
+        - pending: No tasks completed yet
+
+        Args:
+            feature: Feature dict from tracker, modified in place
+        """
+        tasks = feature.get("tasks", [])
+        if not tasks:
+            # No tasks - keep existing status or default to pending
+            if feature.get("status") not in (
+                "pending",
+                "in_progress",
+                "completed",
+                "verified",
+            ):
+                feature["status"] = "pending"
+            return
+
+        completed_count = sum(1 for t in tasks if t.get("status") == "completed")
+        total_count = len(tasks)
+        has_verification = bool(feature.get("verification_evidence"))
+
+        old_status = feature.get("status", "")
+        new_status = old_status  # Preserve by default
+
+        if completed_count == total_count:
+            # All tasks completed
+            if has_verification:
+                new_status = "verified"
+            else:
+                new_status = "completed"
+        elif completed_count == 0:
+            # No tasks completed
+            new_status = "pending"
+        else:
+            # Some tasks completed, some not
+            new_status = "in_progress"
+
+        if new_status != old_status:
+            feature["status"] = new_status
+            logger.info(
+                "Recomputed feature %s status: %s -> %s (%d/%d tasks completed)",
+                feature.get("id", "unknown"),
+                old_status,
+                new_status,
+                completed_count,
+                total_count,
+            )
+
     def execute_review(
         self,
         iteration: int,
@@ -602,6 +662,10 @@ class ReviewRound:
             # Only add review history to features that had tasks in this review
             # This prevents duplicating the same review record across unrelated features
             if feature_tasks_in_review > 0:
+                # Recompute feature status based on updated task statuses
+                # This ensures consistency when tasks are reverted from completed
+                self._recompute_feature_status(feature)
+
                 if "review_history" not in feature:
                     feature["review_history"] = []
 
