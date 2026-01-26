@@ -370,12 +370,26 @@ class ReviewRound:
                 )
                 return result.stdout
 
-            # Fall back to showing staged changes
+            # Fall back to working tree diff (unstaged changes)
+            result = run_cmd(
+                ["git", "diff"],
+                cwd=self.repo_root,
+            )
+            if result.stdout.strip():
+                return result.stdout
+
+            # Combine staged and unstaged changes as final fallback
             result = run_cmd(
                 ["git", "diff", "--cached"],
                 cwd=self.repo_root,
             )
-            return result.stdout
+            staged_diff = result.stdout
+            result = run_cmd(
+                ["git", "diff"],
+                cwd=self.repo_root,
+            )
+            unstaged_diff = result.stdout
+            return staged_diff + unstaged_diff
         except Exception as e:
             logger.warning("Failed to get git diff: %s", e)
             return f"# Error getting diff: {e}"
