@@ -82,7 +82,14 @@ class RalphSettings:
             gutter_no_progress_iters=max(0, int(self.gutter_no_progress_iters or 0)),
             enable_review_round=bool(self.enable_review_round),
             review_round_model=str(self.review_round_model or DEFAULT_REVIEW_MODEL),
-            review_round_timeout=max(30, int(self.review_round_timeout or 300)),
+            review_round_timeout=max(
+                30,
+                int(
+                    self.review_round_timeout
+                    if self.review_round_timeout is not None
+                    else 300
+                ),
+            ),
         )
 
     def stall_thresholds(self) -> tuple[float, int] | None:
