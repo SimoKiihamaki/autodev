@@ -503,8 +503,6 @@ class ReviewRound:
                 # Restrict the review agent to read-only tools needed for analysis.
                 # Tool names must match those exposed by the agents layer.
                 allowed_tools=list(HEADLESS_TOOL_ALLOWLISTS["review_round"]),
-                # Ask the model to return pure JSON to simplify parsing.
-                output_format="json",
             )
         finally:
             # Restore original timeout value
