@@ -11,7 +11,8 @@ import pytest
 
 # Get the path to the generate_tracker.py script
 # Tests run from tools/ directory, script is in tools/
-_SCRIPT_PATH = Path(__file__).parent.parent / "generate_tracker.py"
+# Use absolute path to ensure resolution regardless of CWD
+_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "generate_tracker.py"
 
 
 class TestGenerateTrackerIntegration:

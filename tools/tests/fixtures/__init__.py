@@ -1,6 +1,6 @@
 """Test fixtures for AutoDev testing."""
 
-from tools.tests.fixtures.review_responses import (
+from tests.fixtures.review_responses import (
     GIT_DIFF_BINARY,
     GIT_DIFF_COMMENTS_ONLY,
     GIT_DIFF_EMPTY,

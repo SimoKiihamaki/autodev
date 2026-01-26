@@ -10,15 +10,15 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.auto_prd.command import CalledProcessError, TimeoutExpired
-from tools.auto_prd.review_round import (
+from auto_prd.command import CalledProcessError, TimeoutExpired
+from auto_prd.review_round import (
     ReviewConfig,
     ReviewResult,
     ReviewRound,
 )
 
 # Import fixtures
-from tools.tests.fixtures.review_responses import (
+from tests.fixtures.review_responses import (
     GIT_DIFF_MEDIUM,
     GIT_DIFF_SMALL,
     REVIEW_EMPTY,
@@ -322,7 +322,7 @@ class TestBuildReviewPrompt:
         review_round = ReviewRound(tmp_path)
         tracker = get_tracker("minimal")
 
-        with patch("tools.auto_prd.review_round.git_head_sha", return_value="abc123"):
+        with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
             prompt = review_round._build_review_prompt(
                 tracker=tracker,
                 git_diff=GIT_DIFF_SMALL,
@@ -343,7 +343,7 @@ class TestBuildReviewPrompt:
         review_round = ReviewRound(tmp_path)
         tracker = get_tracker("with_review")
 
-        with patch("tools.auto_prd.review_round.git_head_sha", return_value="abc123"):
+        with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
             prompt = review_round._build_review_prompt(
                 tracker=tracker,
                 git_diff=GIT_DIFF_SMALL,
@@ -361,7 +361,7 @@ class TestBuildReviewPrompt:
         review_round = ReviewRound(tmp_path)
         tracker = get_tracker("all_completed")
 
-        with patch("tools.auto_prd.review_round.git_head_sha", return_value="abc123"):
+        with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
             prompt = review_round._build_review_prompt(
                 tracker=tracker,
                 git_diff=GIT_DIFF_SMALL,
@@ -377,7 +377,7 @@ class TestBuildReviewPrompt:
         review_round = ReviewRound(tmp_path)
         tracker = get_tracker("with_review")
 
-        with patch("tools.auto_prd.review_round.git_head_sha", return_value="abc123"):
+        with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
             prompt = review_round._build_review_prompt(
                 tracker=tracker,
                 git_diff=GIT_DIFF_SMALL,
@@ -398,7 +398,7 @@ class TestBuildReviewPrompt:
         large_diff = GIT_DIFF_MEDIUM * 1000
         assert len(large_diff) > 50000
 
-        with patch("tools.auto_prd.review_round.git_head_sha", return_value="abc123"):
+        with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
             prompt = review_round._build_review_prompt(
                 tracker=tracker,
                 git_diff=large_diff,
@@ -457,9 +457,7 @@ class TestGitDiffHandling:
         tracker = get_tracker("minimal")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_SMALL):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round, "_call_review_agent", return_value=REVIEW_SUCCESSFUL
                 ):
@@ -590,9 +588,7 @@ class TestAgentFailureHandling:
         tracker = get_tracker("minimal")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_SMALL):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round,
                     "_call_review_agent",
@@ -616,9 +612,7 @@ class TestAgentFailureHandling:
         tracker = get_tracker("minimal")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_SMALL):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round,
                     "_call_review_agent",
@@ -648,9 +642,7 @@ class TestFullIntegration:
         tracker = get_tracker("minimal")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_MEDIUM):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round, "_call_review_agent", return_value=REVIEW_SUCCESSFUL
                 ):
@@ -671,9 +663,7 @@ class TestFullIntegration:
         tracker = get_tracker("with_review")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_MEDIUM):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round, "_call_review_agent", return_value=REVIEW_PARTIAL
                 ):
@@ -697,9 +687,7 @@ class TestFullIntegration:
         tracker = get_tracker("with_review")
 
         with patch.object(review_round, "_get_git_diff", return_value=GIT_DIFF_MEDIUM):
-            with patch(
-                "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-            ):
+            with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                 with patch.object(
                     review_round, "_call_review_agent", return_value=REVIEW_FAILED
                 ):
@@ -729,9 +717,7 @@ class TestFullIntegration:
             with patch.object(
                 review_round, "_get_git_diff", return_value=GIT_DIFF_SMALL
             ):
-                with patch(
-                    "tools.auto_prd.review_round.git_head_sha", return_value="abc123"
-                ):
+                with patch("auto_prd.review_round.git_head_sha", return_value="abc123"):
                     with patch.object(
                         review_round, "_call_review_agent", return_value=response
                     ):

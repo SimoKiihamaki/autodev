@@ -129,6 +129,7 @@ class ReviewResult:
     overall_status: str  # passed | partial | failed | skipped
     tasks_reviewed: int
     statuses_updated: dict[str, str] = field(default_factory=dict)
+    tasks_reviewed_details: list[dict[str, Any]] = field(default_factory=list)
     insights: dict[str, list[str]] = field(default_factory=dict)
     next_steps: list[str] = field(default_factory=list)
     git_diff_summary: str = ""
@@ -538,14 +539,17 @@ class ReviewRound:
                 summary=f"Invalid JSON: {e}",
             )
 
-        # Build statuses_updated map
+        # Build statuses_updated map and capture all task review details
         statuses_updated: dict[str, str] = {}
+        tasks_reviewed_details: list[dict[str, Any]] = []
         for task_review in data.get("tasks_reviewed", []):
             task_id = task_review.get("task_id", "")
             recommended = task_review.get("recommended_status", "")
             current = task_review.get("current_status", "")
             if recommended and current and recommended != current:
                 statuses_updated[task_id] = recommended
+            # Store full review details for all tasks (including confirmed ones)
+            tasks_reviewed_details.append(task_review)
 
         return ReviewResult(
             iteration=iteration,
@@ -554,6 +558,7 @@ class ReviewRound:
             overall_status=data.get("overall_assessment", "partial"),
             tasks_reviewed=len(data.get("tasks_reviewed", [])),
             statuses_updated=statuses_updated,
+            tasks_reviewed_details=tasks_reviewed_details,
             insights=data.get("insights", {}),
             next_steps=data.get("next_steps", []),
             git_diff_summary=(
@@ -599,6 +604,12 @@ class ReviewRound:
         self, tracker: dict[str, Any], result: ReviewResult
     ) -> None:
         """Apply status updates and insights to tracker."""
+        # Build a lookup of task_id -> review details for all reviewed tasks
+        reviewed_tasks_map: dict[str, dict[str, Any]] = {
+            task_detail.get("task_id", ""): task_detail
+            for task_detail in result.tasks_reviewed_details
+        }
+
         # Update task statuses
         for feature in tracker.get("features", []):
             feature_id = feature.get("id", "")
@@ -610,6 +621,8 @@ class ReviewRound:
 
             for task in feature.get("tasks", []):
                 task_id = task.get("id", "")
+
+                # Handle tasks with status changes
                 if task_id in result.statuses_updated:
                     new_status = result.statuses_updated[task_id]
                     old_status = task.get("status", "")
@@ -633,7 +646,7 @@ class ReviewRound:
                             # Clear completion timestamp when reverting to a non-completed status
                             task.pop("completed_at", None)
 
-                        # Add review insight
+                        # Add review insight for status change
                         if "review_insights" not in task:
                             task["review_insights"] = []
 
@@ -658,6 +671,39 @@ class ReviewRound:
                             old_status,
                             new_status,
                         )
+
+                # Handle confirmed tasks (reviewed but no status change)
+                elif task_id in reviewed_tasks_map:
+                    review_detail = reviewed_tasks_map[task_id]
+                    old_status = task.get("status", "")
+
+                    # Count this task for review statistics
+                    feature_tasks_in_review += 1
+                    if old_status == "completed":
+                        feature_tasks_confirmed += 1
+
+                    # Add review insight for confirmation (no status change)
+                    if "review_insights" not in task:
+                        task["review_insights"] = []
+
+                    task["review_insights"].append(
+                        {
+                            "iteration": result.iteration,
+                            "reviewer": result.reviewer,
+                            "status": "confirmed",
+                            "notes": review_detail.get("reasoning", "")
+                            or review_detail.get("findings", "")
+                            or "Status confirmed via review round",
+                            "next_steps": [],
+                        }
+                    )
+
+                    logger.info(
+                        "Confirmed task %s/%s status: %s",
+                        feature_id,
+                        task_id,
+                        old_status,
+                    )
 
             # Only add review history to features that had tasks in this review
             # This prevents duplicating the same review record across unrelated features
