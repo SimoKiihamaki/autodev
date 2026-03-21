@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from .git_ops import git_current_branch, git_head_sha
+from .git_ops import git_current_branch, git_head_sha, git_status_snapshot
 from .tracker import load_tracker, validate_tracker
 
 logger = logging.getLogger(__name__)
@@ -94,12 +94,18 @@ def check_repository(repo_path: Path) -> RepoStatus:
     else:
         warnings.append("No tracker found")
 
+    # Check for uncommitted changes
+    try:
+        has_changes = len(git_status_snapshot(repo_path)) > 0
+    except Exception:
+        has_changes = False
+
     return RepoStatus(
         path=str(repo_path),
         name=repo_path.name,
         branch=branch,
         sha=sha[:7],
-        has_changes=False,  # TODO: check git status
+        has_changes=has_changes,
         tracker_valid=tracker_valid,
         tasks_left=tasks_left,
         total_tasks=total_tasks,
