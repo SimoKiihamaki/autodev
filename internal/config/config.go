@@ -524,6 +524,8 @@ func SaveWithTimeout(c Config, timeout time.Duration) error {
 	case err := <-done:
 		return err
 	case <-time.After(timeout):
+		// Drain channel to prevent goroutine leak
+		go func() { <-done }()
 		return errors.New("config save timed out after " + timeout.String())
 	}
 }
