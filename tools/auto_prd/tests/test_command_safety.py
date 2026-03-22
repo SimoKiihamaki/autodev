@@ -9,11 +9,25 @@ vulnerabilities:
 - validate_extra_env: Environment variable validation
 """
 
+import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase, main
 
+import pytest
+
 from .test_helpers import safe_import
+
+# Disable the safety bypass for this entire test module
+# These tests need to verify that safety checks work correctly
+@pytest.fixture(autouse=True, scope="module")
+def disable_safety_bypass():
+    """Remove the safety bypass for safety tests."""
+    original = os.environ.pop("AUTO_PRD_ALLOW_UNSAFE_EXECUTION", None)
+    yield
+    if original is not None:
+        os.environ["AUTO_PRD_ALLOW_UNSAFE_EXECUTION"] = original
+
 
 # Import validation functions
 validate_command_args = safe_import(

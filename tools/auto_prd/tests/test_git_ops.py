@@ -62,7 +62,7 @@ _GIT_TRANSIENT_ERRORS = safe_import(
 class GitRootTests(unittest.TestCase):
     """Test git_root() function."""
 
-    @patch("auto_prd.git_ops.run_cmd")
+    @patch("tools.auto_prd.git_ops.run_cmd")
     def test_git_root_returns_path(self, mock_run_cmd: Mock) -> None:
         """Verify git_root returns Path object from git output."""
         mock_run_cmd.return_value = ("/path/to/repo\n", "", 0)
@@ -77,7 +77,7 @@ class GitRootTests(unittest.TestCase):
 class ParseOwnerRepoFromGitTests(unittest.TestCase):
     """Test parse_owner_repo_from_git() function."""
 
-    @patch("auto_prd.git_ops.run_cmd")
+    @patch("tools.auto_prd.git_ops.run_cmd")
     def test_https_url(self, mock_run_cmd: Mock) -> None:
         """Verify parsing of HTTPS URLs."""
         mock_run_cmd.return_value = ("https://github.com/owner/repo.git\n", "", 0)

@@ -25,26 +25,10 @@ if str(_project_root) not in sys.path:
 if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
-
-@pytest.fixture(autouse=True)
-def allow_unsafe_execution():
-    """
-    Allow command execution in tests by setting the safety flag.
-
-    This fixture runs automatically for all tests to ensure that
-    command execution is allowed during testing. Without this flag,
-    the command safety checks would prevent tests from running.
-
-    The flag is restored to its original value after each test.
-    """
-    original_value = os.environ.get("AUTO_PRD_ALLOW_UNSAFE_EXECUTION")
-    os.environ["AUTO_PRD_ALLOW_UNSAFE_EXECUTION"] = "1"
-    yield
-    # Restore original value after test
-    if original_value is None:
-        os.environ.pop("AUTO_PRD_ALLOW_UNSAFE_EXECUTION", None)
-    else:
-        os.environ["AUTO_PRD_ALLOW_UNSAFE_EXECUTION"] = original_value
+# Set the safety bypass flag globally for the test session
+# This allows tests to execute commands without triggering safety checks
+# Safety-specific tests will temporarily unset this as needed
+os.environ["AUTO_PRD_ALLOW_UNSAFE_EXECUTION"] = "1"
 
 
 def pytest_configure(config):

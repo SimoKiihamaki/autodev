@@ -240,6 +240,9 @@ def validate_command_args(cmd: Sequence[str]) -> None:
         Backticks ('`') remain in UNSAFE_ARG_CHARS but are treated as a special case that
         is permitted by the validation logic because subprocess is always run with shell=False,
         so backticks are not interpreted by the shell and do not pose a risk in this context.
+        
+        When SAFE_ENV_VAR (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1) is set, command allowlist
+        checks are skipped (but argument validation still applies).
     """
     if not isinstance(cmd, Sequence) or isinstance(cmd, str | bytes) or not cmd:
         raise ValueError("cmd must be a non-empty sequence of strings")
@@ -256,6 +259,9 @@ def validate_command_args(cmd: Sequence[str]) -> None:
             )
             continue
         raise ValueError(f"cmd argument contains unsafe shell metacharacters: {arg!r}")
+    # Skip command allowlist check when unsafe execution is explicitly allowed
+    if os.environ.get(SAFE_ENV_VAR) == "1":
+        return
     binary = cmd[0]
     if binary in COMMAND_ALLOWLIST:
         return
@@ -268,7 +274,14 @@ def validate_command_args(cmd: Sequence[str]) -> None:
 
 
 def validate_cwd(cwd: Path | None) -> None:
+    """Validate that cwd is within registered safe roots.
+    
+    When SAFE_ENV_VAR (AUTO_PRD_ALLOW_UNSAFE_EXECUTION=1) is set, validation is skipped.
+    """
     if cwd is None:
+        return
+    # Skip CWD validation when unsafe execution is explicitly allowed
+    if os.environ.get(SAFE_ENV_VAR) == "1":
         return
     cwd = cwd.resolve()
     for root in SAFE_CWD_ROOTS:
