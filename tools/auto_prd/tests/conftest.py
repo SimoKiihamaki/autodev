@@ -16,12 +16,11 @@ import pytest
 _tools_dir = Path(__file__).parent.parent
 _project_root = _tools_dir.parent
 
-# Add project root to allow 'tools.auto_prd' imports
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-# Also add tools_dir to allow 'auto_prd' imports (alternative import style)
-# This supports both import styles used across the codebase
+# Only add tools_dir for 'auto_prd' imports
+# NOTE: We intentionally do NOT add _project_root to sys.path because having
+# both paths causes Python to create two separate module objects for the same
+# code (one as 'tools.auto_prd.X' and one as 'auto_prd.X'), which breaks mocking.
+# All patches should use 'auto_prd.X' paths.
 if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
