@@ -1,0 +1,76 @@
+{
+  "version": "2.0.0",
+  "llm": {
+    "provider": "anthropic",
+    "api_key": "${ANTHROPIC_API_KEY}",
+    "default_model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "enable_caching": true,
+    "timeout_seconds": 120,
+    "max_retries": 3,
+    "retry_backoff_seconds": 1.0,
+    "metadata": {
+      "project": "autodev",
+      "environment": "development"
+    }
+  },
+  "mcp": {
+    "config_path": "~/.config/autodev/mcp_config.json",
+    "auto_connect": true,
+    "connection_timeout_seconds": 10
+  },
+  "agents": {
+    "manager": {
+      "model": "claude-3-5-sonnet-20241022",
+      "max_concurrent_workers": 3,
+      "task_timeout_seconds": 300,
+      "max_iterations": 100,
+      "stall_detection_threshold": 3
+    },
+    "coder": {
+      "model": "claude-3-5-sonnet-20241022",
+      "max_retries": 2,
+      "retry_backoff_seconds": 30,
+      "max_tool_calls": 20
+    },
+    "reviewer": {
+      "model": "claude-3-5-sonnet-20241022",
+      "strict_mode": true,
+      "auto_fix_enabled": true,
+      "check_security": true,
+      "check_performance": true
+    },
+    "tester": {
+      "model": "claude-3-5-sonnet-20241022",
+      "test_frameworks": ["pytest", "unittest"],
+      "coverage_threshold": 80
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "file": "~/.local/share/autodev/logs/autodev.log",
+    "max_size_mb": 100,
+    "backup_count": 5,
+    "console_output": true
+  },
+  "storage": {
+    "workspace_root": ".",
+    "state_dir": "~/.local/share/autodev/state",
+    "cache_dir": "~/.cache/autodev",
+    "temp_dir": "/tmp/autodev"
+  },
+  "security": {
+    "allowed_file_extensions": [".py", ".js", ".ts", ".go", ".java", ".md", ".txt", ".json", ".yaml", ".yml"],
+    "max_file_size_mb": 10,
+    "sandbox_commands": true,
+    "require_confirmation_for_destructive_ops": false
+  },
+  "performance": {
+    "enable_parallel_tool_execution": true,
+    "max_parallel_tools": 5,
+    "context_window_utilization_target": 0.8,
+    "cache_system_prompts": true
+  }
+}

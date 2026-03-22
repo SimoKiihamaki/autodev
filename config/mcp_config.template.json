@@ -1,0 +1,74 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "mcp-server-filesystem",
+      "args": ["--root", "."],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "File system operations for reading and writing code files"
+    },
+    {
+      "name": "git",
+      "command": "mcp-server-git",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "Git version control operations"
+    },
+    {
+      "name": "terminal",
+      "command": "mcp-server-terminal",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "Command execution for running tests, linters, etc."
+    },
+    {
+      "name": "github",
+      "command": "mcp-server-github",
+      "args": [],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "enabled": false,
+      "auto_start": false,
+      "description": "GitHub API operations for issues and PRs (optional)"
+    },
+    {
+      "name": "postgres",
+      "command": "mcp-server-postgres",
+      "args": ["--connection-string", "${DATABASE_URL}"],
+      "env": {},
+      "enabled": false,
+      "auto_start": false,
+      "description": "PostgreSQL database access (optional)"
+    }
+  ],
+  "security": {
+    "allowed_paths": ["."],
+    "allowed_commands": [
+      "pytest",
+      "python",
+      "black",
+      "mypy",
+      "flake8",
+      "pylint",
+      "git",
+      "npm",
+      "yarn",
+      "go",
+      "cargo"
+    ],
+    "require_confirmation": false,
+    "audit_log": "~/.local/share/autodev/audit.log"
+  },
+  "connection_settings": {
+    "timeout_seconds": 10,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 1
+  }
+}
