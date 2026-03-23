@@ -79,7 +79,6 @@ try:
         PipelineStage,
         PipelineResult,
         create_pipeline,
-        run_training,
     )
 except ImportError:
     TrainingPipeline = None
@@ -87,6 +86,28 @@ except ImportError:
     PipelineStage = None
     PipelineResult = None
     create_pipeline = None
+
+try:
+    from .orchestrator import (
+        TrainingOrchestrator,
+        OrchestratorConfig,
+        OrchestratorStage,
+        ProgressInfo,
+        CheckpointState,
+        TrainingCycleResult,
+        ShutdownReason,
+        create_orchestrator,
+        run_training,
+    )
+except ImportError:
+    TrainingOrchestrator = None
+    OrchestratorConfig = None
+    OrchestratorStage = None
+    ProgressInfo = None
+    CheckpointState = None
+    TrainingCycleResult = None
+    ShutdownReason = None
+    create_orchestrator = None
     run_training = None
 
 __all__ = [
@@ -122,6 +143,15 @@ __all__ = [
     "PipelineStage",
     "PipelineResult",
     "create_pipeline",
+    # Orchestrator (Phase 9)
+    "TrainingOrchestrator",
+    "OrchestratorConfig",
+    "OrchestratorStage",
+    "ProgressInfo",
+    "CheckpointState",
+    "TrainingCycleResult",
+    "ShutdownReason",
+    "create_orchestrator",
     "run_training",
 ]
 
