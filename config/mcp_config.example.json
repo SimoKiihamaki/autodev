@@ -1,0 +1,33 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "mcp-server-filesystem",
+      "args": ["--root", "."],
+      "env": {},
+      "enabled": true,
+      "auto_start": true
+    },
+    {
+      "name": "git",
+      "command": "mcp-server-git",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true
+    },
+    {
+      "name": "terminal",
+      "command": "mcp-server-terminal",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true
+    }
+  ],
+  "security": {
+    "allowed_paths": ["."],
+    "allowed_commands": ["pytest", "black", "mypy", "git", "python", "python3"],
+    "require_confirmation": false
+  }
+}

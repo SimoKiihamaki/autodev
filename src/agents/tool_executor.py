@@ -16,12 +16,39 @@ import asyncio
 import logging
 import time
 
-from ..llm.base_client import (
-    ChatMessage,
-    MessageRole,
-    ToolUse,
-    LLMResponse,
-)
+# Import LLM types (with fallback for standalone use)
+try:
+    from ..llm.base_client import (
+        ChatMessage,
+        MessageRole,
+        ToolUse,
+        LLMResponse,
+    )
+except ImportError:
+    try:
+        from llm.base_client import (
+            ChatMessage,
+            MessageRole,
+            ToolUse,
+            LLMResponse,
+        )
+    except ImportError:
+        ChatMessage = None
+        MessageRole = None
+        ToolUse = None
+        LLMResponse = None
+
+# Import MCP client (with fallback to mock)
+try:
+    from ..mcp.client import AutoDevMCPClient
+    MCP_CLIENT_AVAILABLE = True
+except ImportError:
+    try:
+        from mcp.client import AutoDevMCPClient
+        MCP_CLIENT_AVAILABLE = True
+    except ImportError:
+        MCP_CLIENT_AVAILABLE = False
+        AutoDevMCPClient = None
 
 logger = logging.getLogger(__name__)
 

@@ -24,12 +24,23 @@ try:
     from ..llm.anthropic_client import AnthropicClient
     LLM_AVAILABLE = True
 except ImportError:
-    LLM_AVAILABLE = False
-    ChatMessage = None
-    MessageRole = None
-    LLMConfig = None
-    BaseLLMClient = None
-    AnthropicClient = None
+    try:
+        # Fallback for running from src directory
+        from llm.base_client import (
+            ChatMessage,
+            MessageRole,
+            LLMConfig,
+            BaseLLMClient,
+        )
+        from llm.anthropic_client import AnthropicClient
+        LLM_AVAILABLE = True
+    except ImportError:
+        LLM_AVAILABLE = False
+        ChatMessage = None
+        MessageRole = None
+        LLMConfig = None
+        BaseLLMClient = None
+        AnthropicClient = None
 
 logger = logging.getLogger(__name__)
 
@@ -246,23 +257,47 @@ class BaseAgent(ABC):
         Initialize the MCP client.
         
         Attempts to connect to configured MCP servers.
+        Uses real MCP client when available, falls back to mock.
         """
         try:
-            from .tool_executor import MockMCPClient
-            
-            # Try to use real MCP client if available
+            # Try to import real MCP client first
+            mcp_client_class = None
             try:
-                # Check for MCP client implementation
+                from ..mcp.client import AutoDevMCPClient
+                mcp_client_class = AutoDevMCPClient
+            except ImportError:
+                try:
+                    from mcp.client import AutoDevMCPClient
+                    mcp_client_class = AutoDevMCPClient
+                except ImportError:
+                    pass
+            
+            if mcp_client_class:
+                self._mcp_client = mcp_client_class(self.mcp_config_path)
+                await self._mcp_client.connect_all()
+                logger.info(f"Initialized real MCP client for {self.role.value}")
+            else:
+                # Fall back to mock client
+                try:
+                    from .tool_executor import MockMCPClient
+                except ImportError:
+                    from tool_executor import MockMCPClient
                 self._mcp_client = MockMCPClient()
                 await self._mcp_client.connect_all()
-                logger.info(f"Initialized MCP client for {self.role.value}")
-            except Exception as e:
-                logger.warning(f"Could not initialize MCP client: {e}")
-                self._mcp_client = None
+                logger.info(f"Initialized mock MCP client for {self.role.value}")
                 
-        except ImportError:
-            logger.warning("Tool executor not available")
-            self._mcp_client = None
+        except Exception as e:
+            logger.warning(f"Could not initialize MCP client: {e}")
+            # Try mock as last resort
+            try:
+                try:
+                    from .tool_executor import MockMCPClient
+                except ImportError:
+                    from tool_executor import MockMCPClient
+                self._mcp_client = MockMCPClient()
+                await self._mcp_client.connect_all()
+            except Exception:
+                self._mcp_client = None
     
     async def _initialize_tool_executor(self, max_iterations: int = 20) -> None:
         """
@@ -272,7 +307,10 @@ class BaseAgent(ABC):
             max_iterations: Maximum tool calling iterations
         """
         if self._llm_client and self._mcp_client:
-            from .tool_executor import ToolExecutionLoop
+            try:
+                from .tool_executor import ToolExecutionLoop
+            except ImportError:
+                from tool_executor import ToolExecutionLoop
             self._tool_executor = ToolExecutionLoop(
                 llm_client=self._llm_client,
                 mcp_client=self._mcp_client,
