@@ -3,6 +3,7 @@ AutoDev LLM Client Layer
 
 Provides abstraction over LLM providers with Anthropic Claude implementation.
 Phase 2: Provider abstraction with factory pattern.
+Phase 3: Enhanced error handling, retries, and response parsing.
 
 Main entry point: LLMClient class from client.py
 
@@ -36,7 +37,39 @@ from .base_client import (
 )
 
 # Import provider implementations
-from .anthropic_client import AnthropicClient
+from .anthropic_client import AnthropicClient, AnthropicLLMClient
+
+# Import exceptions (Phase 3)
+from .exceptions import (
+    LLMError,
+    LLMConfigurationError,
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMAuthenticationError,
+    LLMModelNotFoundError,
+    LLMContextLengthError,
+    LLMResponseError,
+    LLMToolUseError,
+    LLMTimeoutError,
+    LLMContentFilterError,
+    LLMServiceUnavailableError,
+    LLMOverloadedError,
+    get_exception_for_status,
+)
+
+# Import retry handling (Phase 3)
+from .retry import (
+    RetryConfig,
+    RetryHandler,
+    with_retry,
+)
+
+# Import response parsing (Phase 3)
+from .response_parser import (
+    ParsedContent,
+    ResponseParser,
+    StreamingResponseParser,
+)
 
 
 # Legacy alias for backward compatibility
@@ -80,4 +113,31 @@ __all__ = [
     
     # Provider implementations
     "AnthropicClient",
+    "AnthropicLLMClient",  # Alias
+    
+    # Exceptions (Phase 3)
+    "LLMError",
+    "LLMConfigurationError",
+    "LLMConnectionError",
+    "LLMRateLimitError",
+    "LLMAuthenticationError",
+    "LLMModelNotFoundError",
+    "LLMContextLengthError",
+    "LLMResponseError",
+    "LLMToolUseError",
+    "LLMTimeoutError",
+    "LLMContentFilterError",
+    "LLMServiceUnavailableError",
+    "LLMOverloadedError",
+    "get_exception_for_status",
+    
+    # Retry handling (Phase 3)
+    "RetryConfig",
+    "RetryHandler",
+    "with_retry",
+    
+    # Response parsing (Phase 3)
+    "ParsedContent",
+    "ResponseParser",
+    "StreamingResponseParser",
 ]

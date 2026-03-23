@@ -5,6 +5,12 @@ Implements the LLM client interface for Anthropic's Claude API.
 Supports Claude 3.5 Sonnet, Claude 3.5 Haiku, and Claude 3 Opus.
 Implements prompt caching for cost optimization.
 
+Phase 3 Enhancements:
+- Enhanced error handling with custom exceptions
+- Exponential backoff retry logic
+- Improved response parsing
+- Better error recovery
+
 As specified in Section 1.3 of the Phase 2 LLM/MCP Integration Specification.
 """
 
@@ -22,6 +28,20 @@ from .base_client import (
     LLMResponse,
     LLMConfig,
 )
+from .exceptions import (
+    LLMError,
+    LLMConfigurationError,
+    LLMAuthenticationError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMContextLengthError,
+    LLMResponseError,
+    LLMToolUseError,
+    LLMServiceUnavailableError,
+    get_exception_for_status,
+)
+from .retry import RetryHandler, RetryConfig
+from .response_parser import ResponseParser, StreamingResponseParser
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +57,12 @@ class AnthropicClient(BaseLLMClient):
     - Streaming and non-streaming completions
     - Tool use support
     - Prompt caching for cost optimization
-    - Automatic retry on rate limits
+    - Automatic retry with exponential backoff
+    - Comprehensive error handling
     - Role-based system prompts
     
     Example:
-        >>> config = LLMConfig(api_key="sk-...", model="claude-3-5-sonnet-20241022")
+        >>> config = LLMConfig(api_key="sk-ant-...", model="claude-3-5-sonnet-20241022")
         >>> client = AnthropicClient(config)
         >>> response = await client.complete([
         ...     ChatMessage(role=MessageRole.USER, content="Hello!")
@@ -137,24 +158,35 @@ Output test files and execution results.""",
         
         Args:
             config: LLM configuration including API key
+            
+        Raises:
+            LLMConfigurationError: If configuration is invalid
+            LLMAuthenticationError: If API key is missing
         """
         super().__init__(config)
+        
+        # Validate configuration
+        self._validate_config(config)
         
         # Get API key from config or environment
         api_key = config.api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError(
+            raise LLMAuthenticationError(
                 "Anthropic API key required. Set ANTHROPIC_API_KEY environment "
-                "variable or pass api_key in config."
+                "variable or pass api_key in config.",
+                provider="anthropic"
             )
         
         # Try to import Anthropic SDK
         try:
-            from anthropic import AsyncAnthropic
+            from anthropic import AsyncAnthropic, APIStatusError, RateLimitError
+            self._APIStatusError = APIStatusError
+            self._RateLimitError = RateLimitError
         except ImportError:
-            raise ImportError(
+            raise LLMConfigurationError(
                 "anthropic package not installed. "
-                "Install with: pip install anthropic>=0.40.0"
+                "Install with: pip install anthropic>=0.40.0",
+                provider="anthropic"
             )
         
         # Initialize Anthropic client
@@ -162,10 +194,57 @@ Output test files and execution results.""",
             api_key=api_key,
             base_url=config.base_url,
             timeout=config.timeout_seconds,
-            max_retries=config.max_retries
+            max_retries=0  # We handle retries ourselves
         )
         
+        # Initialize retry handler
+        retry_config = RetryConfig(
+            max_retries=config.max_retries,
+            base_delay=config.retry_backoff_seconds,
+            max_delay=60.0,
+            exponential_base=2.0,
+            jitter=True,
+        )
+        self._retry_handler = RetryHandler(retry_config)
+        
+        # Initialize response parser
+        self._parser = ResponseParser()
+        
         logger.info(f"Initialized Anthropic client with model: {config.model}")
+    
+    def _validate_config(self, config: LLMConfig) -> None:
+        """
+        Validate LLM configuration.
+        
+        Args:
+            config: Configuration to validate
+            
+        Raises:
+            LLMConfigurationError: If configuration is invalid
+        """
+        if config.max_tokens < 1:
+            raise LLMConfigurationError(
+                "max_tokens must be at least 1",
+                config_key="max_tokens"
+            )
+        
+        if config.max_tokens > 200000:
+            raise LLMConfigurationError(
+                "max_tokens exceeds maximum (200000)",
+                config_key="max_tokens"
+            )
+        
+        if not 0 <= config.temperature <= 2:
+            raise LLMConfigurationError(
+                "temperature must be between 0 and 2",
+                config_key="temperature"
+            )
+        
+        if config.max_retries < 0:
+            raise LLMConfigurationError(
+                "max_retries cannot be negative",
+                config_key="max_retries"
+            )
     
     async def complete(
         self,
@@ -180,7 +259,8 @@ Output test files and execution results.""",
         Features:
         - Prompt caching for system messages
         - Tool use support
-        - Automatic retry on rate limits
+        - Automatic retry with exponential backoff
+        - Comprehensive error handling
         
         Args:
             messages: Conversation history
@@ -190,6 +270,28 @@ Output test files and execution results.""",
             
         Returns:
             LLMResponse with content and optional tool uses
+            
+        Raises:
+            LLMError: On API errors (with specific subclasses)
+        """
+        # Use retry handler for the API call
+        return await self._retry_handler.execute_with_retry(
+            self._complete_impl,
+            messages,
+            tools=tools,
+            system_prompt=system_prompt,
+            **kwargs
+        )
+    
+    async def _complete_impl(
+        self,
+        messages: List[ChatMessage],
+        tools: Optional[List[ToolDefinition]] = None,
+        system_prompt: Optional[str] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """
+        Internal implementation of complete (without retry logic).
         """
         # Convert messages to Anthropic format
         anthropic_messages = self._convert_messages(messages)
@@ -224,51 +326,84 @@ Output test files and execution results.""",
             logger.debug(f"Making Anthropic API call with {len(messages)} messages")
             response = await self.client.messages.create(**request_params)
             
-            # Parse response
-            content_text = ""
-            tool_uses = []
+            # Parse response using our parser
+            llm_response = self._parser.parse_anthropic_response(response)
             
-            for block in response.content:
-                if hasattr(block, 'type'):
-                    if block.type == "text":
-                        content_text += block.text
-                    elif block.type == "tool_use":
-                        tool_uses.append(ToolUse(
-                            id=block.id,
-                            name=block.name,
-                            input=dict(block.input) if block.input else {}
-                        ))
-            
-            # Build usage stats
-            usage = {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
-            }
-            
-            # Add cache stats if available
-            if hasattr(response.usage, 'cache_read_input_tokens'):
-                usage["cache_read_tokens"] = response.usage.cache_read_input_tokens
-                if response.usage.cache_read_input_tokens > 0:
-                    logger.info(
-                        f"Cache efficiency: {response.usage.cache_read_input_tokens} "
-                        f"tokens read from cache"
-                    )
+            # Log cache efficiency
+            usage = llm_response.usage
+            if usage.get("cache_read_tokens", 0) > 0:
+                logger.info(
+                    f"Cache efficiency: {usage['cache_read_tokens']} "
+                    f"tokens read from cache"
+                )
             
             # Update usage stats
             self._update_usage(usage)
             
-            return LLMResponse(
-                content=content_text,
-                tool_uses=tool_uses,
-                stop_reason=response.stop_reason,
-                usage=usage,
-                model=response.model
+            # Validate response
+            is_valid, issues = self._parser.validate_response(llm_response)
+            if not is_valid:
+                for issue in issues:
+                    logger.warning(f"Response validation: {issue}")
+            
+            return llm_response
+            
+        except self._RateLimitError as e:
+            # Handle rate limit specifically
+            retry_after = None
+            if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+                retry_after_str = e.response.headers.get('retry-after')
+                if retry_after_str:
+                    try:
+                        retry_after = float(retry_after_str)
+                    except ValueError:
+                        pass
+            
+            raise LLMRateLimitError(
+                f"Rate limit exceeded: {e}",
+                retry_after=retry_after,
+                provider="anthropic",
+                model=self.config.model,
+                details={'status_code': getattr(e, 'status_code', 429)}
+            )
+            
+        except self._APIStatusError as e:
+            # Map status codes to specific exceptions
+            status_code = getattr(e, 'status_code', 500)
+            message = str(e)
+            
+            # Check for specific error types based on message
+            if 'context_length' in message.lower() or 'too long' in message.lower():
+                raise LLMContextLengthError(
+                    message,
+                    provider="anthropic",
+                    model=self.config.model,
+                    details={'status_code': status_code}
+                )
+            
+            raise get_exception_for_status(
+                status_code,
+                message,
+                provider="anthropic",
+                model=self.config.model,
+                details={'status_code': status_code}
+            )
+            
+        except asyncio.TimeoutError:
+            raise LLMTimeoutError(
+                f"Request timed out after {self.config.timeout_seconds}s",
+                timeout_seconds=self.config.timeout_seconds,
+                provider="anthropic",
+                model=self.config.model
             )
             
         except Exception as e:
-            logger.error(f"Anthropic API error: {e}")
-            raise
+            logger.error(f"Unexpected Anthropic API error: {e}")
+            raise LLMError(
+                f"Unexpected error: {e}",
+                provider="anthropic",
+                model=self.config.model
+            )
     
     async def stream_complete(
         self,
@@ -288,6 +423,9 @@ Output test files and execution results.""",
             
         Yields:
             Text chunks as they arrive
+            
+        Raises:
+            LLMError: On API errors
         """
         anthropic_messages = self._convert_messages(messages)
         
@@ -304,26 +442,52 @@ Output test files and execution results.""",
         if tools:
             request_params["tools"] = self._convert_tools(tools)
         
+        # Initialize streaming parser
+        stream_parser = StreamingResponseParser()
         final_message = None
+        stop_reason = "end_turn"
+        model = self.config.model
         
         try:
             async with self.client.messages.stream(**request_params) as stream:
-                async for text in stream.text_stream:
-                    yield text
+                async for event in stream:
+                    text = stream_parser.process_event(event)
+                    if text:
+                        yield text
+                
+                # Get final message for usage stats
                 final_message = await stream.get_final_message()
+                stop_reason = getattr(final_message, 'stop_reason', 'end_turn')
+                model = getattr(final_message, 'model', self.config.model)
+                
+        except self._RateLimitError as e:
+            raise LLMRateLimitError(
+                f"Rate limit exceeded during streaming: {e}",
+                provider="anthropic",
+                model=self.config.model
+            )
+        except self._APIStatusError as e:
+            raise get_exception_for_status(
+                getattr(e, 'status_code', 500),
+                str(e),
+                provider="anthropic",
+                model=self.config.model
+            )
         except Exception as e:
             logger.error(f"Anthropic streaming error: {e}")
-            raise
+            raise LLMError(
+                f"Streaming error: {e}",
+                provider="anthropic",
+                model=self.config.model
+            )
         
         # Update usage after streaming completes
-        if final_message:
+        if final_message and hasattr(final_message, 'usage'):
+            usage_obj = final_message.usage
             self._update_usage({
-                "total_tokens": (
-                    final_message.usage.input_tokens + 
-                    final_message.usage.output_tokens
-                ),
-                "input_tokens": final_message.usage.input_tokens,
-                "output_tokens": final_message.usage.output_tokens,
+                "total_tokens": usage_obj.input_tokens + usage_obj.output_tokens,
+                "input_tokens": usage_obj.input_tokens,
+                "output_tokens": usage_obj.output_tokens,
             })
     
     def _convert_messages(self, messages: List[ChatMessage]) -> List[Dict[str, Any]]:
@@ -362,6 +526,7 @@ Output test files and execution results.""",
                     "type": "tool_result",
                     "tool_use_id": msg.metadata.get("tool_use_id", ""),
                     "content": msg.content,
+                    "is_error": msg.metadata.get("is_error", False),
                 }]
             else:
                 # Regular text message
@@ -386,14 +551,19 @@ Output test files and execution results.""",
         Returns:
             List of tool dictionaries in Anthropic format
         """
-        return [
-            {
+        converted_tools = []
+        for tool in tools:
+            converted = {
                 "name": tool.name,
                 "description": tool.description,
                 "input_schema": tool.input_schema,
             }
-            for tool in tools
-        ]
+            # Add caching for tools if enabled
+            if self.config.enable_caching:
+                converted["cache_control"] = {"type": "ephemeral"}
+            converted_tools.append(converted)
+        
+        return converted_tools
     
     @classmethod
     def get_system_prompt(cls, role: str) -> str:
@@ -434,3 +604,26 @@ Output test files and execution results.""",
                 "is_error": is_error,
             }
         )
+    
+    def get_retry_stats(self) -> Dict[str, Any]:
+        """
+        Get retry statistics.
+        
+        Returns:
+            Dictionary with retry statistics
+        """
+        return self._retry_handler.get_stats()
+    
+    def reset_retry_stats(self) -> None:
+        """Reset retry statistics."""
+        self._retry_handler.reset_stats()
+
+
+# Alias for backward compatibility and clarity
+AnthropicLLMClient = AnthropicClient
+
+
+__all__ = [
+    "AnthropicClient",
+    "AnthropicLLMClient",
+]
