@@ -970,8 +970,8 @@ This model is a LoRA adapter fine-tuned by AutoDev for code generation tasks.
 
 | Metric | Value |
 |--------|-------|
-| Loss | {metrics.get('loss', 'N/A'):.4f if isinstance(metrics.get('loss'), (int, float)) else 'N/A'} |
-| Resolution Rate | {metrics.get('resolution_rate', 'N/A'):.2% if isinstance(metrics.get('resolution_rate'), (int, float)) else 'N/A'} |
+| Loss | {f"{metrics.get('loss'):.4f}" if isinstance(metrics.get('loss'), (int, float)) else 'N/A'} |
+| Resolution Rate | {f"{metrics.get('resolution_rate'):.2%}" if isinstance(metrics.get('resolution_rate'), (int, float)) else 'N/A'} |
 
 ## Usage
 
