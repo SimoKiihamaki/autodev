@@ -1,0 +1,35 @@
+{
+  "total_instances": 5,
+  "resolved_count": 0,
+  "failed_count": 5,
+  "resolution_rate": 0.0,
+  "target_met": false,
+  "timestamp": "2026-03-24T00:48:51.096608",
+  "results": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "resolved": false,
+      "error": "No patch generated"
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "resolved": false,
+      "error": "No patch generated"
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "resolved": false,
+      "error": "No patch generated"
+    },
+    {
+      "instance_id": "astropy__astropy-14995",
+      "resolved": false,
+      "error": "No patch generated"
+    },
+    {
+      "instance_id": "astropy__astropy-6938",
+      "resolved": false,
+      "error": "No patch generated"
+    }
+  ]
+}

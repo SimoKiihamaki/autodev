@@ -1,0 +1,11 @@
+# Requirements for SWE-bench Lite validation
+# Install with: pip install -r requirements_swebench.txt
+
+# Dataset loading
+datasets>=2.14.0
+
+# SWE-bench evaluation metrics (optional but recommended)
+swebench-metrics>=0.1.0
+
+# Core dependencies
+tqdm>=4.65.0
