@@ -5,6 +5,15 @@ This module provides fixtures for testing the agent pipeline integration,
 including mock agents, mock training components, and test configurations.
 """
 
+import sys
+from pathlib import Path
+
+# Add src directory to Python path for imports
+# This allows tests to import from hierarchical, agents, training, etc.
+src_path = Path(__file__).parent.parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -15,7 +24,7 @@ import pytest
 # Import type hints for type annotations
 # These will be available once the implementation is complete
 try:
-    from agents.base import AgentRole, BaseAgent, TaskResult, TaskSpec
+    from agents.base import AgentRole, BaseAgent, TaskSpec, TaskResult
     from agents.coder import CoderAgent
     from agents.communication import ReviewResult
     from agents.manager import ManagerAgent
@@ -457,7 +466,7 @@ def sample_execution_trace():
             Mock(tool_name="write_file", duration_ms=100),
         ],
         llm_calls=[
-            Mock(tokens_used=500, duration_ms=200),
+            Mock(tokens_used=1000, duration_ms=200),
         ],
         file_changes=[
             Mock(file_path="hello.py", change_type="create"),

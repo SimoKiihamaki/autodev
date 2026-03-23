@@ -34,6 +34,20 @@ from .hermes_integration import (
     DelegateTaskConfig,
     TaskDelegateResult,
 )
+from .agent_training_bridge import (
+    AgentTrainingBridge,
+    BridgeConfig,
+)
+from .hierarchical_executor import (
+    HierarchicalExecutor,
+    ExecutionPhase,
+    PhaseResult,
+    IterationRecord,
+    HierarchicalResult,
+)
+
+# Aliases for test compatibility
+AgentPipelineConfig = PipelineConfig
 
 __version__ = "0.1.0"
 __phase__ = "10 - Hierarchical Multi-Agent Orchestration"
@@ -42,10 +56,20 @@ __all__ = [
     # Agent Pipeline
     "AgentPipeline",
     "PipelineConfig",
+    "AgentPipelineConfig",  # Alias
     "PipelineState",
     "PipelineResult",
     # Hermes Integration
     "HermesIntegration",
     "DelegateTaskConfig",
     "TaskDelegateResult",
+    # Agent Training Bridge
+    "AgentTrainingBridge",
+    "BridgeConfig",
+    # Hierarchical Executor
+    "HierarchicalExecutor",
+    "ExecutionPhase",
+    "PhaseResult",
+    "IterationRecord",
+    "HierarchicalResult",
 ]

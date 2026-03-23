@@ -36,22 +36,65 @@ import logging
 import uuid
 
 # Import from existing agent framework
-from ..agents.base import (
-    BaseAgent,
-    AgentRole,
-    AgentState,
-    TaskSpec,
-    TaskResult,
-    SubTask,
-)
-from ..agents.manager import ManagerAgent
-from ..agents.coder import CoderAgent
-from ..agents.reviewer import ReviewerAgent
-from ..agents.communication import AgentMessage, MessageType, MessageRouter
+try:
+    from agents.base import (
+        BaseAgent,
+        AgentRole,
+        AgentState,
+        TaskSpec,
+        TaskResult,
+        SubTask,
+    )
+    from agents.manager import ManagerAgent
+    from agents.coder import CoderAgent
+    from agents.reviewer import ReviewerAgent
+    from agents.communication import AgentMessage, MessageType, MessageRouter
 
-# Import from training module
-from ..training.orchestrator import TrainingOrchestrator
-from ..training.data_collector import DataCollector
+    # Import from training module
+    from training.orchestrator import TrainingOrchestrator
+    from training.data_collector import DataCollector
+    from training.data_collector import (
+        ExecutionTrace,
+        TraceStatus,
+        CodeChange,
+        TrainingDataCollector,
+        DataCollectionConfig,
+    )
+    from training.reward_calculator import (
+        RewardCalculator,
+        RewardComponents,
+        RewardConfig,
+    )
+except ImportError:
+    # Fallback for when running as standalone or in testing
+    from ..agents.base import (
+        BaseAgent,
+        AgentRole,
+        AgentState,
+        TaskSpec,
+        TaskResult,
+        SubTask,
+    )
+    from ..agents.manager import ManagerAgent
+    from ..agents.coder import CoderAgent
+    from ..agents.reviewer import ReviewerAgent
+    from ..agents.communication import AgentMessage, MessageType, MessageRouter
+
+    # Import from training module
+    from ..training.orchestrator import TrainingOrchestrator
+    from ..training.data_collector import DataCollector
+    from ..training.data_collector import (
+        ExecutionTrace,
+        TraceStatus,
+        CodeChange,
+        TrainingDataCollector,
+        DataCollectionConfig,
+    )
+    from ..training.reward_calculator import (
+        RewardCalculator,
+        RewardComponents,
+        RewardConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -442,3 +485,590 @@ class AgentPipeline:
         if self._reviewer:
             await self._reviewer.shutdown()
         logger.info("AgentPipeline shutdown complete")
+
+
+# =============================================================================
+# Agent Training Bridge - Connects Agents to Training Infrastructure
+# =============================================================================
+
+@dataclass
+class BridgeConfig:
+    """
+    Configuration for AgentTrainingBridge.
+    
+    Attributes:
+        enable_trace_collection: Whether to collect execution traces
+        enable_reward_computation: Whether to compute rewards
+        enable_model_injection: Whether to support model injection
+        trace_storage_dir: Directory for storing traces
+        default_model_version: Default model version to use
+        role_model_mapping: Mapping of agent roles to model versions
+        reward_weights: Custom weights for reward components
+    """
+    enable_trace_collection: bool = True
+    enable_reward_computation: bool = True
+    enable_model_injection: bool = True
+    trace_storage_dir: str = "~/.autodev/agent_traces"
+    default_model_version: str = "base"
+    role_model_mapping: Dict[str, str] = field(default_factory=lambda: {
+        "manager": "base",
+        "coder": "base", 
+        "reviewer": "base",
+        "tester": "base",
+    })
+    reward_weights: Optional[Dict[str, float]] = None
+
+
+@dataclass
+class TrainedModelProvider:
+    """
+    Provides access to trained models for agent injection.
+    
+    Attributes:
+        model_registry_path: Path to the model registry
+        available_models: Dictionary of available model versions
+        default_model: Default model to use when none specified
+    """
+    model_registry_path: str = "~/.autodev/model_registry"
+    available_models: Dict[str, str] = field(default_factory=dict)
+    default_model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    
+    def get_model_path(self, model_version: str) -> Optional[str]:
+        """
+        Get the path to a specific model version.
+        
+        Args:
+            model_version: Version identifier for the model
+            
+        Returns:
+            Path to the model, or None if not found
+        """
+        if model_version in self.available_models:
+            return self.available_models[model_version]
+        if model_version == "base":
+            return self.default_model
+        return None
+    
+    def register_model(self, version: str, path: str) -> None:
+        """Register a new model version."""
+        self.available_models[version] = path
+        logger.info(f"Registered model version {version} at {path}")
+    
+    def list_available_models(self) -> List[str]:
+        """List all available model versions."""
+        return list(self.available_models.keys()) + ["base"]
+
+
+class AgentTraceCollector:
+    """
+    Collects execution traces from agent runs for training.
+    
+    This class wraps agent execution to capture complete execution
+    histories including LLM prompts, responses, tool calls, and outcomes.
+    """
+    
+    def __init__(
+        self,
+        data_collector: Optional[TrainingDataCollector] = None,
+        config: Optional[BridgeConfig] = None,
+    ):
+        """
+        Initialize the trace collector.
+        
+        Args:
+            data_collector: Optional training data collector
+            config: Bridge configuration
+        """
+        self.config = config or BridgeConfig()
+        self.data_collector = data_collector or TrainingDataCollector(
+            DataCollectionConfig(output_dir=self.config.trace_storage_dir)
+        )
+        self._active_traces: Dict[str, ExecutionTrace] = {}
+        
+    def start_trace(
+        self,
+        agent_id: str,
+        task_id: str,
+        problem_statement: str,
+        repo_context: Optional[Dict[str, Any]] = None,
+        model: str = "",
+    ) -> ExecutionTrace:
+        """
+        Start a new execution trace for an agent.
+        
+        Args:
+            agent_id: ID of the agent executing
+            task_id: ID of the task being executed
+            problem_statement: The problem to solve
+            repo_context: Repository context information
+            model: Model being used
+            
+        Returns:
+            New ExecutionTrace instance
+        """
+        trace = self.data_collector.start_trace(
+            task_id=task_id,
+            problem_statement=problem_statement,
+            repo_context=repo_context,
+            model=model,
+            metadata={"agent_id": agent_id}
+        )
+        self._active_traces[trace.trace_id] = trace
+        return trace
+    
+    def record_step(
+        self,
+        trace: ExecutionTrace,
+        prompt: str,
+        response: str,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_results: Optional[List[Dict[str, Any]]] = None,
+        tokens_used: Optional[Dict[str, int]] = None,
+        latency_seconds: float = 0.0,
+    ) -> None:
+        """Record a step in the execution trace."""
+        self.data_collector.record_step(
+            trace=trace,
+            prompt=prompt,
+            response=response,
+            tool_calls=tool_calls,
+            tool_results=tool_results,
+            tokens_used=tokens_used,
+            latency_seconds=latency_seconds,
+        )
+    
+    def record_code_change(
+        self,
+        trace: ExecutionTrace,
+        file_path: str,
+        change_type: str,
+        original_content: Optional[str] = None,
+        new_content: Optional[str] = None,
+        diff: Optional[str] = None,
+    ) -> None:
+        """Record a code change in the trace."""
+        self.data_collector.record_code_change(
+            trace=trace,
+            file_path=file_path,
+            change_type=change_type,
+            original_content=original_content,
+            new_content=new_content,
+            diff=diff,
+        )
+    
+    def finalize_trace(
+        self,
+        trace: ExecutionTrace,
+        status: TraceStatus,
+        tests_passed: Optional[List[str]] = None,
+        tests_failed: Optional[List[str]] = None,
+        execution_time_seconds: float = 0.0,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Finalize and store the trace."""
+        if trace.trace_id in self._active_traces:
+            del self._active_traces[trace.trace_id]
+        return self.data_collector.finalize_trace(
+            trace=trace,
+            status=status,
+            tests_passed=tests_passed,
+            tests_failed=tests_failed,
+            execution_time_seconds=execution_time_seconds,
+            error=error,
+        )
+    
+    def get_collected_traces(self) -> List[ExecutionTrace]:
+        """Get all collected traces."""
+        return self.data_collector._collected_traces
+
+
+class AgentTrainingBridge:
+    """
+    Bridge connecting hierarchical agents to the training infrastructure.
+    
+    This class provides the integration layer between:
+    - Agent execution traces → Training data collection
+    - Trained models → Agent capability upgrades
+    - Performance metrics → RL reward signals
+    
+    The bridge wraps agent execution to collect SWE-bench compatible traces,
+    enables injection of fine-tuned models, and computes reward signals for
+    reinforcement learning training.
+    
+    Example:
+        >>> bridge = AgentTrainingBridge(config)
+        >>> 
+        >>> # Wrap agent execution for trace collection
+        >>> result = await bridge.wrap_agent_execution(coder_agent, task_spec)
+        >>> 
+        >>> # Inject trained model
+        >>> bridge.inject_trained_model(coder_agent, "v1.2.3")
+        >>> 
+        >>> # Get role-specific model
+        >>> model = bridge.get_model_for_role(AgentRole.CODER)
+    """
+    
+    def __init__(
+        self,
+        config: Optional[BridgeConfig] = None,
+        training_orchestrator: Optional[TrainingOrchestrator] = None,
+        data_collector: Optional[TrainingDataCollector] = None,
+        reward_calculator: Optional[RewardCalculator] = None,
+        model_provider: Optional[TrainedModelProvider] = None,
+    ):
+        """
+        Initialize the Agent Training Bridge.
+        
+        Args:
+            config: Bridge configuration
+            training_orchestrator: Optional training orchestrator
+            data_collector: Optional data collector for traces
+            reward_calculator: Optional reward calculator
+            model_provider: Optional model provider for trained models
+        """
+        self.config = config or BridgeConfig()
+        
+        # Initialize model provider
+        self.model_provider = model_provider or TrainedModelProvider()
+        
+        # Initialize trace collector
+        self.trace_collector = AgentTraceCollector(
+            data_collector=data_collector,
+            config=self.config,
+        )
+        
+        # Initialize reward calculator
+        if reward_calculator is not None:
+            self.reward_calculator = reward_calculator
+        else:
+            reward_config = RewardConfig()
+            if self.config.reward_weights:
+                reward_config.test_pass_weight = self.config.reward_weights.get("test_pass", 0.5)
+                reward_config.code_quality_weight = self.config.reward_weights.get("code_quality", 0.3)
+                reward_config.efficiency_weight = self.config.reward_weights.get("efficiency", 0.2)
+            self.reward_calculator = RewardCalculator(reward_config)
+        
+        # Reference to training orchestrator
+        self.training_orchestrator = training_orchestrator
+        
+        # Track active executions
+        self._active_executions: Dict[str, ExecutionTrace] = {}
+        
+        logger.info(
+            f"AgentTrainingBridge initialized with "
+            f"trace_collection={self.config.enable_trace_collection}, "
+            f"reward_computation={self.config.enable_reward_computation}"
+        )
+    
+    async def wrap_agent_execution(
+        self,
+        agent: BaseAgent,
+        task: TaskSpec,
+    ) -> TaskResult:
+        """
+        Wrap agent execution for trace collection.
+        
+        This method executes the agent while capturing a complete
+        execution trace suitable for SWE-bench RL training.
+        
+        Args:
+            agent: The agent to execute
+            task: The task specification
+            
+        Returns:
+            TaskResult from the agent execution
+        """
+        trace = None
+        start_time = datetime.utcnow()
+        
+        if self.config.enable_trace_collection:
+            # Start trace collection
+            trace = self.trace_collector.start_trace(
+                agent_id=agent.agent_id,
+                task_id=task.task_id,
+                problem_statement=task.description,
+                repo_context=getattr(task, "repo_context", {}),
+                model=getattr(agent, "model", "unknown"),
+            )
+            self._active_executions[task.task_id] = trace
+        
+        try:
+            # Execute the agent
+            result = await agent.execute(task)
+            
+            # Capture execution trace
+            if trace is not None:
+                trace = await self.capture_execution_trace(agent, task, result)
+            
+            return result
+            
+        except Exception as e:
+            # Record failure in trace
+            if trace is not None:
+                self.trace_collector.finalize_trace(
+                    trace=trace,
+                    status=TraceStatus.ERROR,
+                    execution_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
+                    error=str(e),
+                )
+            raise
+            
+        finally:
+            if task.task_id in self._active_executions:
+                del self._active_executions[task.task_id]
+    
+    def inject_trained_model(
+        self,
+        agent: BaseAgent,
+        model_version: str,
+    ) -> None:
+        """
+        Inject a trained model into an agent.
+        
+        This method replaces the agent's LLM with a fine-tuned model
+        from the training pipeline.
+        
+        Args:
+            agent: The agent to update
+            model_version: Version identifier for the trained model
+        """
+        if not self.config.enable_model_injection:
+            logger.warning("Model injection is disabled in config")
+            return
+        
+        model_path = self.model_provider.get_model_path(model_version)
+        if model_path is None:
+            logger.error(f"Model version {model_version} not found")
+            raise ValueError(f"Model version {model_version} not available")
+        
+        # Update agent's model configuration
+        if hasattr(agent, "llm_config") and agent.llm_config is not None:
+            agent.llm_config.model = model_path
+            logger.info(f"Injected model {model_path} into agent {agent.agent_id}")
+        elif hasattr(agent, "_llm_client"):
+            # Direct client update if available
+            agent._llm_client.model = model_path
+            logger.info(f"Injected model {model_path} into agent {agent.agent_id}")
+        else:
+            logger.warning(f"Could not inject model into agent {agent.agent_id}: no LLM config")
+    
+    async def capture_execution_trace(
+        self,
+        agent: BaseAgent,
+        task: TaskSpec,
+        result: TaskResult,
+    ) -> ExecutionTrace:
+        """
+        Capture execution trace from an agent run.
+        
+        Creates a complete SWE-bench compatible trace from the
+        agent execution, including all steps, tool calls, and code changes.
+        
+        Args:
+            agent: The agent that executed
+            task: The task specification
+            result: The execution result
+            
+        Returns:
+            ExecutionTrace with complete execution history
+        """
+        trace = self._active_executions.get(task.task_id)
+        
+        if trace is None:
+            # Create trace from result if not actively tracking
+            trace = ExecutionTrace(
+                trace_id=f"trace_{task.task_id}_{uuid.uuid4().hex[:8]}",
+                task_id=task.task_id,
+                timestamp=datetime.utcnow().isoformat(),
+                problem_statement=task.description,
+                repo_context=getattr(task, "repo_context", {}),
+                model=getattr(agent, "model", "unknown"),
+            )
+        
+        # Determine trace status
+        if result.status in ("completed", "success"):
+            status = TraceStatus.SUCCESS
+        elif result.status == "failed":
+            status = TraceStatus.FAILED
+        else:
+            status = TraceStatus.PARTIAL
+        
+        # Extract code changes from result
+        files_modified = getattr(result, "files_modified", [])
+        for file_path in files_modified:
+            self.trace_collector.record_code_change(
+                trace=trace,
+                file_path=file_path,
+                change_type="modify",
+            )
+        
+        # Finalize trace
+        execution_time = 0.0
+        if hasattr(result, "duration_seconds") and result.duration_seconds:
+            execution_time = result.duration_seconds
+        elif hasattr(result, "started_at") and hasattr(result, "completed_at"):
+            if result.started_at and result.completed_at:
+                execution_time = (result.completed_at - result.started_at).total_seconds()
+        
+        self.trace_collector.finalize_trace(
+            trace=trace,
+            status=status,
+            tests_passed=getattr(result, "tests_passed", []),
+            tests_failed=getattr(result, "tests_failed", []),
+            execution_time_seconds=execution_time,
+            error=getattr(result, "error", None),
+        )
+        
+        # Compute and attach reward
+        if self.config.enable_reward_computation:
+            reward_components = self.compute_agent_reward(trace)
+            trace.reward = (
+                reward_components.test_pass_rate * 0.5 +
+                reward_components.code_quality * 0.3 +
+                reward_components.efficiency * 0.2 +
+                reward_components.success_bonus +
+                reward_components.penalty
+            )
+        
+        return trace
+    
+    def compute_agent_reward(
+        self,
+        trace: ExecutionTrace,
+    ) -> RewardComponents:
+        """
+        Compute RL reward signals from an execution trace.
+        
+        Analyzes the trace to compute reward components suitable for
+        GRPO-based reinforcement learning training.
+        
+        Args:
+            trace: The execution trace to analyze
+            
+        Returns:
+            RewardComponents with individual and total rewards
+        """
+        if not self.config.enable_reward_computation:
+            return RewardComponents()
+        
+        # Use reward calculator
+        reward_components = self.reward_calculator.calculate(trace)
+        
+        logger.debug(
+            f"Computed reward for trace {trace.trace_id}: "
+            f"total={getattr(reward_components, 'total_reward', 0):.3f}"
+        )
+        
+        return reward_components
+    
+    def get_model_for_role(
+        self,
+        role: AgentRole,
+    ) -> str:
+        """
+        Get the appropriate model for a specific agent role.
+        
+        Returns the model version/path configured for the given role,
+        enabling role-specific model selection for different agent types.
+        
+        Args:
+            role: The agent role (MANAGER, CODER, REVIEWER, TESTER)
+            
+        Returns:
+            Model identifier or path for the role
+        """
+        role_name = role.value if isinstance(role, AgentRole) else str(role)
+        
+        # Check role-specific mapping
+        if role_name in self.config.role_model_mapping:
+            model_version = self.config.role_model_mapping[role_name]
+            model_path = self.model_provider.get_model_path(model_version)
+            if model_path:
+                return model_path
+        
+        # Fall back to default
+        return self.model_provider.default_model
+    
+    def set_model_for_role(
+        self,
+        role: AgentRole,
+        model_version: str,
+    ) -> None:
+        """
+        Set the model version for a specific agent role.
+        
+        Args:
+            role: The agent role
+            model_version: Model version identifier
+        """
+        role_name = role.value if isinstance(role, AgentRole) else str(role)
+        self.config.role_model_mapping[role_name] = model_version
+        logger.info(f"Set model for role {role_name} to {model_version}")
+    
+    def get_collected_traces(self) -> List[ExecutionTrace]:
+        """
+        Get all collected execution traces.
+        
+        Returns:
+            List of all traces collected by this bridge
+        """
+        return self.trace_collector.get_collected_traces()
+    
+    async def submit_traces_for_training(self) -> int:
+        """
+        Submit collected traces to the training orchestrator.
+        
+        Returns:
+            Number of traces submitted
+        """
+        if self.training_orchestrator is None:
+            logger.warning("No training orchestrator configured")
+            return 0
+        
+        traces = self.get_collected_traces()
+        
+        for trace in traces:
+            await self.training_orchestrator.submit_learning_data(trace)
+        
+        logger.info(f"Submitted {len(traces)} traces for training")
+        return len(traces)
+    
+    def register_trained_model(
+        self,
+        version: str,
+        model_path: str,
+        set_as_default: bool = False,
+    ) -> None:
+        """
+        Register a newly trained model with the bridge.
+        
+        Args:
+            version: Version identifier for the model
+            model_path: Path to the trained model
+            set_as_default: Whether to set as default model
+        """
+        self.model_provider.register_model(version, model_path)
+        
+        if set_as_default:
+            self.model_provider.default_model = model_path
+            self.config.default_model_version = version
+            logger.info(f"Set {version} as default model")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Get current status of the bridge.
+        
+        Returns:
+            Dictionary with bridge status information
+        """
+        return {
+            "config": {
+                "trace_collection": self.config.enable_trace_collection,
+                "reward_computation": self.config.enable_reward_computation,
+                "model_injection": self.config.enable_model_injection,
+            },
+            "traces_collected": len(self.get_collected_traces()),
+            "active_executions": len(self._active_executions),
+            "available_models": self.model_provider.list_available_models(),
+            "role_model_mapping": self.config.role_model_mapping,
+        }
