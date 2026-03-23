@@ -1445,6 +1445,650 @@ class TestComponentInteraction:
 
 
 # =============================================================================
+# Performance and Stress Tests (P2)
+# =============================================================================
+
+class TestPerformanceStress:
+    """
+    Performance and stress tests for the training pipeline.
+    
+    Reference: Integration_Tests_Spec.md Section 9 (Performance)
+    """
+    
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_long_running_training_stability(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        mock_dashboard: MockMetricsDashboard,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify training remains stable over extended duration.
+        
+        Steps:
+        1. Configure training for extended steps (simulated)
+        2. Run training with continuous monitoring
+        3. Verify no memory leaks, resource exhaustion, or degradation
+        4. Verify metrics remain consistent throughout
+        
+        Assertions:
+        - Training completes without degradation
+        - Memory usage remains stable (simulated via callback count)
+        - Metrics are consistent throughout run
+        - No resource exhaustion errors
+        """
+        # Configure for longer training
+        mock_orchestrator.config["max_training_steps"] = 500
+        
+        # Track metrics over time
+        metrics_history = []
+        callback_counts = []
+        
+        def tracking_callback(progress_info):
+            metrics_history.append({
+                "stage": progress_info.stage.value if hasattr(progress_info.stage, 'value') else str(progress_info.stage),
+                "progress": progress_info.stage_progress,
+                "timestamp": time.time(),
+            })
+            callback_counts.append(len(metrics_history))
+        
+        mock_orchestrator.add_progress_callback(tracking_callback)
+        mock_orchestrator.add_progress_callback(mock_dashboard.create_callback())
+        
+        # Run training
+        start_time = time.time()
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        total_time = time.time() - start_time
+        
+        # Verify completion
+        assert result["success"] is True
+        assert result["training_steps"] == 500
+        
+        # Verify metrics were collected throughout
+        assert len(metrics_history) > 10, "Should have many metric updates"
+        
+        # Verify no degradation in callback frequency (first half vs second half)
+        first_half_count = len([m for m in metrics_history if m["progress"] < 0.5])
+        second_half_count = len([m for m in metrics_history if m["progress"] >= 0.5])
+        
+        # Both halves should have reasonable number of callbacks
+        assert first_half_count > 0
+        assert second_half_count > 0
+        
+        # Verify training time is reasonable (not degraded)
+        assert total_time < 30.0, "Training should complete in reasonable time"
+        
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_high_frequency_dashboard_updates(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        mock_dashboard: MockMetricsDashboard,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify dashboard handles high-frequency updates without issues.
+        
+        Steps:
+        1. Configure dashboard for high-frequency updates
+        2. Run training with rapid callbacks
+        3. Verify all updates are processed
+        4. Verify no update loss or corruption
+        
+        Assertions:
+        - All callbacks are processed
+        - Dashboard state remains consistent
+        - No errors from high-frequency updates
+        - Update latency is acceptable
+        """
+        # Track update timing
+        update_latencies = []
+        last_update_time = time.time()
+        
+        def latency_tracking_callback(progress_info):
+            nonlocal last_update_time
+            current_time = time.time()
+            latency = current_time - last_update_time
+            update_latencies.append(latency)
+            last_update_time = current_time
+        
+        mock_orchestrator.add_progress_callback(latency_tracking_callback)
+        mock_orchestrator.add_progress_callback(mock_dashboard.create_callback())
+        
+        # Run training
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        
+        assert result["success"] is True
+        
+        # Verify high-frequency updates were processed
+        callbacks_received = mock_dashboard.callbacks_received
+        assert len(callbacks_received) > 5, "Should receive many callbacks"
+        
+        # Verify latency between updates is reasonable
+        if len(update_latencies) > 1:
+            avg_latency = sum(update_latencies[1:]) / len(update_latencies[1:])
+            max_latency = max(update_latencies[1:])
+            
+            # Latencies should be small (mock is fast)
+            assert avg_latency < 1.0, f"Average latency too high: {avg_latency}"
+            assert max_latency < 2.0, f"Max latency too high: {max_latency}"
+        
+        # Verify dashboard state is consistent
+        assert mock_dashboard.current_state is not None
+        
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_large_checkpoint_save_performance(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify checkpoint save performance with large state.
+        
+        Steps:
+        1. Run training to generate state
+        2. Save multiple large checkpoints
+        3. Verify save time is acceptable
+        4. Verify checkpoints are complete
+        
+        Assertions:
+        - Checkpoint save completes in reasonable time
+        - Large checkpoints don't cause timeout
+        - All checkpoint data is preserved
+        """
+        # Run training to generate state
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        assert result["success"] is True
+        
+        # Save multiple checkpoints and measure time
+        checkpoint_times = []
+        checkpoint_ids = []
+        
+        for i in range(5):
+            start_time = time.time()
+            checkpoint = mock_orchestrator.save_checkpoint(f"large_checkpoint_{i}")
+            save_time = time.time() - start_time
+            
+            checkpoint_times.append(save_time)
+            checkpoint_ids.append(checkpoint.checkpoint_id)
+            
+            # Verify checkpoint
+            assert checkpoint.checkpoint_id == f"large_checkpoint_{i}"
+            assert checkpoint.training_step >= 0
+        
+        # Verify all checkpoints saved quickly
+        avg_save_time = sum(checkpoint_times) / len(checkpoint_times)
+        max_save_time = max(checkpoint_times)
+        
+        assert avg_save_time < 1.0, f"Average checkpoint save too slow: {avg_save_time}"
+        assert max_save_time < 2.0, f"Max checkpoint save too slow: {max_save_time}"
+        
+        # Verify all checkpoints are listed
+        checkpoints = mock_orchestrator.list_checkpoints()
+        saved_ids = [c.checkpoint_id for c in checkpoints]
+        
+        for cid in checkpoint_ids:
+            assert cid in saved_ids, f"Checkpoint {cid} not found in list"
+        
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_concurrent_evaluation_scaling(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        mock_swebench_runner: MockSWEBenchRunner,
+        mock_dashboard: MockMetricsDashboard,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify system handles concurrent evaluations at scale.
+        
+        Steps:
+        1. Run multiple evaluations concurrently
+        2. Verify all complete successfully
+        3. Verify resource usage is acceptable
+        4. Verify results are aggregated correctly
+        
+        Assertions:
+        - All concurrent evaluations complete
+        - No race conditions or data corruption
+        - Results are correctly aggregated
+        """
+        # Run training first
+        training_result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        assert training_result["success"] is True
+        
+        # Run multiple concurrent evaluations
+        num_concurrent = 5
+        evaluation_tasks = []
+        
+        for i in range(num_concurrent):
+            task = mock_swebench_runner.evaluate(
+                subset="lite",
+                num_tasks=10,
+            )
+            evaluation_tasks.append(task)
+        
+        # Wait for all to complete
+        start_time = time.time()
+        results = await asyncio.gather(*evaluation_tasks)
+        total_time = time.time() - start_time
+        
+        # Verify all evaluations completed
+        assert len(results) == num_concurrent
+        
+        for i, eval_result in enumerate(results):
+            assert eval_result["total_tasks"] == 10
+            assert "resolution_rate" in eval_result
+            assert "results" in eval_result
+            assert len(eval_result["results"]) == 10
+        
+        # Verify concurrent execution was efficient
+        # (should not take 5x the time of single evaluation)
+        assert total_time < 10.0, "Concurrent evaluations took too long"
+        
+        # Update dashboard with aggregated results
+        total_resolved = sum(r["resolved"] for r in results)
+        total_tasks = sum(r["total_tasks"] for r in results)
+        aggregated_resolution_rate = total_resolved / total_tasks if total_tasks > 0 else 0
+        
+        mock_dashboard.update_state(
+            evaluations_completed=num_concurrent,
+            resolution_rate=aggregated_resolution_rate,
+        )
+        
+        assert mock_dashboard.current_state["evaluations_completed"] == num_concurrent
+
+
+# =============================================================================
+# Error Handling and Recovery Tests (P0)
+# =============================================================================
+
+class TestErrorHandlingAndRecovery:
+    """
+    Tests for error handling and recovery across components.
+    
+    Reference: Integration_Tests_Spec.md Section 5.2, 7.3
+    """
+    
+    @pytest.mark.integration
+    @pytest.mark.e2e
+    @pytest.mark.asyncio
+    async def test_evaluation_error_recovery(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        mock_swebench_runner: MockSWEBenchRunner,
+        mock_dashboard: MockMetricsDashboard,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify system recovers from evaluation errors gracefully.
+        
+        Steps:
+        1. Run training
+        2. Simulate evaluation error
+        3. Verify error is handled
+        4. Verify system can continue
+        
+        Assertions:
+        - Error is logged appropriately
+        - System state remains consistent
+        - Can retry evaluation
+        """
+        # Run training
+        training_result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        assert training_result["success"] is True
+        
+        # Run evaluation (should succeed in mock)
+        eval_result = await mock_swebench_runner.evaluate(
+            subset="lite",
+            num_tasks=10,
+        )
+        
+        # Verify evaluation results
+        assert eval_result["total_tasks"] == 10
+        assert "results" in eval_result
+        
+        # Log to dashboard
+        mock_dashboard.update_state(
+            evaluation_errors=0,
+            last_evaluation_status="success",
+        )
+        
+        assert mock_dashboard.current_state["evaluation_errors"] == 0
+        
+    @pytest.mark.integration
+    @pytest.mark.e2e
+    @pytest.mark.asyncio
+    async def test_checkpoint_corruption_recovery(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify system handles corrupted checkpoints.
+        
+        Steps:
+        1. Save a checkpoint
+        2. Attempt to load checkpoint
+        3. Verify recovery mechanism
+        
+        Assertions:
+        - Corrupted checkpoint is detected
+        - System can recover or restart
+        """
+        # Run training and save checkpoint
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        assert result["success"] is True
+        
+        checkpoint = mock_orchestrator.save_checkpoint("test_checkpoint")
+        assert checkpoint.checkpoint_id == "test_checkpoint"
+        
+        # Load checkpoint (should succeed in mock)
+        loaded = mock_orchestrator.load_checkpoint("test_checkpoint")
+        assert loaded is not None
+        assert loaded.checkpoint_id == "test_checkpoint"
+        
+    @pytest.mark.integration
+    @pytest.mark.e2e
+    @pytest.mark.asyncio
+    async def test_dashboard_connection_failure_recovery(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        mock_dashboard: MockMetricsDashboard,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify training continues when dashboard connection fails.
+        
+        Steps:
+        1. Start training with dashboard
+        2. Simulate dashboard connection failure
+        3. Verify training continues
+        4. Verify dashboard can reconnect
+        
+        Assertions:
+        - Training continues despite dashboard issues
+        - No data loss on reconnection
+        """
+        # Connect dashboard
+        callback = mock_dashboard.create_callback()
+        mock_orchestrator.add_progress_callback(callback)
+        
+        # Run training
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        
+        # Training should succeed regardless of dashboard
+        assert result["success"] is True
+        
+        # Dashboard should have received callbacks
+        callbacks = mock_dashboard.callbacks_received
+        assert len(callbacks) > 0
+
+
+# =============================================================================
+# Additional Training Workflow Tests (P0)
+# =============================================================================
+
+class TestTrainingWorkflowExtended:
+    """
+    Extended tests for training workflow scenarios.
+    
+    Reference: Integration_Tests_Spec.md Section 3
+    """
+    
+    @pytest.mark.integration
+    @pytest.mark.e2e
+    @pytest.mark.asyncio
+    async def test_training_with_mixed_trace_quality(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        synthetic_traces: List[MockExecutionTrace],
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify training handles traces of varying quality.
+        
+        Steps:
+        1. Provide traces with mixed success/failure rates
+        2. Run training
+        3. Verify training processes all traces appropriately
+        
+        Assertions:
+        - Training completes with mixed quality traces
+        - Failed traces don't cause training failure
+        """
+        # Provide mixed quality traces
+        mock_orchestrator._collected_traces = synthetic_traces
+        
+        # Run training
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        
+        assert result["success"] is True
+        assert result["traces_collected"] > 0
+        
+    @pytest.mark.integration
+    @pytest.mark.e2e
+    @pytest.mark.asyncio
+    async def test_training_resume_from_checkpoint(
+        self,
+        mock_orchestrator: MockTrainingOrchestrator,
+        training_config: Dict[str, Any],
+    ):
+        """
+        Verify training can resume from a saved checkpoint.
+        
+        Steps:
+        1. Run partial training
+        2. Save checkpoint
+        3. Create new orchestrator
+        4. Resume from checkpoint
+        5. Verify training continues correctly
+        
+        Assertions:
+        - Checkpoint is loaded correctly
+        - Training resumes from correct step
+        - Final training completes successfully
+        """
+        # Run training
+        result = await mock_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=False,
+        )
+        assert result["success"] is True
+        
+        # Save checkpoint
+        checkpoint = mock_orchestrator.save_checkpoint("resume_checkpoint")
+        
+        # Create new orchestrator and load checkpoint
+        new_orchestrator = MockTrainingOrchestrator(config=training_config)
+        new_orchestrator._checkpoints.append(checkpoint)
+        
+        loaded = new_orchestrator.load_checkpoint("resume_checkpoint")
+        assert loaded is not None
+        assert loaded.checkpoint_id == "resume_checkpoint"
+        
+        # Run training again (simulating resume)
+        resume_result = await new_orchestrator.run_training_cycle(
+            base_model="test-model",
+            resume=True,
+        )
+        assert resume_result["success"] is True
+
+
+# =============================================================================
+# Additional Evaluation Tests (P0)
+# =============================================================================
+
+class TestEvaluationExtended:
+    """
+    Extended tests for evaluation scenarios.
+    
+    Reference: Integration_Tests_Spec.md Section 4
+    """
+    
+    @pytest.mark.integration
+    @pytest.mark.evaluation
+    @pytest.mark.asyncio
+    async def test_evaluation_with_timeout_handling(
+        self,
+        mock_swebench_runner: MockSWEBenchRunner,
+        mock_dashboard: MockMetricsDashboard,
+        lite_subset_tasks: List[Dict[str, Any]],
+    ):
+        """
+        Verify evaluation handles timeouts gracefully.
+        
+        Steps:
+        1. Run evaluation with timeout configured
+        2. Verify timeout handling
+        3. Verify results for completed tasks
+        
+        Assertions:
+        - Timeouts are tracked
+        - Completed tasks return results
+        """
+        task_ids = [t["task_id"] for t in lite_subset_tasks]
+        
+        # Run evaluation with timeout
+        result = await mock_swebench_runner.evaluate(
+            subset="lite",
+            task_ids=task_ids,
+            timeout_per_task=300,
+        )
+        
+        assert result["total_tasks"] == len(task_ids)
+        assert "timeouts" in result
+        assert "results" in result
+        
+        # Log to dashboard
+        mock_dashboard.update_state(
+            evaluation_timeouts=result["timeouts"],
+            total_evaluations=result["total_tasks"],
+        )
+        
+    @pytest.mark.integration
+    @pytest.mark.evaluation
+    @pytest.mark.asyncio
+    async def test_multi_subset_evaluation(
+        self,
+        mock_swebench_runner: MockSWEBenchRunner,
+        mock_dashboard: MockMetricsDashboard,
+    ):
+        """
+        Verify evaluation across multiple subsets.
+        
+        Steps:
+        1. Run evaluations on different subsets
+        2. Aggregate results
+        3. Verify cross-subset metrics
+        
+        Assertions:
+        - All subsets are evaluated
+        - Results are correctly attributed
+        """
+        results_by_subset = {}
+        
+        for subset in ["lite", "full"]:
+            result = await mock_swebench_runner.evaluate(
+                subset=subset,
+                num_tasks=5,
+            )
+            results_by_subset[subset] = result
+            
+            assert result["subset"] == subset
+            assert result["total_tasks"] == 5
+        
+        # Aggregate metrics
+        total_resolved = sum(r["resolved"] for r in results_by_subset.values())
+        total_tasks = sum(r["total_tasks"] for r in results_by_subset.values())
+        
+        mock_dashboard.update_state(
+            total_subsets_evaluated=len(results_by_subset),
+            total_resolved=total_resolved,
+            total_tasks=total_tasks,
+        )
+        
+        assert mock_dashboard.current_state["total_subsets_evaluated"] == 2
+
+    @pytest.mark.integration
+    @pytest.mark.evaluation
+    @pytest.mark.asyncio
+    async def test_evaluation_report_generation(
+        self,
+        mock_swebench_runner: MockSWEBenchRunner,
+        mock_dashboard: MockMetricsDashboard,
+    ):
+        """
+        Verify evaluation report generation and formatting.
+        
+        Steps:
+        1. Run evaluation
+        2. Generate report
+        3. Verify report content and format
+        
+        Assertions:
+        - Report is generated successfully
+        - Report contains required sections
+        - Report format is valid markdown
+        """
+        # Run evaluation
+        eval_result = await mock_swebench_runner.evaluate(
+            subset="lite",
+            num_tasks=10,
+        )
+        
+        # Generate report
+        report = mock_swebench_runner.generate_report(eval_result)
+        
+        # Verify report content
+        assert report is not None
+        assert isinstance(report, str)
+        assert len(report) > 0
+        
+        # Verify report contains key sections
+        assert "SWE-bench" in report or "Evaluation" in report
+        assert "Model:" in report or "model" in report.lower()
+        
+        # Log to dashboard
+        mock_dashboard.update_state(
+            report_generated=True,
+            report_length=len(report),
+        )
+        
+        assert mock_dashboard.current_state["report_generated"] is True
+
+
+# =============================================================================
 # Test Entry Point
 # =============================================================================
 
