@@ -404,7 +404,10 @@ class MockMCPClient:
     
     def get_tools_for_llm(self):
         """Get mock tool definitions."""
-        from ..llm.base_client import ToolDefinition
+        try:
+            from ..llm.base_client import ToolDefinition
+        except ImportError:
+            from llm.base_client import ToolDefinition
         return [
             ToolDefinition(
                 name=t["name"],
