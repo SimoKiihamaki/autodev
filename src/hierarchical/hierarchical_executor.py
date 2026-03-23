@@ -612,13 +612,13 @@ class HierarchicalExecutor:
             failed_result = TaskResult(
                 task_id=task.task_id,
                 status='failed',
-                errors=[error],
+                error=error,
             )
         else:
             failed_result = type('TaskResult', (), {
                 'task_id': task.task_id,
                 'status': 'failed',
-                'errors': [error],
+                'error': error,
             })()
         
         return HierarchicalResult(

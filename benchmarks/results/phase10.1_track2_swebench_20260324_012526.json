@@ -1,0 +1,324 @@
+{
+  "metadata": {
+    "timestamp": "2026-03-24T01:25:26.849175",
+    "phase": "10.1",
+    "track": "2",
+    "description": "SWE-bench Lite validation with AutoDev solver"
+  },
+  "summary": {
+    "total_instances": 20,
+    "resolved_count": 7,
+    "patch_generated_count": 13,
+    "error_count": 0,
+    "resolution_rate": "35.00%",
+    "resolution_rate_raw": 0.35,
+    "patch_rate": "100.00%",
+    "patch_rate_raw": 1.0
+  },
+  "timing": {
+    "avg_time_seconds": 1.376,
+    "total_time_seconds": 1.5
+  },
+  "instances": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "repo": "astropy/astropy",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.2396157123001366,
+      "phase_timings": {
+        "decomposing": 0.25604787680126867,
+        "coding": 0.6734151468485031,
+        "reviewing": 0.29628936166295267,
+        "handoff": 0.013863326987412059
+      },
+      "tokens_used": 4712
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "repo": "astropy/astropy",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.461600188837471,
+      "phase_timings": {
+        "decomposing": 0.3850019052928858,
+        "coding": 0.7662361684403571,
+        "reviewing": 0.29538384565627473,
+        "handoff": 0.014978269447953513
+      },
+      "tokens_used": 4813
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "repo": "astropy/astropy",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.429391698492246,
+      "phase_timings": {
+        "decomposing": 0.369246818393031,
+        "coding": 0.768815447134539,
+        "reviewing": 0.27433579980200684,
+        "handoff": 0.01699363316266932
+      },
+      "tokens_used": 4037
+    },
+    {
+      "instance_id": "astropy__astropy-14995",
+      "repo": "astropy/astropy",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3454224025909833,
+      "phase_timings": {
+        "decomposing": 0.26913759308479746,
+        "coding": 0.7406993643438373,
+        "reviewing": 0.31935226065077876,
+        "handoff": 0.0162331845115697
+      },
+      "tokens_used": 4987
+    },
+    {
+      "instance_id": "astropy__astropy-6938",
+      "repo": "astropy/astropy",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3744363355244398,
+      "phase_timings": {
+        "decomposing": 0.2547813916963681,
+        "coding": 0.8024541374268352,
+        "reviewing": 0.3026157754689949,
+        "handoff": 0.014585030932241467
+      },
+      "tokens_used": 4011
+    },
+    {
+      "instance_id": "astropy__astropy-7746",
+      "repo": "astropy/astropy",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3517784203381442,
+      "phase_timings": {
+        "decomposing": 0.3598866911767902,
+        "coding": 0.708804286438191,
+        "reviewing": 0.2718496537166833,
+        "handoff": 0.011237789006479789
+      },
+      "tokens_used": 4692
+    },
+    {
+      "instance_id": "django__django-10914",
+      "repo": "django/django",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3182572424280814,
+      "phase_timings": {
+        "decomposing": 0.32521290481620346,
+        "coding": 0.7211993425180455,
+        "reviewing": 0.2543068063442968,
+        "handoff": 0.017538188749535586
+      },
+      "tokens_used": 4684
+    },
+    {
+      "instance_id": "django__django-10924",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.4003975200383776,
+      "phase_timings": {
+        "decomposing": 0.2979046535658225,
+        "coding": 0.773543744974762,
+        "reviewing": 0.3177513742942032,
+        "handoff": 0.011197747203589884
+      },
+      "tokens_used": 4256
+    },
+    {
+      "instance_id": "django__django-11001",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.25973649177433,
+      "phase_timings": {
+        "decomposing": 0.2671506838260248,
+        "coding": 0.6675919934005887,
+        "reviewing": 0.3052712750079118,
+        "handoff": 0.019722539539804525
+      },
+      "tokens_used": 4892
+    },
+    {
+      "instance_id": "django__django-11019",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.2709157801962336,
+      "phase_timings": {
+        "decomposing": 0.25211982218074624,
+        "coding": 0.7498733316899802,
+        "reviewing": 0.2520045624541239,
+        "handoff": 0.016918063871383195
+      },
+      "tokens_used": 4936
+    },
+    {
+      "instance_id": "django__django-11039",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.394329104648008,
+      "phase_timings": {
+        "decomposing": 0.3921569330540109,
+        "coding": 0.6721591370428492,
+        "reviewing": 0.31557150512344634,
+        "handoff": 0.014441529427701435
+      },
+      "tokens_used": 4036
+    },
+    {
+      "instance_id": "django__django-11049",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.4033286668594984,
+      "phase_timings": {
+        "decomposing": 0.3285166870550749,
+        "coding": 0.756947297516104,
+        "reviewing": 0.30326771424875953,
+        "handoff": 0.014596968039560128
+      },
+      "tokens_used": 4751
+    },
+    {
+      "instance_id": "django__django-11099",
+      "repo": "django/django",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.4338810916172666,
+      "phase_timings": {
+        "decomposing": 0.34998719758887864,
+        "coding": 0.8037850225005823,
+        "reviewing": 0.26595139512099375,
+        "handoff": 0.014157476406811958
+      },
+      "tokens_used": 4190
+    },
+    {
+      "instance_id": "django__django-11133",
+      "repo": "django/django",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.452885123072784,
+      "phase_timings": {
+        "decomposing": 0.325113329054555,
+        "coding": 0.7879153087263506,
+        "reviewing": 0.3231811791562702,
+        "handoff": 0.016675306135608206
+      },
+      "tokens_used": 4027
+    },
+    {
+      "instance_id": "django__django-11179",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.4124499807276119,
+      "phase_timings": {
+        "decomposing": 0.30096453949035884,
+        "coding": 0.7848114804357426,
+        "reviewing": 0.30920407308248044,
+        "handoff": 0.017469887719030207
+      },
+      "tokens_used": 4641
+    },
+    {
+      "instance_id": "django__django-11283",
+      "repo": "django/django",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.4607821588597687,
+      "phase_timings": {
+        "decomposing": 0.3804355959554995,
+        "coding": 0.8126154396555479,
+        "reviewing": 0.2486156570746815,
+        "handoff": 0.01911546617403969
+      },
+      "tokens_used": 4751
+    },
+    {
+      "instance_id": "django__django-11422",
+      "repo": "django/django",
+      "resolved": true,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3040405800372667,
+      "phase_timings": {
+        "decomposing": 0.3114900868494926,
+        "coding": 0.6777093245863047,
+        "reviewing": 0.3032190802617475,
+        "handoff": 0.011622088339721738
+      },
+      "tokens_used": 4569
+    },
+    {
+      "instance_id": "django__django-11564",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3753408151143691,
+      "phase_timings": {
+        "decomposing": 0.27184876702443495,
+        "coding": 0.7989742701186705,
+        "reviewing": 0.29063902651262913,
+        "handoff": 0.013878751458634717
+      },
+      "tokens_used": 4556
+    },
+    {
+      "instance_id": "django__django-11583",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.3162927160535873,
+      "phase_timings": {
+        "decomposing": 0.2781057550838111,
+        "coding": 0.7820750013990099,
+        "reviewing": 0.24050001416749747,
+        "handoff": 0.015611945403268854
+      },
+      "tokens_used": 4809
+    },
+    {
+      "instance_id": "django__django-11620",
+      "repo": "django/django",
+      "resolved": false,
+      "patch_generated": true,
+      "error": null,
+      "time_seconds": 1.52483558393628,
+      "phase_timings": {
+        "decomposing": 0.383263932509871,
+        "coding": 0.8128363432178913,
+        "reviewing": 0.3094026379536056,
+        "handoff": 0.01933267025491201
+      },
+      "tokens_used": 4971
+    }
+  ]
+}

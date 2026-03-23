@@ -171,14 +171,12 @@ class AutoDevSolver:
             # Create manager agent
             self._manager = ManagerAgent(
                 agent_id="manager-swebench",
-                role=AgentRole.MANAGER,
             )
             
             # Create coder pool
             self._coder_pool = [
                 CoderAgent(
                     agent_id=f"coder-{i}",
-                    role=AgentRole.CODER,
                 )
                 for i in range(self.config.num_coders)
             ]
@@ -187,7 +185,6 @@ class AutoDevSolver:
             self._reviewer_pool = [
                 ReviewerAgent(
                     agent_id=f"reviewer-{i}",
-                    role=AgentRole.REVIEWER,
                 )
                 for i in range(self.config.num_reviewers)
             ]
