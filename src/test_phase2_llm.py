@@ -17,7 +17,18 @@ def test_imports():
     """Test that all modules can be imported."""
     print("Testing imports...")
     
-    # Test LLM imports
+    # Test LLM imports - main client interface
+    from llm import (
+        LLMClient,
+        create_client,
+        create_anthropic_client,
+        quick_complete,
+        register_provider,
+        get_available_providers,
+    )
+    print("  ✓ LLM client interface imports OK")
+    
+    # Test LLM imports - base types
     from llm import (
         BaseLLMClient,
         ChatMessage,
@@ -26,10 +37,12 @@ def test_imports():
         ToolUse,
         LLMResponse,
         LLMConfig,
-        AnthropicClient,
-        create_llm_client,
     )
-    print("  ✓ LLM module imports OK")
+    print("  ✓ LLM type imports OK")
+    
+    # Test LLM imports - providers
+    from llm import AnthropicClient, create_llm_client
+    print("  ✓ LLM provider imports OK")
     
     # Test Agent imports
     from agents import (
@@ -161,7 +174,7 @@ def test_anthropic_client():
     
     # Test client creation
     config = LLMConfig(
-        api_key="test_key",  # Mock key for testing
+        api_key="***",  # Mock key for testing
         model="claude-3-5-sonnet-20241022"
     )
     client = AnthropicClient(config)
@@ -181,6 +194,103 @@ def test_anthropic_client():
         assert isinstance(prompt, str)
         assert len(prompt) > 0
     print("  ✓ get_system_prompt works for all roles")
+    
+    return True
+
+
+def test_llm_client_interface():
+    """Test the high-level LLMClient interface."""
+    print("\nTesting LLMClient interface...")
+    
+    from llm import LLMClient, LLMConfig, MessageRole
+    
+    # Test client creation with config
+    config = LLMConfig(
+        api_key="***",
+        model="claude-3-5-sonnet-20241022"
+    )
+    client = LLMClient(config)
+    
+    assert client.provider == "anthropic"
+    assert client.model == "claude-3-5-sonnet-20241022"
+    print("  ✓ LLMClient instantiation with config works")
+    
+    # Test client creation with kwargs
+    client2 = LLMClient(api_key="***", model="claude-3-5-haiku-20241022")
+    assert client2.model == "claude-3-5-haiku-20241022"
+    print("  ✓ LLMClient instantiation with kwargs works")
+    
+    # Test conversation history management
+    client.add_user_message("Hello!")
+    client.add_assistant_message("Hi there!")
+    history = client.get_history()
+    assert len(history) == 2
+    assert history[0].role == MessageRole.USER
+    assert history[1].role == MessageRole.ASSISTANT
+    print("  ✓ Conversation history management works")
+    
+    # Test clear history
+    client.clear_history()
+    assert len(client.get_history()) == 0
+    print("  ✓ Clear history works")
+    
+    # Test usage stats
+    stats = client.get_usage_stats()
+    assert "total_tokens" in stats
+    assert "request_count" in stats
+    print("  ✓ get_usage_stats works")
+    
+    # Test system prompt retrieval
+    prompt = client.get_system_prompt("coder")
+    assert isinstance(prompt, str)
+    assert len(prompt) > 0
+    print("  ✓ get_system_prompt works")
+    
+    # Test tool definition creation
+    tool = client.create_tool_definition(
+        name="test_tool",
+        description="A test tool",
+        input_schema={"type": "object", "properties": {}}
+    )
+    assert tool.name == "test_tool"
+    print("  ✓ create_tool_definition works")
+    
+    return True
+
+
+def test_factory_functions():
+    """Test factory and convenience functions."""
+    print("\nTesting factory functions...")
+    
+    from llm import (
+        create_client,
+        create_llm_client,
+        create_anthropic_client,
+        get_available_providers,
+        LLMConfig,
+        AnthropicClient,
+    )
+    
+    # Test create_client
+    config = LLMConfig(api_key="***")
+    client = create_client(config)
+    assert isinstance(client, AnthropicClient)
+    print("  ✓ create_client works")
+    
+    # Test create_llm_client (legacy)
+    client2 = create_llm_client(config)
+    assert isinstance(client2, AnthropicClient)
+    print("  ✓ create_llm_client (legacy) works")
+    
+    # Test create_anthropic_client
+    client3 = create_anthropic_client(api_key="***")
+    assert client3.provider == "anthropic"
+    print("  ✓ create_anthropic_client works")
+    
+    # Test get_available_providers
+    providers = get_available_providers()
+    assert "anthropic" in providers
+    print("  ✓ get_available_providers works")
     
     return True
 
@@ -243,6 +353,8 @@ def run_tests():
         all_passed = test_llm_types() and all_passed
         all_passed = test_agent_types() and all_passed
         all_passed = test_anthropic_client() and all_passed
+        all_passed = test_llm_client_interface() and all_passed
+        all_passed = test_factory_functions() and all_passed
         all_passed = asyncio.run(test_agent_llm_integration()) and all_passed
     except Exception as e:
         print(f"\n❌ Test failed with error: {e}")
