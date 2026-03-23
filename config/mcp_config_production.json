@@ -1,0 +1,176 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/config",
+  "version": "1.0",
+  "description": "Production MCP server configuration for AutoDev Phase 6",
+  
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "mcp-server-filesystem",
+      "args": ["--root", "."],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "File system operations for reading and writing code files",
+      "capabilities": {
+        "tools": [
+          "read_file",
+          "write_file",
+          "list_directory",
+          "create_directory",
+          "delete_file",
+          "move_file",
+          "copy_file",
+          "search_files"
+        ]
+      }
+    },
+    {
+      "name": "git",
+      "command": "mcp-server-git",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "Git version control operations",
+      "capabilities": {
+        "tools": [
+          "git_status",
+          "git_diff",
+          "git_log",
+          "git_commit",
+          "git_add",
+          "git_branch",
+          "git_checkout",
+          "git_merge",
+          "git_rebase"
+        ]
+      }
+    },
+    {
+      "name": "terminal",
+      "command": "mcp-server-terminal",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "auto_start": true,
+      "description": "Command execution for running tests, linters, builds, etc.",
+      "capabilities": {
+        "tools": [
+          "execute_command",
+          "run_script",
+          "shell_exec"
+        ]
+      }
+    },
+    {
+      "name": "github",
+      "command": "mcp-server-github",
+      "args": [],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "enabled": false,
+      "auto_start": false,
+      "description": "GitHub API operations for issues, PRs, and repository management",
+      "capabilities": {
+        "tools": [
+          "create_issue",
+          "create_pull_request",
+          "list_issues",
+          "list_pull_requests",
+          "get_repository",
+          "search_code"
+        ]
+      }
+    },
+    {
+      "name": "postgres",
+      "command": "mcp-server-postgres",
+      "args": ["--connection-string", "${DATABASE_URL}"],
+      "env": {},
+      "enabled": false,
+      "auto_start": false,
+      "description": "PostgreSQL database access for data operations",
+      "capabilities": {
+        "tools": [
+          "query",
+          "list_tables",
+          "describe_table",
+          "execute"
+        ]
+      }
+    },
+    {
+      "name": "brave-search",
+      "command": "mcp-server-brave-search",
+      "args": [],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "enabled": false,
+      "auto_start": false,
+      "description": "Web search capabilities for documentation lookup",
+      "capabilities": {
+        "tools": [
+          "search",
+          "search_code"
+        ]
+      }
+    }
+  ],
+  
+  "security": {
+    "allowed_paths": ["."],
+    "allowed_commands": [
+      "pytest",
+      "python",
+      "python3",
+      "pip",
+      "pip3",
+      "black",
+      "mypy",
+      "flake8",
+      "pylint",
+      "ruff",
+      "git",
+      "npm",
+      "yarn",
+      "pnpm",
+      "node",
+      "go",
+      "cargo",
+      "rustc",
+      "make",
+      "cmake",
+      "docker",
+      "kubectl",
+      "terraform"
+    ],
+    "blocked_commands": [
+      "rm -rf /",
+      "sudo",
+      "chmod 777",
+      "> /dev/sda"
+    ],
+    "require_confirmation": false,
+    "audit_log": "~/.local/share/autodev/audit.log",
+    "max_file_size_mb": 10,
+    "timeout_seconds": 60
+  },
+  
+  "connection_settings": {
+    "timeout_seconds": 10,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 1,
+    "health_check_interval_seconds": 30,
+    "max_concurrent_connections": 10
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "file": "~/.local/share/autodev/mcp.log",
+    "max_size_mb": 50,
+    "backup_count": 5
+  }
+}
