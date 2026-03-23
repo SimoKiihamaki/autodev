@@ -40,10 +40,28 @@ try:
     from .grpo_trainer import (
         AutoDevGRPOTrainer,
         GRPOConfig,
+        GRPODataset,
+        TrainingMetrics,
+        CheckpointInfo,
+        TrainingStage,
+        OptimizerType,
+        SchedulerType,
+        create_trainer,
+        train_model,
+        load_trainer,
     )
 except ImportError:
     AutoDevGRPOTrainer = None
     GRPOConfig = None
+    GRPODataset = None
+    TrainingMetrics = None
+    CheckpointInfo = None
+    TrainingStage = None
+    OptimizerType = None
+    SchedulerType = None
+    create_trainer = None
+    train_model = None
+    load_trainer = None
 
 try:
     from .model_registry import (
@@ -78,6 +96,15 @@ __all__ = [
     # GRPO training
     "AutoDevGRPOTrainer",
     "GRPOConfig",
+    "GRPODataset",
+    "TrainingMetrics",
+    "CheckpointInfo",
+    "TrainingStage",
+    "OptimizerType",
+    "SchedulerType",
+    "create_trainer",
+    "train_model",
+    "load_trainer",
     # Model management
     "ModelRegistry",
     "ModelVersion",
