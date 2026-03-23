@@ -14,7 +14,7 @@ Modules:
 """
 
 __version__ = "2.0.0"
-__author__=*** Agent Research"
+__author__ = "AutoDev Agent Research"
 
 # Lazy imports to avoid circular dependencies
 def get_llm_client():
