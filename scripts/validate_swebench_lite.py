@@ -210,6 +210,13 @@ class SWEbenchValidator:
         In production, this would:
         1. Call AutoDev's solver with the problem statement
         2. Return the generated diff/patch
+        
+        For actual benchmark execution, use the integrated solver:
+        
+            from swebench import SWEbenchRunner, create_solver
+            runner = SWEbenchRunner()
+            runner.set_solver(create_solver())
+            metrics = runner.run_benchmark()
         """
         # Return None to indicate no patch was generated
         return None
