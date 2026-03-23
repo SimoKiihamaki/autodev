@@ -75,11 +75,19 @@ except ImportError:
 try:
     from .pipeline import (
         TrainingPipeline,
-        TrainingConfig,
+        PipelineConfig,
+        PipelineStage,
+        PipelineResult,
+        create_pipeline,
+        run_training,
     )
 except ImportError:
     TrainingPipeline = None
-    TrainingConfig = None
+    PipelineConfig = None
+    PipelineStage = None
+    PipelineResult = None
+    create_pipeline = None
+    run_training = None
 
 __all__ = [
     # Data collection
@@ -110,7 +118,11 @@ __all__ = [
     "ModelVersion",
     # Pipeline
     "TrainingPipeline",
-    "TrainingConfig",
+    "PipelineConfig",
+    "PipelineStage",
+    "PipelineResult",
+    "create_pipeline",
+    "run_training",
 ]
 
 __version__ = "8.0.0"
