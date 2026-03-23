@@ -19,22 +19,22 @@ import pytest
 
 # Import the classes under test (will work once implementation is complete)
 try:
-    from hierarchical.agent_pipeline import (
+    from src.hierarchical.agent_pipeline import (
         AgentPipeline,
         AgentPipelineConfig,
         HierarchicalResult,
     )
-    from hierarchical.agent_training_bridge import (
+    from src.hierarchical.agent_training_bridge import (
         AgentTrainingBridge,
         BridgeConfig,
     )
-    from hierarchical.hierarchical_executor import (
+    from src.hierarchical.hierarchical_executor import (
         ExecutionPhase,
         HierarchicalExecutor,
         PhaseResult,
     )
-    from agents.base import AgentRole, TaskSpec, TaskResult
-    from training.orchestrator import OrchestratorConfig, TrainingOrchestrator
+    from src.agents.base import AgentRole, TaskSpec, TaskResult
+    from src.training.orchestrator import OrchestratorConfig, TrainingOrchestrator
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -333,9 +333,9 @@ class TestBridgeIntegration:
     @pytest.fixture
     def real_bridge(self, tmp_path):
         """Create a bridge with real components for integration testing."""
-        from hierarchical.model_provider import TrainedModelProvider
-        from hierarchical.trace_collector import AgentTraceCollector
-        from training.reward_calculator import RewardCalculator
+        from src.hierarchical.model_provider import TrainedModelProvider
+        from src.hierarchical.trace_collector import AgentTraceCollector
+        from src.training.reward_calculator import RewardCalculator
 
         model_provider = TrainedModelProvider(registry=None)
         trace_collector = AgentTraceCollector()

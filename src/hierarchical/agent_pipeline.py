@@ -52,7 +52,6 @@ try:
 
     # Import from training module
     from training.orchestrator import TrainingOrchestrator
-    from training.data_collector import DataCollector
     from training.data_collector import (
         ExecutionTrace,
         TraceStatus,
@@ -60,6 +59,8 @@ try:
         TrainingDataCollector,
         DataCollectionConfig,
     )
+    # Alias for convenience
+    DataCollector = TrainingDataCollector
     from training.reward_calculator import (
         RewardCalculator,
         RewardComponents,
@@ -82,7 +83,6 @@ except ImportError:
 
     # Import from training module
     from ..training.orchestrator import TrainingOrchestrator
-    from ..training.data_collector import DataCollector
     from ..training.data_collector import (
         ExecutionTrace,
         TraceStatus,
@@ -90,6 +90,8 @@ except ImportError:
         TrainingDataCollector,
         DataCollectionConfig,
     )
+    # Alias for convenience
+    DataCollector = TrainingDataCollector
     from ..training.reward_calculator import (
         RewardCalculator,
         RewardComponents,

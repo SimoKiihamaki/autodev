@@ -19,12 +19,12 @@ import pytest
 
 # Import the classes under test (will work once implementation is complete)
 try:
-    from hierarchical.agent_pipeline import (
+    from src.hierarchical.agent_pipeline import (
         AgentPipeline,
         AgentPipelineConfig,
         HierarchicalResult,
     )
-    from agents.base import AgentRole, TaskResult, TaskSpec
+    from src.agents.base import AgentRole, TaskResult, TaskSpec
 
     IMPORTS_AVAILABLE = True
 except ImportError:

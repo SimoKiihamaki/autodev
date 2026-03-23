@@ -21,14 +21,14 @@ import pytest
 
 # Import the classes under test (will work once implementation is complete)
 try:
-    from hierarchical.hierarchical_executor import (
+    from src.hierarchical.hierarchical_executor import (
         ExecutionPhase,
         HierarchicalExecutor,
         IterationRecord,
         PhaseResult,
     )
-    from agents.base import AgentRole, SubTask, TaskSpec, TaskResult
-    from agents.communication import ReviewResult
+    from src.agents.base import AgentRole, SubTask, TaskSpec, TaskResult
+    from src.agents.communication import ReviewResult
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -750,7 +750,7 @@ class TestHierarchicalExecutor:
         with patch.object(executor, '_resolve_conflicts') as mock_resolve:
             mock_resolve.return_value = [changes[0]]  # Keep first change
 
-            result = await executor._resolve_conflicts(changes)
+            result = executor._resolve_conflicts(changes)  # Not async
 
             assert len(result) == 1
 

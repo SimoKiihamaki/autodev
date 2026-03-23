@@ -8,11 +8,11 @@ including mock agents, mock training components, and test configurations.
 import sys
 from pathlib import Path
 
-# Add src directory to Python path for imports
-# This allows tests to import from hierarchical, agents, training, etc.
-src_path = Path(__file__).parent.parent.parent / "src"
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+# Add project root to Python path so 'src' package can be imported
+# This allows tests to import from src.agents, src.training, src.hierarchical, etc.
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 import asyncio
 from dataclasses import dataclass, field
@@ -24,13 +24,13 @@ import pytest
 # Import type hints for type annotations
 # These will be available once the implementation is complete
 try:
-    from agents.base import AgentRole, BaseAgent, TaskSpec, TaskResult
-    from agents.coder import CoderAgent
-    from agents.communication import ReviewResult
-    from agents.manager import ManagerAgent
-    from agents.reviewer import ReviewerAgent
-    from training.orchestrator import OrchestratorConfig, TrainingOrchestrator
-    from training.reward_calculator import RewardComponents
+    from src.agents.base import AgentRole, BaseAgent, TaskSpec, TaskResult
+    from src.agents.coder import CoderAgent
+    from src.agents.communication import ReviewResult
+    from src.agents.manager import ManagerAgent
+    from src.agents.reviewer import ReviewerAgent
+    from src.training.orchestrator import OrchestratorConfig, TrainingOrchestrator
+    from src.training.reward_calculator import RewardComponents
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -289,12 +289,13 @@ def mock_reward_calculator():
 
     def compute_reward(trace):
         return RewardComponents(
-            task_success=1.0,
+            test_pass_rate=0.9,
             code_quality=0.8,
-            test_coverage=0.9,
             efficiency=0.7,
-            total=0.85,
-        ) if IMPORTS_AVAILABLE else Mock(total=0.85)
+            success_bonus=0.1,
+            penalty=0.0,
+            total_reward=0.85,
+        ) if IMPORTS_AVAILABLE else Mock(total_reward=0.85)
 
     calculator.compute_reward = Mock(side_effect=compute_reward)
 

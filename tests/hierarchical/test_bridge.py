@@ -16,12 +16,12 @@ import pytest
 
 # Import the classes under test (will work once implementation is complete)
 try:
-    from hierarchical.agent_training_bridge import (
+    from src.hierarchical.agent_training_bridge import (
         AgentTrainingBridge,
         BridgeConfig,
     )
-    from agents.base import AgentRole, BaseAgent, TaskSpec, TaskResult
-    from training.reward_calculator import RewardComponents
+    from src.agents.base import AgentRole, BaseAgent, TaskSpec, TaskResult
+    from src.training.reward_calculator import RewardComponents
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -100,6 +100,7 @@ class TestAgentTrainingBridge:
         )
 
         agent = Mock(spec=BaseAgent)
+        agent.agent_id = "test-agent-1"
         agent._llm_client = Mock()
         agent._llm_client.set_model = Mock()
 
@@ -129,6 +130,7 @@ class TestAgentTrainingBridge:
         )
 
         agent = Mock(spec=BaseAgent)
+        agent.agent_id = "test-agent-2"
         agent._llm_client = Mock()
         agent._llm_client.set_model = Mock()
 
@@ -326,6 +328,7 @@ class TestAgentTrainingBridge:
         )
 
         agent = Mock(spec=BaseAgent)
+        agent.agent_id = "test-agent-result"
         agent.execute = AsyncMock(return_value=expected_result)
         task = TaskSpec(task_id="test", specification="Test")
 
@@ -352,6 +355,7 @@ class TestAgentTrainingBridge:
         )
 
         agent = Mock(spec=BaseAgent)
+        agent.agent_id = "test-agent-error"
         agent.execute = AsyncMock(side_effect=Exception("Agent error"))
         task = TaskSpec(task_id="test", specification="Test")
 
@@ -380,6 +384,7 @@ class TestAgentTrainingBridge:
         )
 
         agent = Mock(spec=BaseAgent)
+        agent.agent_id = "test-agent-tools"
         agent.execute = AsyncMock(return_value=TaskResult(task_id="test"))
         agent._tool_calls = [
             {"name": "read_file", "args": {"path": "test.py"}, "result": "content"},
@@ -418,7 +423,7 @@ class TestAgentTrainingBridge:
         reward = bridge.compute_agent_reward(trace)
 
         assert isinstance(reward, RewardComponents)
-        assert reward.total == 0.85
+        assert reward.total_reward == 0.85
 
     def test_compute_agent_reward_uses_calculator(
         self,
@@ -450,12 +455,14 @@ class TestAgentTrainingBridge:
         bridge_config,
     ):
         """Test that compute_agent_reward handles failed traces."""
-        mock_reward_calculator.compute_reward.return_value = RewardComponents(
-            task_success=0.0,
+        # Use side_effect to override the fixture's side_effect
+        mock_reward_calculator.compute_reward.side_effect = lambda trace: RewardComponents(
+            test_pass_rate=0.0,
             code_quality=0.0,
-            test_coverage=0.0,
             efficiency=0.0,
-            total=0.0,
+            success_bonus=0.0,
+            penalty=0.0,
+            total_reward=0.0,
         )
 
         bridge = AgentTrainingBridge(
@@ -471,8 +478,8 @@ class TestAgentTrainingBridge:
 
         reward = bridge.compute_agent_reward(trace)
 
-        assert reward.total == 0.0
-        assert reward.task_success == 0.0
+        assert reward.total_reward == 0.0
+        assert reward.test_pass_rate == 0.0
 
     # -------------------------------------------------------------------------
     # Trace Capture Tests
