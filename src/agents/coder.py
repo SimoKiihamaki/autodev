@@ -160,13 +160,15 @@ class CoderAgent(BaseAgent):
         mcp_config_path: str = "~/.config/autodev/mcp_config.json",
         repo_root: str = ".",
         max_retries: int = 2,
-        retry_backoff_seconds: int = 30
+        retry_backoff_seconds: int = 30,
+        llm_config: Optional[Any] = None
     ):
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.CODER,
             mcp_config_path=mcp_config_path,
-            repo_root=repo_root
+            repo_root=repo_root,
+            llm_config=llm_config
         )
         
         # Initialize state machine
@@ -195,19 +197,22 @@ class CoderAgent(BaseAgent):
         Initialize the Coder Agent.
         
         - Connects to MCP servers (filesystem, git, lsp, terminal)
-        - Loads code style preferences
+        - Initializes LLM client
         - Prepares for code generation
         """
         logger.info(f"Initializing Coder Agent {self.agent_id}")
         
         self.update_state(AgentState.INITIALIZING)
         
-        # TODO: Initialize MCP client with required servers
-        # Required MCP servers:
-        # - filesystem: for reading/writing files
-        # - git: for version control
-        # - lsp: for code intelligence
-        # - terminal: for running commands
+        # Initialize LLM client (Phase 2)
+        await self._initialize_llm()
+        
+        # Initialize MCP client (Phase 2)
+        await self._initialize_mcp()
+        
+        # Initialize tool executor (Phase 2)
+        # Higher iteration limit for complex code tasks
+        await self._initialize_tool_executor(max_iterations=30)
         
         self.update_state(AgentState.IDLE)
         logger.info("Coder Agent initialized successfully")
@@ -222,7 +227,17 @@ class CoderAgent(BaseAgent):
         """
         logger.info(f"Shutting down Coder Agent {self.agent_id}")
         
-        # TODO: Disconnect MCP client
+        # Disconnect MCP client (Phase 2)
+        if self._mcp_client and hasattr(self._mcp_client, 'disconnect_all'):
+            try:
+                await self._mcp_client.disconnect_all()
+            except Exception as e:
+                logger.warning(f"Error disconnecting MCP client: {e}")
+        
+        # Log final usage stats
+        stats = self.get_llm_usage_stats()
+        if stats:
+            logger.info(f"Final LLM usage stats: {stats}")
         
         self.update_state(AgentState.COMPLETED)
         logger.info("Coder Agent shutdown complete")
@@ -309,6 +324,8 @@ class CoderAgent(BaseAgent):
         Implements the feature according to the specification,
         following existing code style and patterns.
         
+        Phase 2: Uses LLM with tool execution for implementation.
+        
         Args:
             spec: Feature specification
             
@@ -330,14 +347,127 @@ class CoderAgent(BaseAgent):
         
         changes: List[CodeChange] = []
         
-        # TODO: Implement actual feature generation using LLM
-        # This involves:
-        # 1. Reading relevant existing code for context
-        # 2. Generating implementation code
-        # 3. Writing changes to files
-        # 4. Following code style and patterns
+        # Phase 2: Use LLM with tool support for implementation
+        if self._llm_client and self._tool_executor:
+            changes = await self._implement_feature_with_llm(spec)
+        else:
+            # Fallback to placeholder implementation
+            changes = await self._implement_feature_fallback(spec)
         
-        # Placeholder implementation
+        return changes
+    
+    async def _implement_feature_with_llm(self, spec: FeatureSpec) -> List[CodeChange]:
+        """
+        Implement feature using LLM with tool execution.
+        
+        Args:
+            spec: Feature specification
+            
+        Returns:
+            List of code changes made
+        """
+        changes: List[CodeChange] = []
+        
+        prompt = f"""Implement the following feature:
+
+FEATURE: {spec.feature_name or 'Feature'}
+
+DESCRIPTION:
+{spec.description}
+
+ACCEPTANCE CRITERIA:
+{chr(10).join(f'- {c}' for c in spec.acceptance_criteria) if spec.acceptance_criteria else 'No specific criteria provided'}
+
+TARGET FILES:
+{chr(10).join(f'- {f}' for f in spec.target_files) if spec.target_files else 'No specific target files - determine appropriate files'}
+
+CONSTRAINTS:
+{chr(10).join(f'- {k}: {v}' for k, v in spec.constraints.items()) if spec.constraints else 'No specific constraints'}
+
+INSTRUCTIONS:
+1. Read relevant existing code to understand the codebase style and patterns
+2. Implement the feature following existing conventions
+3. Ensure all acceptance criteria are met
+4. Write clean, well-documented code
+5. Include appropriate error handling
+6. Consider edge cases
+
+Report each file you modify or create with a brief description of the changes."""
+        
+        try:
+            response = await self._call_llm(
+                prompt=prompt,
+                use_tools=True  # Enable tool calling for file operations
+            )
+            
+            # Parse response to extract changes
+            changes = self._parse_implementation_response(response, spec)
+            
+        except Exception as e:
+            logger.error(f"LLM implementation failed: {e}")
+            changes = await self._implement_feature_fallback(spec)
+        
+        return changes
+    
+    def _parse_implementation_response(self, response: str, spec: FeatureSpec) -> List[CodeChange]:
+        """
+        Parse LLM response to extract code changes.
+        
+        Args:
+            response: LLM response text
+            spec: Original feature specification
+            
+        Returns:
+            List of CodeChange objects
+        """
+        changes: List[CodeChange] = []
+        
+        # Simple parsing: look for file references in response
+        import re
+        
+        # Look for patterns like "Modified: file.py" or "Created: file.py"
+        patterns = [
+            r'(?:Modified|Updated|Changed):\s*([^\n]+)',
+            r'(?:Created|Added):\s*([^\n]+)',
+            r'(?:File):\s*([^\n]+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, response, re.IGNORECASE)
+            for match in matches:
+                file_path = match.strip()
+                if file_path and not file_path.startswith('http'):
+                    changes.append(CodeChange(
+                        file_path=file_path,
+                        change_type="modify" if "modif" in pattern.lower() else "create",
+                        description=f"Implementation of {spec.feature_name or 'feature'}",
+                        rationale=response[:200] if response else ""
+                    ))
+        
+        # If no changes found, create placeholder for target files
+        if not changes and spec.target_files:
+            for target_file in spec.target_files:
+                changes.append(CodeChange(
+                    file_path=target_file,
+                    change_type="modify",
+                    description=f"Implement {spec.feature_name or 'feature'}",
+                    rationale="Feature implementation"
+                ))
+        
+        return changes
+    
+    async def _implement_feature_fallback(self, spec: FeatureSpec) -> List[CodeChange]:
+        """
+        Fallback implementation when LLM is not available.
+        
+        Args:
+            spec: Feature specification
+            
+        Returns:
+            List of placeholder code changes
+        """
+        changes: List[CodeChange] = []
+        
         for target_file in spec.target_files:
             changes.append(CodeChange(
                 file_path=target_file,

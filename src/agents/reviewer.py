@@ -160,13 +160,15 @@ class ReviewerAgent(BaseAgent):
         mcp_config_path: str = "~/.config/autodev/mcp_config.json",
         repo_root: str = ".",
         strict_mode: bool = True,
-        auto_fix_enabled: bool = True
+        auto_fix_enabled: bool = True,
+        llm_config: Optional[Any] = None
     ):
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.REVIEWER,
             mcp_config_path=mcp_config_path,
-            repo_root=repo_root
+            repo_root=repo_root,
+            llm_config=llm_config
         )
         
         # Initialize state machine
@@ -188,18 +190,21 @@ class ReviewerAgent(BaseAgent):
         Initialize the Reviewer Agent.
         
         - Connects to MCP servers (filesystem, git, lsp)
-        - Loads review checklists and standards
+        - Initializes LLM client
         - Prepares for review execution
         """
         logger.info(f"Initializing Reviewer Agent {self.agent_id}")
         
         self.update_state(AgentState.INITIALIZING)
         
-        # TODO: Initialize MCP client with required servers
-        # Required MCP servers:
-        # - filesystem: for reading files
-        # - git: for accessing diffs
-        # - lsp: for code analysis
+        # Initialize LLM client (Phase 2)
+        await self._initialize_llm()
+        
+        # Initialize MCP client (Phase 2)
+        await self._initialize_mcp()
+        
+        # Initialize tool executor (Phase 2)
+        await self._initialize_tool_executor(max_iterations=20)
         
         self.update_state(AgentState.IDLE)
         logger.info("Reviewer Agent initialized successfully")
@@ -214,7 +219,17 @@ class ReviewerAgent(BaseAgent):
         """
         logger.info(f"Shutting down Reviewer Agent {self.agent_id}")
         
-        # TODO: Disconnect MCP client
+        # Disconnect MCP client (Phase 2)
+        if self._mcp_client and hasattr(self._mcp_client, 'disconnect_all'):
+            try:
+                await self._mcp_client.disconnect_all()
+            except Exception as e:
+                logger.warning(f"Error disconnecting MCP client: {e}")
+        
+        # Log final usage stats
+        stats = self.get_llm_usage_stats()
+        if stats:
+            logger.info(f"Final LLM usage stats: {stats}")
         
         self.update_state(AgentState.COMPLETED)
         logger.info("Reviewer Agent shutdown complete")

@@ -104,13 +104,15 @@ class ManagerAgent(BaseAgent):
         mcp_config_path: str = "~/.config/autodev/mcp_config.json",
         repo_root: str = ".",
         max_concurrent_workers: int = 3,
-        task_timeout_seconds: int = 300
+        task_timeout_seconds: int = 300,
+        llm_config: Optional[Any] = None
     ):
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.MANAGER,
             mcp_config_path=mcp_config_path,
-            repo_root=repo_root
+            repo_root=repo_root,
+            llm_config=llm_config
         )
         
         # Initialize state machine
@@ -141,16 +143,21 @@ class ManagerAgent(BaseAgent):
         Initialize the Manager Agent.
         
         - Connects to MCP servers
-        - Loads configuration
+        - Initializes LLM client
         - Prepares for task execution
         """
         logger.info(f"Initializing Manager Agent {self.agent_id}")
         
         self.update_state(AgentState.INITIALIZING)
         
-        # TODO: Initialize MCP client
-        # self._mcp_client = AutoDevMCPClient(self.mcp_config_path)
-        # await self._mcp_client.connect_all()
+        # Initialize LLM client (Phase 2)
+        await self._initialize_llm()
+        
+        # Initialize MCP client (Phase 2)
+        await self._initialize_mcp()
+        
+        # Initialize tool executor (Phase 2)
+        await self._initialize_tool_executor(max_iterations=25)
         
         self.update_state(AgentState.IDLE)
         logger.info("Manager Agent initialized successfully")
@@ -170,9 +177,17 @@ class ManagerAgent(BaseAgent):
             logger.info(f"Cancelling active task: {task_id}")
             # TODO: Implement worker cancellation
         
-        # TODO: Disconnect MCP client
-        # if self._mcp_client:
-        #     await self._mcp_client.disconnect_all()
+        # Disconnect MCP client (Phase 2)
+        if self._mcp_client and hasattr(self._mcp_client, 'disconnect_all'):
+            try:
+                await self._mcp_client.disconnect_all()
+            except Exception as e:
+                logger.warning(f"Error disconnecting MCP client: {e}")
+        
+        # Log final usage stats
+        stats = self.get_llm_usage_stats()
+        if stats:
+            logger.info(f"Final LLM usage stats: {stats}")
         
         self.update_state(AgentState.COMPLETED)
         logger.info("Manager Agent shutdown complete")
@@ -395,9 +410,11 @@ class ManagerAgent(BaseAgent):
     # Helper Methods
     # -------------------------------------------------------------------------
     
-    def decompose_task(self, prd: str, tracker: dict) -> List[SubTask]:
+    async def decompose_task_with_llm(self, prd: str, tracker: dict) -> List[SubTask]:
         """
-        Break down PRD into atomic subtasks.
+        Break down PRD into atomic subtasks using LLM.
+        
+        Phase 2 implementation using the LLM client.
         
         Args:
             prd: Product Requirements Document text
@@ -406,8 +423,135 @@ class ManagerAgent(BaseAgent):
         Returns:
             List of decomposed subtasks
         """
-        # TODO: Implement LLM-based decomposition
-        return []
+        if not self._llm_client:
+            logger.warning("LLM client not available, using fallback decomposition")
+            return self._fallback_decompose(prd, tracker)
+        
+        prompt = f"""Analyze the following task specification and break it down into atomic subtasks.
+
+TASK SPECIFICATION:
+{prd}
+
+PROJECT CONTEXT:
+{tracker if tracker else 'No additional context provided'}
+
+Create a list of subtasks that:
+1. Are atomic and independently executable
+2. Have clear dependencies on other subtasks (if any)
+3. Can be assigned to appropriate worker types (coder, reviewer, tester)
+4. Are prioritized by importance
+
+For each subtask, provide:
+- name: Short descriptive name
+- description: Detailed description of what needs to be done
+- task_type: Type of work (implement, review, test, refactor, debug)
+- priority: critical, high, medium, or low
+- assigned_to: coder, reviewer, or tester
+- dependencies: List of other subtask names this depends on (if any)
+
+Format your response as a JSON list of subtask objects."""
+        
+        try:
+            response = await self._call_llm(
+                prompt=prompt,
+                use_tools=False  # Don't use tools for decomposition
+            )
+            
+            # Parse the response to extract subtasks
+            subtasks = self._parse_decomposition_response(response, prd)
+            return subtasks
+            
+        except Exception as e:
+            logger.error(f"LLM decomposition failed: {e}")
+            return self._fallback_decompose(prd, tracker)
+    
+    def _parse_decomposition_response(self, response: str, prd: str) -> List[SubTask]:
+        """
+        Parse LLM response into SubTask objects.
+        
+        Args:
+            response: LLM response text
+            prd: Original PRD text
+            
+        Returns:
+            List of SubTask objects
+        """
+        import json
+        import re
+        
+        subtasks = []
+        
+        # Try to extract JSON from the response
+        try:
+            # Look for JSON array in the response
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                
+                # Map string roles to AgentRole
+                role_map = {
+                    "coder": AgentRole.CODER,
+                    "reviewer": AgentRole.REVIEWER,
+                    "tester": AgentRole.TESTER,
+                }
+                
+                for item in data:
+                    assigned_str = item.get("assigned_to", "coder").lower()
+                    subtask = SubTask(
+                        name=item.get("name", "Unnamed task"),
+                        description=item.get("description", ""),
+                        task_type=item.get("task_type", "implement"),
+                        priority=item.get("priority", "medium"),
+                        assigned_to=role_map.get(assigned_str, AgentRole.CODER),
+                        context={
+                            "prd_excerpt": prd[:500],
+                            "dependencies": item.get("dependencies", [])
+                        }
+                    )
+                    subtasks.append(subtask)
+                    
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse LLM response as JSON: {e}")
+        
+        return subtasks if subtasks else self._fallback_decompose(prd, {})
+    
+    def _fallback_decompose(self, prd: str, tracker: dict) -> List[SubTask]:
+        """
+        Fallback decomposition when LLM is not available.
+        
+        Args:
+            prd: Product Requirements Document text
+            tracker: Project tracker data
+            
+        Returns:
+            List of basic subtasks
+        """
+        return [
+            SubTask(
+                name="Implement main task",
+                description=prd,
+                task_type="implement",
+                priority="high",
+                assigned_to=AgentRole.CODER,
+                context={"tracker": tracker}
+            )
+        ]
+    
+    def decompose_task(self, prd: str, tracker: dict) -> List[SubTask]:
+        """
+        Break down PRD into atomic subtasks.
+        
+        Note: This is a sync wrapper. For LLM-based decomposition,
+        use decompose_task_with_llm instead.
+        
+        Args:
+            prd: Product Requirements Document text
+            tracker: Project tracker data
+            
+        Returns:
+            List of decomposed subtasks
+        """
+        return self._fallback_decompose(prd, tracker)
     
     def prioritize_tasks(self, subtasks: List[SubTask]) -> List[SubTask]:
         """
