@@ -7,7 +7,7 @@ Updated for Phase 2 with LLM and MCP integration.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
@@ -85,7 +85,7 @@ class TaskSpec:
     constraints: Dict[str, Any] = field(default_factory=dict)
     verification_command: Optional[str] = None
     timeout_seconds: int = 300
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     repo_root: str = "."
 
 
@@ -108,7 +108,7 @@ class TaskResult:
     """
     task_id: str
     status: str = "running"
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     files_modified: List[str] = field(default_factory=list)
     summary: str = ""

@@ -6,7 +6,7 @@ Hierarchical Architecture Specification.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, Dict, List, Optional
 import logging
@@ -151,7 +151,7 @@ class StateMachine:
         transition_record = StateTransition(
             from_state=old_state,
             to_state=target_state,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             reason=reason,
             metadata=metadata
         )

@@ -12,7 +12,7 @@ As specified in Section 2.1 of the Hierarchical Architecture Specification.
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import logging
 import uuid
@@ -45,7 +45,7 @@ class ProgressReport:
         pending_tasks: Tasks waiting to be dispatched
         overall_progress: Overall completion percentage
     """
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     active_tasks: List[str] = field(default_factory=list)
     completed_tasks: List[str] = field(default_factory=list)
     failed_tasks: List[str] = field(default_factory=list)
@@ -232,7 +232,7 @@ class ManagerAgent(BaseAgent):
             
             # Build result
             result.status = "completed"
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             result.files_modified = final_output.get("files_modified", [])
             result.summary = final_output.get("summary", "Task completed successfully")
             result.result = final_output
