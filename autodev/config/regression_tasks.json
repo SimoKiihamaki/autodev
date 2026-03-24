@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "description": "5 representative SWE-bench task IDs for performance regression testing",
+    "created": "2026-03-24",
+    "purpose": "Track performance regressions in hierarchical executor"
+  },
+  "tasks": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "repo": "astropy/astropy",
+      "description": "Representative task from baseline metrics - diverse difficulty"
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "repo": "astropy/astropy",
+      "description": "Representative task from baseline metrics - fastest latency"
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "repo": "astropy/astropy",
+      "description": "Representative task from baseline metrics - medium complexity"
+    },
+    {
+      "instance_id": "astropy__astropy-14995",
+      "repo": "astropy/astropy",
+      "description": "Representative task from baseline metrics - standard case"
+    },
+    {
+      "instance_id": "astropy__astropy-6938",
+      "repo": "astropy/astropy",
+      "description": "Representative task from baseline metrics - slowest latency"
+    }
+  ],
+  "selection_criteria": {
+    "diversity": "Tasks selected represent different complexity levels and execution patterns",
+    "baseline_source": "benchmarks/baselines/phase10.1.json",
+    "baseline_avg_latency": 1.346,
+    "expected_runtime": "Under 5 minutes for full suite"
+  }
+}

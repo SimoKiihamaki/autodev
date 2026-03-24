@@ -1,0 +1,783 @@
+{
+  "metadata": {
+    "timestamp": "2026-03-24T01:40:27.870071",
+    "phase": "10.2",
+    "task": "T3.2",
+    "description": "Agent-level profiling results",
+    "baseline_source": "/Users/simo/Projects/autodev/benchmarks/baselines/phase10.1.json",
+    "profiler_version": "1.0.0"
+  },
+  "summary": {
+    "total_tasks_profiled": 5,
+    "total_phase_executions": 15,
+    "total_time_seconds": 6.66,
+    "total_tokens": 22356,
+    "avg_task_time_seconds": 1.332,
+    "avg_tokens_per_task": 4471,
+    "phase_time_distribution": {
+      "manager": {
+        "avg_seconds": 0.311,
+        "pct_of_total": 23.3
+      },
+      "coder": {
+        "avg_seconds": 0.739,
+        "pct_of_total": 55.4
+      },
+      "reviewer": {
+        "avg_seconds": 0.283,
+        "pct_of_total": 21.2
+      }
+    },
+    "handoff_overhead_pct": 0.99,
+    "bottleneck_count": 3,
+    "top_bottleneck": "coding",
+    "optimization_potential_seconds": 0.34
+  },
+  "agent_profiles": {
+    "manager": {
+      "agent_type": "manager",
+      "total_executions": 5,
+      "total_time_seconds": 1.553,
+      "avg_time_seconds": 0.311,
+      "std_dev_time": 0.0473,
+      "min_time_seconds": 0.246,
+      "max_time_seconds": 0.372,
+      "total_tokens": 4356,
+      "avg_tokens_per_execution": 871.2,
+      "avg_input_tokens": 0,
+      "avg_output_tokens": 871.2,
+      "token_efficiency": 0,
+      "avg_context_utilization_pct": 0.39,
+      "max_context_utilization_pct": 0.39,
+      "context_overflow_count": 0,
+      "avg_tokens_per_second": 2878.2,
+      "efficiency_score": 34.53,
+      "avg_sub_operations": {
+        "task_analysis": 0.0932,
+        "planning": 0.1243,
+        "subtask_generation": 0.0932
+      }
+    },
+    "coder": {
+      "agent_type": "coder",
+      "total_executions": 5,
+      "total_time_seconds": 3.693,
+      "avg_time_seconds": 0.739,
+      "std_dev_time": 0.0902,
+      "min_time_seconds": 0.588,
+      "max_time_seconds": 0.831,
+      "total_tokens": 15000,
+      "avg_tokens_per_execution": 3000,
+      "avg_input_tokens": 1000,
+      "avg_output_tokens": 2000,
+      "token_efficiency": 2.0,
+      "avg_context_utilization_pct": 1.85,
+      "max_context_utilization_pct": 2.04,
+      "context_overflow_count": 0,
+      "avg_tokens_per_second": 4117.2,
+      "efficiency_score": 52.47,
+      "avg_sub_operations": {
+        "context_loading": 0.0739,
+        "code_generation": 0.4432,
+        "diff_application": 0.1108,
+        "validation": 0.1108
+      }
+    },
+    "reviewer": {
+      "agent_type": "reviewer",
+      "total_executions": 5,
+      "total_time_seconds": 1.414,
+      "avg_time_seconds": 0.283,
+      "std_dev_time": 0.0244,
+      "min_time_seconds": 0.254,
+      "max_time_seconds": 0.305,
+      "total_tokens": 3000,
+      "avg_tokens_per_execution": 600,
+      "avg_input_tokens": 800,
+      "avg_output_tokens": -200,
+      "token_efficiency": -0.25,
+      "avg_context_utilization_pct": 3.42,
+      "max_context_utilization_pct": 3.6,
+      "context_overflow_count": 0,
+      "avg_tokens_per_second": 2134.7,
+      "efficiency_score": 25.93,
+      "avg_sub_operations": {
+        "diff_analysis": 0.0848,
+        "test_evaluation": 0.0848,
+        "feedback_generation": 0.1131
+      }
+    }
+  },
+  "phase_profiles": [
+    {
+      "phase_name": "decomposing",
+      "agent_type": "manager",
+      "duration_seconds": 0.2462,
+      "tokens_used": 811,
+      "tokens_input": 0,
+      "tokens_output": 811,
+      "context_window_size": 128000,
+      "context_window_used": 500,
+      "context_utilization_pct": 0.39,
+      "efficiency_score": 40.34,
+      "sub_operations": {
+        "task_analysis": 0.0739,
+        "planning": 0.0985,
+        "subtask_generation": 0.0739
+      }
+    },
+    {
+      "phase_name": "coding",
+      "agent_type": "coder",
+      "duration_seconds": 0.8311,
+      "tokens_used": 3000,
+      "tokens_input": 1000,
+      "tokens_output": 2000,
+      "context_window_size": 128000,
+      "context_window_used": 2311,
+      "context_utilization_pct": 1.81,
+      "efficiency_score": 45.62,
+      "sub_operations": {
+        "context_loading": 0.0831,
+        "code_generation": 0.4986,
+        "diff_application": 0.1247,
+        "validation": 0.1247
+      }
+    },
+    {
+      "phase_name": "reviewing",
+      "agent_type": "reviewer",
+      "duration_seconds": 0.3027,
+      "tokens_used": 600,
+      "tokens_input": 800,
+      "tokens_output": -200,
+      "context_window_size": 128000,
+      "context_window_used": 4311,
+      "context_utilization_pct": 3.37,
+      "efficiency_score": 23.77,
+      "sub_operations": {
+        "diff_analysis": 0.0908,
+        "test_evaluation": 0.0908,
+        "feedback_generation": 0.1211
+      }
+    },
+    {
+      "phase_name": "decomposing",
+      "agent_type": "manager",
+      "duration_seconds": 0.2867,
+      "tokens_used": 967,
+      "tokens_input": 0,
+      "tokens_output": 967,
+      "context_window_size": 128000,
+      "context_window_used": 500,
+      "context_utilization_pct": 0.39,
+      "efficiency_score": 41.46,
+      "sub_operations": {
+        "task_analysis": 0.086,
+        "planning": 0.1147,
+        "subtask_generation": 0.086
+      }
+    },
+    {
+      "phase_name": "coding",
+      "agent_type": "coder",
+      "duration_seconds": 0.588,
+      "tokens_used": 3000,
+      "tokens_input": 1000,
+      "tokens_output": 2000,
+      "context_window_size": 128000,
+      "context_window_used": 2467,
+      "context_utilization_pct": 1.93,
+      "efficiency_score": 65.16,
+      "sub_operations": {
+        "context_loading": 0.0588,
+        "code_generation": 0.3528,
+        "diff_application": 0.0882,
+        "validation": 0.0882
+      }
+    },
+    {
+      "phase_name": "reviewing",
+      "agent_type": "reviewer",
+      "duration_seconds": 0.2594,
+      "tokens_used": 600,
+      "tokens_input": 800,
+      "tokens_output": -200,
+      "context_window_size": 128000,
+      "context_window_used": 4467,
+      "context_utilization_pct": 3.49,
+      "efficiency_score": 28.48,
+      "sub_operations": {
+        "diff_analysis": 0.0778,
+        "test_evaluation": 0.0778,
+        "feedback_generation": 0.1038
+      }
+    },
+    {
+      "phase_name": "decomposing",
+      "agent_type": "manager",
+      "duration_seconds": 0.3321,
+      "tokens_used": 834,
+      "tokens_input": 0,
+      "tokens_output": 834,
+      "context_window_size": 128000,
+      "context_window_used": 500,
+      "context_utilization_pct": 0.39,
+      "efficiency_score": 29.39,
+      "sub_operations": {
+        "task_analysis": 0.0996,
+        "planning": 0.1329,
+        "subtask_generation": 0.0996
+      }
+    },
+    {
+      "phase_name": "coding",
+      "agent_type": "coder",
+      "duration_seconds": 0.7567,
+      "tokens_used": 3000,
+      "tokens_input": 1000,
+      "tokens_output": 2000,
+      "context_window_size": 128000,
+      "context_window_used": 2334,
+      "context_utilization_pct": 1.82,
+      "efficiency_score": 50.6,
+      "sub_operations": {
+        "context_loading": 0.0757,
+        "code_generation": 0.454,
+        "diff_application": 0.1135,
+        "validation": 0.1135
+      }
+    },
+    {
+      "phase_name": "reviewing",
+      "agent_type": "reviewer",
+      "duration_seconds": 0.2537,
+      "tokens_used": 600,
+      "tokens_input": 800,
+      "tokens_output": -200,
+      "context_window_size": 128000,
+      "context_window_used": 4334,
+      "context_utilization_pct": 3.39,
+      "efficiency_score": 29.14,
+      "sub_operations": {
+        "diff_analysis": 0.0761,
+        "test_evaluation": 0.0761,
+        "feedback_generation": 0.1015
+      }
+    },
+    {
+      "phase_name": "decomposing",
+      "agent_type": "manager",
+      "duration_seconds": 0.3167,
+      "tokens_used": 1113,
+      "tokens_input": 0,
+      "tokens_output": 1113,
+      "context_window_size": 128000,
+      "context_window_used": 500,
+      "context_utilization_pct": 0.39,
+      "efficiency_score": 43.44,
+      "sub_operations": {
+        "task_analysis": 0.095,
+        "planning": 0.1267,
+        "subtask_generation": 0.095
+      }
+    },
+    {
+      "phase_name": "coding",
+      "agent_type": "coder",
+      "duration_seconds": 0.7676,
+      "tokens_used": 3000,
+      "tokens_input": 1000,
+      "tokens_output": 2000,
+      "context_window_size": 128000,
+      "context_window_used": 2613,
+      "context_utilization_pct": 2.04,
+      "efficiency_score": 49.94,
+      "sub_operations": {
+        "context_loading": 0.0768,
+        "code_generation": 0.4605,
+        "diff_application": 0.1151,
+        "validation": 0.1151
+      }
+    },
+    {
+      "phase_name": "reviewing",
+      "agent_type": "reviewer",
+      "duration_seconds": 0.2935,
+      "tokens_used": 600,
+      "tokens_input": 800,
+      "tokens_output": -200,
+      "context_window_size": 128000,
+      "context_window_used": 4613,
+      "context_utilization_pct": 3.6,
+      "efficiency_score": 24.78,
+      "sub_operations": {
+        "diff_analysis": 0.0881,
+        "test_evaluation": 0.0881,
+        "feedback_generation": 0.1174
+      }
+    },
+    {
+      "phase_name": "decomposing",
+      "agent_type": "manager",
+      "duration_seconds": 0.3716,
+      "tokens_used": 631,
+      "tokens_input": 0,
+      "tokens_output": 631,
+      "context_window_size": 128000,
+      "context_window_used": 500,
+      "context_utilization_pct": 0.39,
+      "efficiency_score": 18.01,
+      "sub_operations": {
+        "task_analysis": 0.1115,
+        "planning": 0.1486,
+        "subtask_generation": 0.1115
+      }
+    },
+    {
+      "phase_name": "coding",
+      "agent_type": "coder",
+      "duration_seconds": 0.7499,
+      "tokens_used": 3000,
+      "tokens_input": 1000,
+      "tokens_output": 2000,
+      "context_window_size": 128000,
+      "context_window_used": 2131,
+      "context_utilization_pct": 1.66,
+      "efficiency_score": 51.01,
+      "sub_operations": {
+        "context_loading": 0.075,
+        "code_generation": 0.4499,
+        "diff_application": 0.1125,
+        "validation": 0.1125
+      }
+    },
+    {
+      "phase_name": "reviewing",
+      "agent_type": "reviewer",
+      "duration_seconds": 0.3047,
+      "tokens_used": 600,
+      "tokens_input": 800,
+      "tokens_output": -200,
+      "context_window_size": 128000,
+      "context_window_used": 4131,
+      "context_utilization_pct": 3.23,
+      "efficiency_score": 23.51,
+      "sub_operations": {
+        "diff_analysis": 0.0914,
+        "test_evaluation": 0.0914,
+        "feedback_generation": 0.1219
+      }
+    }
+  ],
+  "handoff_profiles": [
+    {
+      "from_agent": "manager",
+      "to_agent": "coder",
+      "avg_duration_seconds": 0.0066,
+      "max_duration_seconds": 0.0091,
+      "total_handoffs": 5,
+      "overhead_pct": 0.488
+    },
+    {
+      "from_agent": "coder",
+      "to_agent": "reviewer",
+      "avg_duration_seconds": 0.0068,
+      "max_duration_seconds": 0.009,
+      "total_handoffs": 5,
+      "overhead_pct": 0.504
+    }
+  ],
+  "bottlenecks": [
+    {
+      "rank": 1,
+      "category": "phase",
+      "component": "coding",
+      "description": "'coding' phase consumes 55.4% of total execution time",
+      "impact_score": 75.4,
+      "current_value": 0.7386,
+      "target_value": 0.517,
+      "potential_savings_seconds": 0.2216,
+      "recommendation": "Optimize code_generation in coding phase. Consider caching, parallel execution, or prompt optimization."
+    },
+    {
+      "rank": 2,
+      "category": "token_efficiency",
+      "component": "manager_tokens",
+      "description": "manager has low token efficiency (0.00 output/input ratio)",
+      "impact_score": 60,
+      "current_value": 0,
+      "target_value": 0.7,
+      "potential_savings_seconds": 0.0621,
+      "recommendation": "Reduce input context for manager. Use more focused prompts."
+    },
+    {
+      "rank": 3,
+      "category": "token_efficiency",
+      "component": "reviewer_tokens",
+      "description": "reviewer has low token efficiency (-0.25 output/input ratio)",
+      "impact_score": 60,
+      "current_value": -0.25,
+      "target_value": 0.7,
+      "potential_savings_seconds": 0.0566,
+      "recommendation": "Reduce input context for reviewer. Use more focused prompts."
+    }
+  ],
+  "task_profiles": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "total_time": 1.3945250420074444,
+      "phases": {
+        "decomposing": {
+          "phase_name": "decomposing",
+          "agent_type": "manager",
+          "duration_seconds": 0.24623870800132863,
+          "tokens_used": 811,
+          "tokens_input": 0,
+          "tokens_output": 811,
+          "context_window_size": 128000,
+          "context_window_used": 500,
+          "context_utilization_pct": 0.390625,
+          "efficiency_score": 40.34410361317456,
+          "sub_operations": {
+            "task_analysis": 0.07387161240039859,
+            "planning": 0.09849548320053146,
+            "subtask_generation": 0.07387161240039859
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "coding": {
+          "phase_name": "coding",
+          "agent_type": "coder",
+          "duration_seconds": 0.8310707089840434,
+          "tokens_used": 3000,
+          "tokens_input": 1000,
+          "tokens_output": 2000,
+          "context_window_size": 128000,
+          "context_window_used": 2311,
+          "context_utilization_pct": 1.80546875,
+          "efficiency_score": 45.62049733278508,
+          "sub_operations": {
+            "context_loading": 0.08310707089840436,
+            "code_generation": 0.498642425390426,
+            "diff_application": 0.1246606063476065,
+            "validation": 0.1246606063476065
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "reviewing": {
+          "phase_name": "reviewing",
+          "agent_type": "reviewer",
+          "duration_seconds": 0.30268770799739286,
+          "tokens_used": 600,
+          "tokens_input": 800,
+          "tokens_output": -200,
+          "context_window_size": 128000,
+          "context_window_used": 4311,
+          "context_utilization_pct": 3.36796875,
+          "efficiency_score": 23.77215594431812,
+          "sub_operations": {
+            "diff_analysis": 0.09080631239921785,
+            "test_evaluation": 0.09080631239921785,
+            "feedback_generation": 0.12107508319895716
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        }
+      },
+      "handoffs": {
+        "decompose_to_coding": 0.004363542015198618,
+        "coding_to_reviewing": 0.00904487498337403
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "total_time": 1.1487435000017285,
+      "phases": {
+        "decomposing": {
+          "phase_name": "decomposing",
+          "agent_type": "manager",
+          "duration_seconds": 0.28665537500637583,
+          "tokens_used": 967,
+          "tokens_input": 0,
+          "tokens_output": 967,
+          "context_window_size": 128000,
+          "context_window_used": 500,
+          "context_utilization_pct": 0.390625,
+          "efficiency_score": 41.46181666125923,
+          "sub_operations": {
+            "task_analysis": 0.08599661250191275,
+            "planning": 0.11466215000255034,
+            "subtask_generation": 0.08599661250191275
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "coding": {
+          "phase_name": "coding",
+          "agent_type": "coder",
+          "duration_seconds": 0.5879597919993103,
+          "tokens_used": 3000,
+          "tokens_input": 1000,
+          "tokens_output": 2000,
+          "context_window_size": 128000,
+          "context_window_used": 2467,
+          "context_utilization_pct": 1.9273437500000001,
+          "efficiency_score": 65.15640625,
+          "sub_operations": {
+            "context_loading": 0.05879597919993103,
+            "code_generation": 0.35277587519958614,
+            "diff_application": 0.08819396879989654,
+            "validation": 0.08819396879989654
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "reviewing": {
+          "phase_name": "reviewing",
+          "agent_type": "reviewer",
+          "duration_seconds": 0.2594027500017546,
+          "tokens_used": 600,
+          "tokens_input": 800,
+          "tokens_output": -200,
+          "context_window_size": 128000,
+          "context_window_used": 4467,
+          "context_utilization_pct": 3.48984375,
+          "efficiency_score": 28.475983926289796,
+          "sub_operations": {
+            "diff_analysis": 0.07782082500052638,
+            "test_evaluation": 0.07782082500052638,
+            "feedback_generation": 0.10376110000070185
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        }
+      },
+      "handoffs": {
+        "decompose_to_coding": 0.007071750005707145,
+        "coding_to_reviewing": 0.006842791015515104
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "total_time": 1.3551702499971725,
+      "phases": {
+        "decomposing": {
+          "phase_name": "decomposing",
+          "agent_type": "manager",
+          "duration_seconds": 0.33213416699436493,
+          "tokens_used": 834,
+          "tokens_input": 0,
+          "tokens_output": 834,
+          "context_window_size": 128000,
+          "context_window_used": 500,
+          "context_utilization_pct": 0.390625,
+          "efficiency_score": 29.38884316466219,
+          "sub_operations": {
+            "task_analysis": 0.09964025009830947,
+            "planning": 0.132853666797746,
+            "subtask_generation": 0.09964025009830947
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "coding": {
+          "phase_name": "coding",
+          "agent_type": "coder",
+          "duration_seconds": 0.7566506669973023,
+          "tokens_used": 3000,
+          "tokens_input": 1000,
+          "tokens_output": 2000,
+          "context_window_size": 128000,
+          "context_window_used": 2334,
+          "context_utilization_pct": 1.8234375,
+          "efficiency_score": 50.60184413808813,
+          "sub_operations": {
+            "context_loading": 0.07566506669973024,
+            "code_generation": 0.4539904001983814,
+            "diff_application": 0.11349760004959535,
+            "validation": 0.11349760004959535
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "reviewing": {
+          "phase_name": "reviewing",
+          "agent_type": "reviewer",
+          "duration_seconds": 0.25371362498844974,
+          "tokens_used": 600,
+          "tokens_input": 800,
+          "tokens_output": -200,
+          "context_window_size": 128000,
+          "context_window_used": 4334,
+          "context_utilization_pct": 3.3859375,
+          "efficiency_score": 29.139756828871413,
+          "sub_operations": {
+            "diff_analysis": 0.07611408749653492,
+            "test_evaluation": 0.07611408749653492,
+            "feedback_generation": 0.1014854499953799
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        }
+      },
+      "handoffs": {
+        "decompose_to_coding": 0.007231458002934232,
+        "coding_to_reviewing": 0.004725833015982062
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14995",
+      "total_time": 1.3942680839973036,
+      "phases": {
+        "decomposing": {
+          "phase_name": "decomposing",
+          "agent_type": "manager",
+          "duration_seconds": 0.31666720801149495,
+          "tokens_used": 1113,
+          "tokens_input": 0,
+          "tokens_output": 1113,
+          "context_window_size": 128000,
+          "context_window_used": 500,
+          "context_utilization_pct": 0.390625,
+          "efficiency_score": 43.44060667092936,
+          "sub_operations": {
+            "task_analysis": 0.09500016240344848,
+            "planning": 0.12666688320459799,
+            "subtask_generation": 0.09500016240344848
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "coding": {
+          "phase_name": "coding",
+          "agent_type": "coder",
+          "duration_seconds": 0.7675728749891277,
+          "tokens_used": 3000,
+          "tokens_input": 1000,
+          "tokens_output": 2000,
+          "context_window_size": 128000,
+          "context_window_used": 2613,
+          "context_utilization_pct": 2.04140625,
+          "efficiency_score": 49.94277525662718,
+          "sub_operations": {
+            "context_loading": 0.07675728749891278,
+            "code_generation": 0.4605437249934766,
+            "diff_application": 0.11513593124836916,
+            "validation": 0.11513593124836916
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "reviewing": {
+          "phase_name": "reviewing",
+          "agent_type": "reviewer",
+          "duration_seconds": 0.29352312500122935,
+          "tokens_used": 600,
+          "tokens_input": 800,
+          "tokens_output": -200,
+          "context_window_size": 128000,
+          "context_window_used": 4613,
+          "context_utilization_pct": 3.6039062500000005,
+          "efficiency_score": 24.78019115117093,
+          "sub_operations": {
+            "diff_analysis": 0.0880569375003688,
+            "test_evaluation": 0.0880569375003688,
+            "feedback_generation": 0.11740925000049174
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        }
+      },
+      "handoffs": {
+        "decompose_to_coding": 0.009050499997101724,
+        "coding_to_reviewing": 0.006619624997256324
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-6938",
+      "total_time": 1.4387936660205014,
+      "phases": {
+        "decomposing": {
+          "phase_name": "decomposing",
+          "agent_type": "manager",
+          "duration_seconds": 0.3715913339983672,
+          "tokens_used": 631,
+          "tokens_input": 0,
+          "tokens_output": 631,
+          "context_window_size": 128000,
+          "context_window_used": 500,
+          "context_utilization_pct": 0.390625,
+          "efficiency_score": 18.00780347300852,
+          "sub_operations": {
+            "task_analysis": 0.11147740019951015,
+            "planning": 0.1486365335993469,
+            "subtask_generation": 0.11147740019951015
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "coding": {
+          "phase_name": "coding",
+          "agent_type": "coder",
+          "duration_seconds": 0.7498860829800833,
+          "tokens_used": 3000,
+          "tokens_input": 1000,
+          "tokens_output": 2000,
+          "context_window_size": 128000,
+          "context_window_used": 2131,
+          "context_utilization_pct": 1.6648437499999997,
+          "efficiency_score": 51.00741334629119,
+          "sub_operations": {
+            "context_loading": 0.07498860829800834,
+            "code_generation": 0.44993164978804995,
+            "diff_application": 0.11248291244701249,
+            "validation": 0.11248291244701249
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        },
+        "reviewing": {
+          "phase_name": "reviewing",
+          "agent_type": "reviewer",
+          "duration_seconds": 0.3046865409996826,
+          "tokens_used": 600,
+          "tokens_input": 800,
+          "tokens_output": -200,
+          "context_window_size": 128000,
+          "context_window_used": 4131,
+          "context_utilization_pct": 3.22734375,
+          "efficiency_score": 23.505723793333004,
+          "sub_operations": {
+            "diff_analysis": 0.09140596229990479,
+            "test_evaluation": 0.09140596229990479,
+            "feedback_generation": 0.12187461639987306
+          },
+          "memory_before_mb": 0.0,
+          "memory_after_mb": 0.0,
+          "memory_delta_mb": 0.0
+        }
+      },
+      "handoffs": {
+        "decompose_to_coding": 0.0051332919974811375,
+        "coding_to_reviewing": 0.006692750001093373
+      }
+    }
+  ]
+}
